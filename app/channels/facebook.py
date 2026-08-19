@@ -13,7 +13,11 @@ def get_fb_token() -> str:
 def send_fb_text_message(recipient_id: str, text: str) -> bool:
     """Sends a text message to a Facebook Messenger user."""
     token = get_fb_token()
-    if not token or not recipient_id:
+    if not token:
+        print("[Facebook Send Error]: Facebook Page Access Token is NOT configured in Settings!")
+        return False
+    if not recipient_id:
+        print("[Facebook Send Error]: Missing recipient_id!")
         return False
 
     url = f"{GRAPH_API_URL}/me/messages"
@@ -25,9 +29,10 @@ def send_fb_text_message(recipient_id: str, text: str) -> bool:
     }
     try:
         r = requests.post(url, params=params, json=payload, timeout=10)
+        print(f"[Facebook Send Result]: HTTP {r.status_code}, Body: {r.text}")
         return r.status_code == 200
     except Exception as e:
-        print(f"[Facebook Send Error]: {e}")
+        print(f"[Facebook Send Exception]: {e}")
         return False
 
 def send_fb_media_message(recipient_id: str, media_type: str, media_url: str) -> bool:
@@ -101,6 +106,8 @@ async def handle_facebook_webhook_event(data: dict):
 
         entries = data.get("entry", [])
         for entry in entries:
+            page_id = entry.get("id")
+            
             # 1. Handle Messenger Messages
             if "messaging" in entry:
                 for event in entry["messaging"]:
@@ -109,8 +116,14 @@ async def handle_facebook_webhook_event(data: dict):
                         continue
 
                     message_obj = event["message"]
+                    
+                    # Ignore echoes (messages sent by page itself)
+                    if message_obj.get("is_echo") or sender_id == page_id:
+                        continue
+
                     msg_text = message_obj.get("text", "")
                     attachments = message_obj.get("attachments", [])
+                    print(f"[Facebook Messenger Incoming]: From {sender_id}, Text: '{msg_text}', Attachments: {len(attachments)}")
 
                     image_bytes = None
                     audio_bytes = None
@@ -154,12 +167,12 @@ async def handle_facebook_webhook_event(data: dict):
 
                     reply_text = ai_result.get("reply_text", "")
                     if reply_text:
+                        print(f"[Facebook Messenger Replying]: '{reply_text[:60]}...' to {sender_id}")
                         send_fb_text_message(sender_id, reply_text)
 
                     # If AI generated a voice response, send audio
                     voice_url = ai_result.get("voice_url")
                     if voice_url:
-                        # Make absolute URL if server domain configured, or send text
                         pass
 
             # 2. Handle Feed Comments (Auto Comment Reply & Private Inbox Message)
