@@ -3,6 +3,7 @@ import json
 from app.config import settings
 from app.database import get_setting
 from app.ai_agent.gemini_brain import process_customer_message
+from app.channels.facebook import record_conversation_message
 
 GRAPH_API_URL = "https://graph.facebook.com/v19.0"
 
@@ -122,6 +123,9 @@ async def handle_whatsapp_webhook_event(data: dict):
                             print("[WhatsApp]: AI Agent is currently PAUSED by Admin.")
                             continue
 
+                        customer_name = f"WhatsApp User ({sender_phone})"
+                        record_conversation_message("whatsapp", sender_phone, customer_name, "user", msg_text)
+
                         ai_result = await process_customer_message(
                             message_text=msg_text,
                             image_bytes=image_bytes,
@@ -134,6 +138,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                         reply_text = ai_result.get("reply_text", "")
                         if reply_text and sender_phone:
                             send_whatsapp_message(sender_phone, reply_text)
+                            record_conversation_message("whatsapp", sender_phone, customer_name, "bot", reply_text)
 
                         # Send all matched product images
                         matched_images = ai_result.get("matched_images", [])
@@ -144,6 +149,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                                 continue
                             full_img_url = img_path if img_path.startswith("http") else f"{base_server_url}{img_path}"
                             send_whatsapp_image(sender_phone, full_img_url)
+                            record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "", full_img_url)
 
     except Exception as e:
         print(f"[WhatsApp Webhook Handler Error]: {e}")

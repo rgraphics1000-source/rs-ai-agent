@@ -886,7 +886,7 @@ async function loadOmnichatConversations() {
 
 async function loadOmnichatMessages(cid) {
     const container = document.getElementById("omnichat-messages-container");
-    if (!container) return;
+    if (!container || !cid) return;
 
     try {
         const res = await fetch(`/api/omnichat/messages/${cid}`);
@@ -896,7 +896,15 @@ async function loadOmnichatMessages(cid) {
         data.messages.forEach(m => {
             const div = document.createElement("div");
             div.className = `message-bubble ${m.sender_type === 'user' ? 'message-user' : 'message-bot'}`;
-            div.innerHTML = `<div>${m.content.replace(/\n/g, "<br>")}</div>`;
+            
+            let html = "";
+            if (m.content) {
+                html += `<div>${m.content.replace(/\n/g, "<br>")}</div>`;
+            }
+            if (m.media_url) {
+                html += `<div style="margin-top: 6px;"><img src="${m.media_url}" style="max-width: 220px; max-height: 180px; object-fit: contain; border-radius: 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);"></div>`;
+            }
+            div.innerHTML = html;
             container.appendChild(div);
         });
         container.scrollTop = container.scrollHeight;
@@ -904,6 +912,14 @@ async function loadOmnichatMessages(cid) {
         console.error("Load Omnichat messages error:", e);
     }
 }
+
+// Auto-poll Omnichat every 3 seconds for real-time live chat updates
+setInterval(() => {
+    const omnichatTab = document.getElementById("tab-omnichat");
+    if (omnichatTab && omnichatTab.classList.contains("active")) {
+        loadOmnichatConversations();
+    }
+}, 3000);
 
 async function handleOmnichatSend(e) {
     e.preventDefault();
@@ -922,6 +938,7 @@ async function handleOmnichatSend(e) {
             input.value = "";
             loadOmnichatMessages(activeConversationId);
             loadOmnichatConversations();
+            showToast("Message sent to customer", "success");
         }
     } catch (e) {
         showToast("Send failed", "danger");

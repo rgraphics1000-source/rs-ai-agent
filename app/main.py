@@ -402,6 +402,9 @@ async def api_omnichat_send(request: Request):
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    cursor.execute("SELECT * FROM conversations WHERE id = ?", (cid,))
+    conv = cursor.fetchone()
+    
     cursor.execute("""
         INSERT INTO messages (conversation_id, sender_type, content)
         VALUES (?, 'admin', ?)
@@ -409,6 +412,16 @@ async def api_omnichat_send(request: Request):
     cursor.execute("UPDATE conversations SET last_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (content, cid))
     conn.commit()
     conn.close()
+
+    # Dispatch to real channel if active
+    if conv:
+        channel = conv["channel"]
+        sender_id = conv["sender_id"]
+        if channel == "facebook":
+            send_fb_text_message(sender_id, content)
+        elif channel == "whatsapp":
+            send_whatsapp_message(sender_id, content)
+
     return {"success": True}
 
 # ==========================================

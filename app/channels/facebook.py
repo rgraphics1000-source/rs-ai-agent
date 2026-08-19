@@ -13,6 +13,56 @@ def get_fb_token() -> str:
     token = get_setting("fb_page_access_token")
     return token if token else settings.FB_PAGE_ACCESS_TOKEN
 
+def get_fb_user_profile(sender_id: str) -> str:
+    """Fetches the user name from Facebook Graph API."""
+    token = get_fb_token()
+    if not token or not sender_id:
+        return "Facebook User"
+    try:
+        url = f"{GRAPH_API_URL}/{sender_id}"
+        r = requests.get(url, params={"fields": "first_name,last_name,name", "access_token": token}, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            return data.get("name") or f"{data.get('first_name', '')} {data.get('last_name', '')}".strip() or "Facebook User"
+    except Exception:
+        pass
+    return "Facebook User"
+
+def record_conversation_message(channel: str, sender_id: str, customer_name: str, sender_type: str, content: str, media_url: str = ""):
+    """Saves incoming and outgoing messages to conversations & messages table."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if conversation exists
+        cursor.execute("SELECT id, customer_name FROM conversations WHERE sender_id = ?", (sender_id,))
+        row = cursor.fetchone()
+        
+        if row:
+            conv_id = row["id"]
+            cust_name = row["customer_name"] if row["customer_name"] and row["customer_name"] != "Facebook User" else customer_name
+            cursor.execute("""
+                UPDATE conversations 
+                SET last_message = ?, customer_name = ?, updated_at = CURRENT_TIMESTAMP 
+                WHERE id = ?
+            """, (content or (f"[Image Attachment]" if media_url else ""), cust_name, conv_id))
+        else:
+            cursor.execute("""
+                INSERT INTO conversations (channel, sender_id, customer_name, last_message, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (channel, sender_id, customer_name, content or (f"[Image Attachment]" if media_url else "")))
+            conv_id = cursor.lastrowid
+            
+        cursor.execute("""
+            INSERT INTO messages (conversation_id, sender_type, content, media_url)
+            VALUES (?, ?, ?, ?)
+        """, (conv_id, sender_type, content, media_url))
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[Record Conversation Error]: {e}")
+
 def send_fb_text_message(recipient_id: str, text: str) -> bool:
     """Sends a text message to a Facebook Messenger user."""
     token = get_fb_token()
@@ -187,6 +237,10 @@ async def handle_facebook_webhook_event(data: dict):
                             except Exception as dl_err:
                                 print(f"[Attachment Download Error]: {dl_err}")
 
+                    # Fetch customer name and record customer message
+                    customer_name = get_fb_user_profile(sender_id)
+                    record_conversation_message("facebook", sender_id, customer_name, "user", msg_text)
+
                     # Check if AI Master Switch is enabled
                     ai_enabled = get_setting("ai_enabled", "true").lower() == "true"
                     if not ai_enabled:
@@ -209,6 +263,7 @@ async def handle_facebook_webhook_event(data: dict):
                     if reply_text:
                         print(f"[Facebook Messenger Replying]: '{reply_text[:60]}...' to {sender_id}")
                         send_fb_text_message(sender_id, reply_text)
+                        record_conversation_message("facebook", sender_id, customer_name, "bot", reply_text)
 
                     # Send all matched product images as rich media attachments
                     matched_images = ai_result.get("matched_images", [])
@@ -219,7 +274,8 @@ async def handle_facebook_webhook_event(data: dict):
                             continue
                         full_img_url = img_path if img_path.startswith("http") else f"{base_server_url}{img_path}"
                         print(f"[Facebook Messenger Sending Image]: {full_img_url} to {sender_id}")
-                        send_fb_media_message(sender_id, "image", full_img_url)
+                        send_fb_media_message(sender_id, "image", img_path)
+                        record_conversation_message("facebook", sender_id, customer_name, "bot", "", full_img_url)
 
             # 2. Handle Feed Comments (Auto Comment Reply & Private Inbox Message)
             if "changes" in entry:
