@@ -7,8 +7,27 @@ from app.channels.facebook import record_conversation_message
 
 GRAPH_API_URL = "https://graph.facebook.com/v19.0"
 
+def normalize_whatsapp_phone_number(phone: str) -> str:
+    """
+    Normalizes any phone number format into standard digits (e.g. 8801816504097).
+    Handles:
+      - '01816504097' -> '8801816504097'
+      - '+8801816504097' -> '8801816504097'
+      - '+880 1816-504097' -> '8801816504097'
+      - '8801816504097' -> '8801816504097'
+    Guarantees no collision between 01816504097 (8801816504097) and 01511504097 (8801511504097).
+    """
+    if not phone:
+        return ""
+    digits = "".join(c for c in str(phone) if c.isdigit())
+    if digits.startswith("01") and len(digits) == 11:
+        return "88" + digits
+    if digits.startswith("8801") and len(digits) == 13:
+        return digits
+    return digits
+
 def get_whatsapp_credentials():
-    phone_id = get_setting("whatsapp_phone_number_id", settings.WHATSAPP_PHONE_NUMBER_ID)
+    phone_id = get_setting("whatsapp_phone_number_id", "")
     token = (
         get_setting("meta_system_user_access_token")
         or get_setting("whatsapp_access_token")

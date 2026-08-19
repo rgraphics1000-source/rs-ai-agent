@@ -1010,14 +1010,20 @@ async function loadSettings() {
         if (document.getElementById("setting-comment-reply-template")) document.getElementById("setting-comment-reply-template").value = s.comment_reply_template || "";
 
         // Display WhatsApp connection details
+        const isWaConnected = (
+            s.whatsapp_connection_status === "connected" 
+            && s.whatsapp_phone_number_id 
+            && s.whatsapp_phone_number_id !== "1265595526643418"
+        );
+
         if (document.getElementById("wa-display-phone")) {
-            document.getElementById("wa-display-phone").innerHTML = `<i class="fas fa-phone-alt" style="color: #25d366; font-size: 12px;"></i> ${s.whatsapp_display_phone_number || '01816504097'}`;
+            document.getElementById("wa-display-phone").innerHTML = `<i class="fas fa-phone-alt" style="color: #25d366; font-size: 12px;"></i> +8801816504097`;
         }
         if (document.getElementById("wa-display-waba-id")) {
             document.getElementById("wa-display-waba-id").innerText = s.whatsapp_waba_id || "27905447135785944";
         }
         if (document.getElementById("wa-display-phone-id")) {
-            document.getElementById("wa-display-phone-id").innerText = s.whatsapp_phone_number_id || "1265595526643418";
+            document.getElementById("wa-display-phone-id").innerText = isWaConnected ? s.whatsapp_phone_number_id : "Awaiting Meta verification";
         }
 
         // Update Facebook Connection Badge
@@ -1035,15 +1041,15 @@ async function loadSettings() {
         // Update WhatsApp Connection Badge
         const waBadge = document.getElementById("wa-status-badge");
         if (waBadge) {
-            if (waStatus === "connected" || s.whatsapp_token_configured || (waToken && waToken.trim().length > 5)) {
+            if (isWaConnected) {
                 waBadge.className = "badge badge-confirmed";
-                waBadge.innerHTML = `<i class="fas fa-check-circle"></i> Connected (Coexistence Active)`;
-            } else if (waStatus === "pending") {
+                waBadge.innerHTML = `<i class="fas fa-check-circle"></i> Connected & Saved (Coexistence Active)`;
+            } else if (s.whatsapp_connection_status === "pending") {
                 waBadge.className = "badge badge-pending";
-                waBadge.innerText = "Connecting / Pending";
+                waBadge.innerText = "Verification Pending in Meta";
             } else {
                 waBadge.className = "badge badge-pending";
-                waBadge.innerText = "Ready to Connect";
+                waBadge.innerHTML = `<i class="fas fa-circle-notch"></i> Ready to Connect (+8801816504097)`;
             }
         }
 
@@ -1081,7 +1087,7 @@ async function disconnectWhatsApp() {
 }
 
 // Meta Embedded Signup for WhatsApp Business App Coexistence
-console.log("[WA EMBEDDED SIGNUP VERSION] 2026-08-19-FINAL");
+console.log("[WA EMBEDDED SIGNUP VERSION] 2026-08-19-COEXISTENCE-V2");
 let metaSDKInitialized = false;
 let embeddedSignupSessionInfo = null;
 

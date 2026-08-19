@@ -19,8 +19,9 @@ from app.database import (
 from app.ai_agent.gemini_brain import process_customer_message
 from app.ai_agent.voice_engine import generate_bangla_voice, list_available_voices
 from app.ai_agent.order_engine import list_orders, update_order_status, create_order
+from datetime import datetime
 from app.channels.facebook import handle_facebook_webhook_event
-from app.channels.whatsapp import handle_whatsapp_webhook_event
+from app.channels.whatsapp import handle_whatsapp_webhook_event, normalize_whatsapp_phone_number
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -474,24 +475,30 @@ async def api_whatsapp_embedded_config():
     raw_config_id = get_setting("meta_embedded_signup_config_id", settings.META_EMBEDDED_SIGNUP_CONFIG_ID)
     config_id = "1003403176086013" if raw_config_id in ["10034031760860138", ""] else raw_config_id
     
-    print(f"[WA CONFIG CHECK] appId = {app_id}")
-    print(f"[WA CONFIG CHECK] configId = {config_id}")
-    
     waba_id = get_setting("whatsapp_waba_id", settings.WHATSAPP_WABA_ID)
-    phone_number_id = get_setting("whatsapp_phone_number_id", settings.WHATSAPP_PHONE_NUMBER_ID)
-    display_phone_number = get_setting("whatsapp_display_phone_number", settings.WHATSAPP_DISPLAY_PHONE_NUMBER)
-    connection_mode = get_setting("whatsapp_connection_mode", "business_app_coexistence")
-    connection_status = get_setting("whatsapp_connection_status", "not_connected")
+    saved_phone_id = get_setting("whatsapp_phone_number_id", "")
+    saved_phone_num = get_setting("whatsapp_display_phone_number", "+8801816504097")
+    saved_status = get_setting("whatsapp_connection_status", "not_connected")
+    
+    # Target phone 01816504097 validation
+    is_target_verified = (
+        saved_status == "connected" 
+        and saved_phone_id != "" 
+        and saved_phone_id != "1265595526643418"
+        and normalize_whatsapp_phone_number(saved_phone_num) == "8801816504097"
+    )
     
     return {
         "app_id": app_id,
         "config_id": config_id,
         "version": "v19.0",
         "waba_id": waba_id,
-        "phone_number_id": phone_number_id,
-        "display_phone_number": display_phone_number,
-        "connection_mode": connection_mode,
-        "connection_status": connection_status,
+        "phone_number_id": saved_phone_id if is_target_verified else "",
+        "display_phone_number": "+8801816504097",
+        "target_normalized": "8801816504097",
+        "connection_mode": "business_app_coexistence",
+        "connection_status": "connected" if is_target_verified else "not_connected",
+        "coexistence_active": is_target_verified,
         "is_configured": bool(config_id and config_id.strip())
     }
 
@@ -502,8 +509,11 @@ async def api_whatsapp_embedded_signup(request: Request):
     code = data.get("code")
     waba_id = data.get("waba_id")
     phone_number_id = data.get("phone_number_id")
-    display_phone_number = data.get("display_phone_number") or get_setting("whatsapp_display_phone_number", "01816504097")
+    display_phone_number = data.get("display_phone_number") or "+8801816504097"
     access_token = data.get("access_token")
+
+    TARGET_NORMALIZED_PHONE = "8801816504097"
+    UNRELATED_PHONE_NUMBER_ID = "1265595526643418"
 
     print("[WhatsApp Embedded Signup] Started processing callback")
     print(f"[WhatsApp Embedded Signup] Authorization code received: {'YES' if code else 'NO'}")
@@ -511,7 +521,7 @@ async def api_whatsapp_embedded_signup(request: Request):
     print(f"[WhatsApp Embedded Signup] Phone Number ID received: {phone_number_id or 'None'}")
     print(f"[WhatsApp Embedded Signup] Display Phone: {display_phone_number or 'None'}")
 
-    # If code is present, exchange for token if FB_APP_SECRET is set
+    # 1. Token Exchange if code & secret available
     app_id = get_setting("meta_app_id", settings.META_APP_ID)
     app_secret = get_setting("fb_app_secret", settings.FB_APP_SECRET)
 
@@ -533,19 +543,6 @@ async def api_whatsapp_embedded_signup(request: Request):
         except Exception as e:
             print(f"[WhatsApp Embedded Signup] Token Exchange Error: {e}")
 
-    if waba_id:
-        set_setting("whatsapp_waba_id", str(waba_id))
-    if phone_number_id:
-        set_setting("whatsapp_phone_number_id", str(phone_number_id))
-    if access_token:
-        set_setting("whatsapp_access_token", str(access_token))
-    if display_phone_number:
-        set_setting("whatsapp_display_phone_number", str(display_phone_number))
-
-    set_setting("whatsapp_connection_mode", "business_app_coexistence")
-    set_setting("whatsapp_connection_status", "connected" if (access_token or phone_number_id) else "pending")
-
-    # Subscribe App to WhatsApp Business Account Webhooks if possible
     effective_token = (
         access_token 
         or get_setting("meta_system_user_access_token") 
@@ -554,30 +551,89 @@ async def api_whatsapp_embedded_signup(request: Request):
         or settings.WHATSAPP_ACCESS_TOKEN
     )
     effective_waba = waba_id or get_setting("whatsapp_waba_id", settings.WHATSAPP_WABA_ID)
+
+    matched_phone_id = None
+    matched_display_name = ""
+    matched_phone_str = "+8801816504097"
+
+    # 2. Query Meta Graph API for WABA phone numbers to find target 01816504097
     if effective_waba and effective_token:
         try:
+            url = f"https://graph.facebook.com/v19.0/{effective_waba}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,status,code_verification_status"
+            resp = requests.get(url, headers={"Authorization": f"Bearer {effective_token}"}, timeout=10)
+            if resp.status_code == 200:
+                pdata = resp.json().get("data", [])
+                print(f"[WhatsApp Embedded Signup] WABA phone numbers discovered: {len(pdata)}")
+                for item in pdata:
+                    p_id = item.get("id")
+                    p_num = item.get("display_phone_number", "")
+                    p_norm = normalize_whatsapp_phone_number(p_num)
+                    print(f"[WA MATCH] ID={p_id}, Phone={p_num}, Norm={p_norm}")
+                    if p_norm == TARGET_NORMALIZED_PHONE:
+                        matched_phone_id = p_id
+                        matched_display_name = item.get("verified_name", "")
+                        matched_phone_str = p_num
+                        print(f"[WA MATCH] -> EXACT TARGET MATCH for 01816504097: {matched_phone_id}")
+                        break
+                    elif p_id == UNRELATED_PHONE_NUMBER_ID:
+                        print(f"[WA MATCH] -> Explicitly ignoring unrelated ID {p_id} ({p_num})")
+        except Exception as q_err:
+            print(f"[WhatsApp Embedded Signup] Query phone numbers error: {q_err}")
+
+    # 3. If direct phone_number_id was sent from postMessage and matches target
+    if not matched_phone_id and phone_number_id and phone_number_id != UNRELATED_PHONE_NUMBER_ID:
+        if normalize_whatsapp_phone_number(display_phone_number) == TARGET_NORMALIZED_PHONE:
+            matched_phone_id = phone_number_id
+
+    # 4. Save and return verified state
+    if matched_phone_id:
+        set_setting("whatsapp_waba_id", str(effective_waba))
+        set_setting("whatsapp_phone_number_id", str(matched_phone_id))
+        set_setting("whatsapp_display_phone_number", str(matched_phone_str))
+        set_setting("whatsapp_normalized_phone_number", TARGET_NORMALIZED_PHONE)
+        set_setting("whatsapp_connection_mode", "business_app_coexistence")
+        set_setting("whatsapp_coexistence_active", "true")
+        set_setting("whatsapp_connection_status", "connected")
+        set_setting("whatsapp_connected_at", datetime.utcnow().isoformat())
+        if matched_display_name:
+            set_setting("whatsapp_verified_name", matched_display_name)
+        if access_token:
+            set_setting("whatsapp_access_token", str(access_token))
+
+        # Subscribe app to webhooks
+        try:
             sub_url = f"https://graph.facebook.com/v19.0/{effective_waba}/subscribed_apps"
-            sub_resp = requests.post(sub_url, headers={"Authorization": f"Bearer {effective_token}"}, timeout=10)
-            if sub_resp.status_code == 200:
-                print("[WhatsApp Embedded Signup] Webhook app subscription: SUCCESS")
-            else:
-                print(f"[WhatsApp Embedded Signup] Webhook app subscription status: {sub_resp.status_code}")
-        except Exception as sub_err:
-            print(f"[WhatsApp Embedded Signup] Webhook app subscription error: {sub_err}")
+            requests.post(sub_url, headers={"Authorization": f"Bearer {effective_token}"}, timeout=10)
+        except Exception:
+            pass
 
-    print("[WhatsApp Embedded Signup] Completed successfully")
-
-    return {
-        "success": True,
-        "message": "WhatsApp Business App successfully connected in Coexistence Mode!",
-        "connection_mode": "business_app_coexistence",
-        "connection_status": "connected" if (access_token or phone_number_id) else "pending"
-    }
+        return {
+            "success": True,
+            "message": "WhatsApp Business App (+8801816504097) successfully connected in Coexistence Mode!",
+            "connection_mode": "business_app_coexistence",
+            "connection_status": "connected",
+            "waba_id": str(effective_waba),
+            "phone_number_id": str(matched_phone_id),
+            "display_phone_number": str(matched_phone_str),
+            "coexistence_active": True
+        }
+    else:
+        # Target number was not found yet
+        set_setting("whatsapp_connection_status", "not_connected")
+        set_setting("whatsapp_connection_mode", "business_app_coexistence")
+        set_setting("whatsapp_coexistence_active", "false")
+        return {
+            "success": False,
+            "error": "target_number_not_verified",
+            "message": "Target number +8801816504097 is not yet verified in Meta. Please enter +880 1816504097 in the Meta popup and enter the 6-digit OTP sent to your WhatsApp Business mobile app.",
+            "connection_status": "not_connected"
+        }
 
 @app.post("/api/whatsapp/disconnect")
 async def api_whatsapp_disconnect():
     set_setting("whatsapp_connection_status", "disconnected")
     set_setting("whatsapp_connection_mode", "disconnected")
+    set_setting("whatsapp_coexistence_active", "false")
     return {"success": True, "message": "WhatsApp Business connection status reset."}
 
 # ==========================================
