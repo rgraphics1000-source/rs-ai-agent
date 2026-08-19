@@ -1060,6 +1060,7 @@ async function loadSettings() {
 }
 
 // Meta Embedded Signup for WhatsApp Business App Coexistence
+console.log("[WA EMBEDDED SIGNUP VERSION] 2026-08-19-FIX-2");
 let metaSDKInitialized = false;
 let embeddedSignupSessionInfo = null;
 
@@ -1088,9 +1089,9 @@ async function initMetaSDK(targetAppId) {
         try {
             FB.init({
                 appId: appId,
-                autoLogAppEvents: true,
+                cookie: true,
                 xfbml: true,
-                version: 'v19.0'
+                version: "v19.0"
             });
             metaSDKInitialized = true;
             return;
@@ -1101,9 +1102,9 @@ async function initMetaSDK(targetAppId) {
         window.fbAsyncInit = function() {
             FB.init({
                 appId: appId,
-                autoLogAppEvents: true,
+                cookie: true,
                 xfbml: true,
-                version: 'v19.0'
+                version: "v19.0"
             });
             metaSDKInitialized = true;
             resolve();
@@ -1122,9 +1123,9 @@ async function initMetaSDK(targetAppId) {
                     clearInterval(interval);
                     FB.init({
                         appId: appId,
-                        autoLogAppEvents: true,
+                        cookie: true,
                         xfbml: true,
-                        version: 'v19.0'
+                        version: "v19.0"
                     });
                     metaSDKInitialized = true;
                     resolve();
@@ -1143,10 +1144,10 @@ async function launchWhatsAppEmbeddedSignup() {
     try {
         const res = await fetch("/api/whatsapp/embedded-config");
         const config = await res.json();
-        const configId = config.config_id || "10034031760860138";
-        const appId = config.app_id || "1274136137801052";
+        const configId = String(config.config_id || "10034031760860138").trim();
+        const appId = String(config.app_id || "1274136137801052").trim();
 
-        if (!configId || String(configId).trim().length === 0) {
+        if (!configId || configId.length === 0) {
             showToast("Meta Embedded Signup configuration missing. Please check META_EMBEDDED_SIGNUP_CONFIG_ID in Render.", "warning");
             const manualDetails = document.querySelector("#tab-integrations details");
             if (manualDetails) manualDetails.open = true;
@@ -1161,16 +1162,20 @@ async function launchWhatsAppEmbeddedSignup() {
         }
 
         const loginOptions = {
-            config_id: String(configId).trim(),
+            config_id: configId,
             response_type: "code",
             override_default_response_type: true,
             extras: {
+                setup: {},
                 featureType: "whatsapp_business_app_onboarding",
                 sessionInfoVersion: "3"
             }
         };
 
-        console.log("[WhatsApp Embedded Signup] Started with config_id:", configId);
+        console.log("[WA DEBUG] appId =", appId);
+        console.log("[WA DEBUG] configId =", configId);
+        console.log("[WA DEBUG] configId length =", configId.length);
+        console.log("[WA DEBUG] loginOptions =", loginOptions);
 
         FB.login((response) => {
             if (response && response.authResponse && response.authResponse.code) {
