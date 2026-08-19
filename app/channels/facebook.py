@@ -1,5 +1,8 @@
+import os
+import json
 import requests
 import asyncio
+from pathlib import Path
 from app.config import settings
 from app.database import get_db_connection, get_setting
 from app.ai_agent.gemini_brain import process_customer_message
@@ -36,27 +39,64 @@ def send_fb_text_message(recipient_id: str, text: str) -> bool:
         return False
 
 def send_fb_media_message(recipient_id: str, media_type: str, media_url: str) -> bool:
-    """Sends an image or audio attachment to a Facebook Messenger user."""
+    """Sends an image or audio attachment to a Facebook Messenger user (via binary upload or URL)."""
     token = get_fb_token()
     if not token or not recipient_id or not media_url:
         return False
 
     url = f"{GRAPH_API_URL}/me/messages"
     params = {"access_token": token}
+
+    # 1. Try local file binary upload if file exists on server disk (100% reliable)
+    filename = Path(media_url).name
+    candidate_paths = [
+        settings.UPLOADS_DIR / filename,
+        settings.BASE_DIR / media_url.lstrip("/"),
+        settings.STATIC_DIR / media_url.replace("/static/", "").lstrip("/"),
+        settings.BASE_DIR / "static" / "uploads" / filename
+    ]
+
+    for p in candidate_paths:
+        if p.exists() and p.is_file():
+            try:
+                data = {
+                    "recipient": json.dumps({"id": recipient_id}),
+                    "message": json.dumps({
+                        "attachment": {
+                            "type": media_type,
+                            "payload": {"is_reusable": True}
+                        }
+                    })
+                }
+                with open(p, "rb") as f_bin:
+                    mime = "image/jpeg" if media_type == "image" else "audio/mp4"
+                    files = {"filedata": (p.name, f_bin, mime)}
+                    r = requests.post(url, params=params, data=data, files=files, timeout=25)
+                    print(f"[Facebook Direct Binary Upload Result]: HTTP {r.status_code}, Body: {r.text}")
+                    if r.status_code == 200:
+                        return True
+            except Exception as up_err:
+                print(f"[Facebook Binary Upload Error]: {up_err}")
+
+    # 2. Fallback to URL payload
+    base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
+    full_url = media_url if media_url.startswith("http") else f"{base_server_url}{media_url}"
+
     payload = {
         "recipient": {"id": recipient_id},
         "message": {
             "attachment": {
-                "type": media_type, # 'image' or 'audio'
+                "type": media_type,
                 "payload": {
-                    "url": media_url,
+                    "url": full_url,
                     "is_reusable": True
                 }
             }
         }
     }
     try:
-        r = requests.post(url, params=params, json=payload, timeout=10)
+        r = requests.post(url, params=params, json=payload, timeout=15)
+        print(f"[Facebook Media URL Send Result]: HTTP {r.status_code}, Body: {r.text}")
         return r.status_code == 200
     except Exception as e:
         print(f"[Facebook Media Send Error]: {e}")
