@@ -236,10 +236,7 @@ def get_setting(key: str, default: str = "") -> str:
     # 1. First check environment variables (Render Environment)
     env_val = os.getenv(key.upper()) or os.getenv(key)
     if env_val is not None and str(env_val).strip() != "":
-        val = str(env_val).strip()
-        if key.lower() == "meta_embedded_signup_config_id" and val == "10034031760860138":
-            return "1003403176086013"
-        return val
+        return str(env_val).strip()
 
     # 2. Then check database settings
     conn = get_db_connection()
@@ -249,10 +246,7 @@ def get_setting(key: str, default: str = "") -> str:
     conn.close()
     
     if row and row["value"] is not None and str(row["value"]).strip() != "":
-        val = str(row["value"]).strip()
-        if key.lower() == "meta_embedded_signup_config_id" and val == "10034031760860138":
-            return "1003403176086013"
-        return val
+        return str(row["value"]).strip()
     return default
 
 def set_setting(key: str, value: str):
@@ -282,9 +276,6 @@ def get_all_settings(masked: bool = False) -> dict:
         val = os.getenv(ek)
         if val is not None and str(val).strip() != "":
             result[ek.lower()] = str(val).strip()
-
-    if result.get("meta_embedded_signup_config_id") == "10034031760860138":
-        result["meta_embedded_signup_config_id"] = "1003403176086013"
             
     # Calculate connection statuses
     has_wa_token = bool(

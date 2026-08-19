@@ -1081,7 +1081,7 @@ async function disconnectWhatsApp() {
 }
 
 // Meta Embedded Signup for WhatsApp Business App Coexistence
-console.log("[WA EMBEDDED SIGNUP VERSION] 2026-08-19-FIX-4");
+console.log("[WA EMBEDDED SIGNUP VERSION] 2026-08-19-FINAL");
 let metaSDKInitialized = false;
 let embeddedSignupSessionInfo = null;
 
@@ -1093,12 +1093,10 @@ window.addEventListener('message', (event) => {
         if (data && (data.type === 'WA_EMBEDDED_SIGNUP' || data.event === 'FINISH' || data.event === 'COMPLETE')) {
             console.log('[WhatsApp Embedded Signup] Session Info Event received');
             embeddedSignupSessionInfo = data.data || data;
-            if (embeddedSignupSessionInfo.phone_number_id || embeddedSignupSessionInfo.phoneNumberId) {
-                console.log('[WhatsApp Embedded Signup] Phone Number ID received:', embeddedSignupSessionInfo.phone_number_id || embeddedSignupSessionInfo.phoneNumberId);
-            }
-            if (embeddedSignupSessionInfo.waba_id || embeddedSignupSessionInfo.wabaId) {
-                console.log('[WhatsApp Embedded Signup] WABA ID received:', embeddedSignupSessionInfo.waba_id || embeddedSignupSessionInfo.wabaId);
-            }
+            const phoneId = embeddedSignupSessionInfo.phone_number_id || embeddedSignupSessionInfo.phoneNumberId;
+            const wabaId = embeddedSignupSessionInfo.waba_id || embeddedSignupSessionInfo.wabaId;
+            if (phoneId) console.log('[WA DEBUG] Phone Number ID received:', phoneId);
+            if (wabaId) console.log('[WA DEBUG] WABA ID received:', wabaId);
         }
     } catch (e) {}
 });
@@ -1165,10 +1163,7 @@ async function launchWhatsAppEmbeddedSignup() {
     try {
         const res = await fetch("/api/whatsapp/embedded-config");
         const config = await res.json();
-        let configId = String(config.config_id || "1003403176086013").trim();
-        if (configId === "10034031760860138") {
-            configId = "1003403176086013";
-        }
+        const configId = String(config.config_id || "10034031760860138").trim();
         const appId = String(config.app_id || "1274136137801052").trim();
 
         if (!configId || configId.length === 0) {
@@ -1202,13 +1197,17 @@ async function launchWhatsAppEmbeddedSignup() {
         console.log("[WA DEBUG] loginOptions =", loginOptions);
 
         FB.login((response) => {
+            console.log("[WA DEBUG] Meta login response:", response);
             if (response && response.authResponse && response.authResponse.code) {
-                console.log("[WhatsApp Embedded Signup] Authorization code received: YES");
+                console.log("[WA DEBUG] authorization code received: YES");
                 const code = response.authResponse.code;
                 const sessionData = embeddedSignupSessionInfo || {};
                 const wabaId = sessionData.waba_id || sessionData.wabaId || null;
                 const phoneId = sessionData.phone_number_id || sessionData.phoneNumberId || null;
                 const displayPhone = sessionData.display_phone_number || sessionData.displayPhoneNumber || '01816504097';
+
+                if (wabaId) console.log("[WA DEBUG] WABA ID:", wabaId);
+                if (phoneId) console.log("[WA DEBUG] Phone Number ID:", phoneId);
 
                 fetch("/api/whatsapp/embedded-signup", {
                     method: "POST",
@@ -1220,8 +1219,8 @@ async function launchWhatsAppEmbeddedSignup() {
                         display_phone_number: displayPhone
                     })
                 }).then(r => r.json()).then(result => {
+                    console.log("[WA DEBUG] backend callback result:", result);
                     if (result && result.success) {
-                        console.log("[WhatsApp Embedded Signup] Success");
                         showToast("✅ WhatsApp Business App Connected (Coexistence Mode Active)!", "success");
                         loadSettings();
                     } else {
@@ -1233,11 +1232,11 @@ async function launchWhatsAppEmbeddedSignup() {
                     showToast("Failed to save connection on server", "danger");
                 });
             } else if (response && response.status === 'not_authorized') {
-                console.warn("[WhatsApp Embedded Signup] Meta login not authorized");
+                console.warn("[WA DEBUG] Meta login not authorized");
                 showToast("Meta login not authorized or cancelled", "warning");
             } else {
-                console.log("[WhatsApp Embedded Signup] Closed or cancelled by user");
-                showToast("WhatsApp Embedded Signup was closed or cancelled.", "warning");
+                console.log("[WA DEBUG] WhatsApp connection was cancelled or closed");
+                showToast("WhatsApp connection was cancelled.", "warning");
             }
         }, loginOptions);
 
