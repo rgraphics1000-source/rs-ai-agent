@@ -621,7 +621,18 @@ async function loadSettings() {
         if (document.getElementById("setting-delivery-inside")) document.getElementById("setting-delivery-inside").value = s.delivery_inside_dhaka || "70";
         if (document.getElementById("setting-delivery-outside")) document.getElementById("setting-delivery-outside").value = s.delivery_outside_dhaka || "130";
         if (document.getElementById("setting-fb-token")) document.getElementById("setting-fb-token").value = s.fb_page_access_token || "";
+        if (document.getElementById("setting-wa-token")) document.getElementById("setting-wa-token").value = s.whatsapp_access_token || "";
+        if (document.getElementById("setting-wa-phone-id")) document.getElementById("setting-wa-phone-id").value = s.whatsapp_phone_number_id || "";
         if (document.getElementById("setting-comment-reply-template")) document.getElementById("setting-comment-reply-template").value = s.comment_reply_template || "";
+
+        // Dynamic Webhook URLs based on current origin
+        const currentOrigin = window.location.origin;
+        if (document.getElementById("setting-fb-webhook-display")) {
+            document.getElementById("setting-fb-webhook-display").value = `${currentOrigin}/webhook/facebook`;
+        }
+        if (document.getElementById("setting-wa-webhook-display")) {
+            document.getElementById("setting-wa-webhook-display").value = `${currentOrigin}/webhook/whatsapp`;
+        }
 
         // AI Arena Setup tab inputs
         if (document.getElementById("arena-shop-name")) document.getElementById("arena-shop-name").value = s.shop_name || "";
@@ -685,7 +696,9 @@ async function saveAllSettings(e) {
         comment_reply_template: document.getElementById("setting-comment-reply-template") ? document.getElementById("setting-comment-reply-template").value : "",
         comment_auto_reply: document.getElementById("setting-auto-comment") ? (document.getElementById("setting-auto-comment").checked ? "true" : "false") : "true",
         private_message_on_comment: document.getElementById("setting-private-inbox") ? (document.getElementById("setting-private-inbox").checked ? "true" : "false") : "true",
-        fb_page_access_token: document.getElementById("setting-fb-token") ? document.getElementById("setting-fb-token").value : ""
+        fb_page_access_token: document.getElementById("setting-fb-token") ? document.getElementById("setting-fb-token").value : "",
+        whatsapp_access_token: document.getElementById("setting-wa-token") ? document.getElementById("setting-wa-token").value : "",
+        whatsapp_phone_number_id: document.getElementById("setting-wa-phone-id") ? document.getElementById("setting-wa-phone-id").value : ""
     };
 
     try {

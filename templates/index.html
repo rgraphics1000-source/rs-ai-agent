@@ -635,11 +635,11 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Webhook Callback URL:</label>
-                            <input type="text" class="form-control" value="https://YOUR-TUNNEL-URL.trycloudflare.com/webhook/facebook" readonly style="background: rgba(0,0,0,0.3);">
+                            <input type="text" id="setting-fb-webhook-display" class="form-control" value="https://rs-ai-agent.onrender.com/webhook/facebook" readonly style="background: rgba(0,0,0,0.3); font-weight: 600; color: #60a5fa;">
                         </div>
                         <div class="form-group">
                             <label>Verify Token:</label>
-                            <input type="text" class="form-control" value="rs_secure_verify_token_2026" readonly style="background: rgba(0,0,0,0.3);">
+                            <input type="text" class="form-control" value="rs_secure_verify_token_2026" readonly style="background: rgba(0,0,0,0.3); font-weight: 600; color: #34d399;">
                         </div>
                     </div>
                     <button class="btn btn-primary" onclick="saveAllSettings()">Save Facebook Settings</button>
@@ -655,14 +655,25 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>WhatsApp Webhook URL:</label>
-                            <input type="text" class="form-control" value="https://YOUR-TUNNEL-URL.trycloudflare.com/webhook/whatsapp" readonly style="background: rgba(0,0,0,0.3);">
+                            <label>WhatsApp Phone Number ID:</label>
+                            <input type="text" id="setting-wa-phone-id" class="form-control" placeholder="যেমন: 1246563008549188">
+                        </div>
+                        <div class="form-group">
+                            <label>WhatsApp Access Token:</label>
+                            <input type="password" id="setting-wa-token" class="form-control" placeholder="EAASG0eZCjnVw...">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>WhatsApp Webhook Callback URL:</label>
+                            <input type="text" id="setting-wa-webhook-display" class="form-control" value="https://rs-ai-agent.onrender.com/webhook/whatsapp" readonly style="background: rgba(0,0,0,0.3); font-weight: 600; color: #34d399;">
                         </div>
                         <div class="form-group">
                             <label>WhatsApp Verify Token:</label>
-                            <input type="text" class="form-control" value="rs_whatsapp_token_2026" readonly style="background: rgba(0,0,0,0.3);">
+                            <input type="text" class="form-control" value="rs_whatsapp_token_2026" readonly style="background: rgba(0,0,0,0.3); font-weight: 600; color: #34d399;">
                         </div>
                     </div>
+                    <button class="btn btn-primary" onclick="saveAllSettings()">Save WhatsApp Settings</button>
                 </div>
             </section>
 
