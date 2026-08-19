@@ -110,19 +110,25 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "") -> bo
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
+
+    base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
+    full_url = image_url if image_url.startswith("http") else f"{base_server_url}{image_url}"
+
+    image_obj = {"link": full_url}
+    if caption and caption.strip():
+        image_obj["caption"] = caption.strip()
+
     payload = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
         "to": norm_to,
         "type": "image",
-        "image": {
-            "link": image_url,
-            "caption": caption or ""
-        }
+        "image": image_obj
     }
 
     print(f"[WhatsApp Image Send] recipient={norm_to}")
     print(f"[WhatsApp Image Send] endpoint={url}")
+    print(f"[WhatsApp Image Send] image_url={full_url}")
 
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
@@ -237,17 +243,14 @@ async def handle_whatsapp_webhook_event(data: dict):
                             else:
                                 print(f"[WhatsApp Send] Delivery FAILED for {sender_phone}. AI message was NOT recorded as sent.")
 
-                        # Send matched product images
-                        matched_images = ai_result.get("matched_images", [])
-                        base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
-
+                        # Send matched product images (max 3 images)
+                        matched_images = ai_result.get("matched_images", [])[:3]
                         for img_path in matched_images:
                             if not img_path:
                                 continue
-                            full_img_url = img_path if img_path.startswith("http") else f"{base_server_url}{img_path}"
-                            img_ok = send_whatsapp_image(sender_phone, full_img_url)
+                            img_ok = send_whatsapp_image(sender_phone, img_path)
                             if img_ok:
-                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "", full_img_url)
+                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "", img_path)
 
     except Exception as e:
         print(f"[WhatsApp Webhook Handler Error]: {e}")

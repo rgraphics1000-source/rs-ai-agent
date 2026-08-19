@@ -272,32 +272,46 @@ async def process_customer_message(
         # Clean up excess consecutive blank lines
         clean_reply = re.sub(r'\n{3,}', '\n\n', clean_reply).strip()
 
-        # If customer explicitly asked for photo/picture, match products from DB
-        user_lower = (message_text or "").lower()
-        is_asking_photo = any(w in user_lower for w in ["ছবি", "পিক", "photo", "image", "pic", "কালার", "দেখাও", "কার্ডের ছবি", "ছবি দাও", "ছবি দিন", "স্যাম্পল"])
+        # Smart Product Category Matching for Image Samples
+        combined_text = ((message_text or "") + " " + clean_reply).lower()
+        is_asking_photo = any(w in combined_text for w in [
+            "ছবি", "পিক", "photo", "image", "pic", "কালার", "দেখাও", "কার্ডের ছবি", "ছবি দাও", "ছবি দিন", "স্যাম্পল", "sample"
+        ])
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT code, name, image_url, gallery_images FROM products WHERE is_active = 1")
+        cursor.execute("SELECT code, name, category, image_url, gallery_images FROM products WHERE is_active = 1")
         all_prods = cursor.fetchall()
         conn.close()
 
+        # Product category keywords mapping
+        keywords = {
+            "FITA-02": ["ফিতা", "ফিতার", "ল্যানিয়ার্ড", "লেইনিয়ার্ড", "lanyard", "ribbon", "fita", "digital print"],
+            "IDC-01": ["আইডি কার্ড", "কার্ড", "card", "id card", "uv print", "পিভিসি", "pvc"],
+            "COV-03": ["কভার", "হোল্ডার", "holder", "cover", "কার্ড হোল্ডার"],
+            "PKG-COMBO": ["প্যাকেজ", "কম্বো", "package", "combo", "প্যাকেজ ০১", "প্যাকেজ ০২", "প্যাকেজ ০৩", "প্যাকেজ ০৭"]
+        }
+
+        matched_codes = []
+        for code, kw_list in keywords.items():
+            if any(kw in combined_text for kw in kw_list):
+                matched_codes.append(code)
+
         for p in all_prods:
-            name_match = (p["name"] and p["name"] in clean_reply) or (p["name"] and p["name"].lower() in user_lower)
-            code_match = (p["code"] and p["code"] in clean_reply) or (p["code"] and p["code"].lower() in user_lower)
-            
-            if name_match or code_match or is_asking_photo:
-                # Add main image
+            if p["code"] in matched_codes or (not matched_codes and is_asking_photo):
                 if p["image_url"] and p["image_url"] not in matched_images:
                     matched_images.append(p["image_url"])
-                # Add gallery images
                 try:
                     g_imgs = json.loads(p["gallery_images"] or "[]")
                     for gu in g_imgs:
                         if gu and gu not in matched_images:
                             matched_images.append(gu)
+                            if len(matched_images) >= 3:
+                                break
                 except Exception:
                     pass
+                if len(matched_images) >= 3:
+                    break
 
         # AI always replies in pure text
         voice_url = ""
