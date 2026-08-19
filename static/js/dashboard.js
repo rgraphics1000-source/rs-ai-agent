@@ -953,6 +953,30 @@ async function loadSettings() {
         if (document.getElementById("setting-wa-phone-id")) document.getElementById("setting-wa-phone-id").value = s.whatsapp_phone_number_id || "";
         if (document.getElementById("setting-comment-reply-template")) document.getElementById("setting-comment-reply-template").value = s.comment_reply_template || "";
 
+        // Update Facebook Connection Badge
+        const fbBadge = document.getElementById("fb-status-badge");
+        if (fbBadge) {
+            if (s.fb_page_access_token && s.fb_page_access_token.trim().length > 10) {
+                fbBadge.className = "badge badge-confirmed";
+                fbBadge.innerHTML = `<i class="fas fa-check-circle"></i> Connected & Saved`;
+            } else {
+                fbBadge.className = "badge badge-pending";
+                fbBadge.innerText = "Ready to Connect";
+            }
+        }
+
+        // Update WhatsApp Connection Badge
+        const waBadge = document.getElementById("wa-status-badge");
+        if (waBadge) {
+            if (s.whatsapp_access_token && s.whatsapp_access_token.trim().length > 10) {
+                waBadge.className = "badge badge-confirmed";
+                waBadge.innerHTML = `<i class="fas fa-check-circle"></i> Connected & Saved`;
+            } else {
+                waBadge.className = "badge badge-pending";
+                waBadge.innerText = "Ready to Connect";
+            }
+        }
+
         // Dynamic Webhook URLs based on current origin
         const currentOrigin = window.location.origin;
         if (document.getElementById("setting-fb-webhook-display")) {
@@ -970,6 +994,18 @@ async function loadSettings() {
 
     } catch (e) {
         console.error("Load settings error:", e);
+    }
+}
+
+function togglePasswordVisibility(inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    if (input.type === "password") {
+        input.type = "text";
+        if (btn) btn.innerHTML = `<i class="fas fa-eye-slash" style="color: var(--primary-light);"></i>`;
+    } else {
+        input.type = "password";
+        if (btn) btn.innerHTML = `<i class="fas fa-eye"></i>`;
     }
 }
 
@@ -1031,19 +1067,59 @@ async function toggleAIMasterSwitch() {
     }
 }
 
+async function saveFacebookSettings() {
+    const token = document.getElementById("setting-fb-token") ? document.getElementById("setting-fb-token").value.trim() : "";
+    if (!token) {
+        showToast("দয়া করে Facebook Page Access Token-টি পেস্ট করুন", "warning");
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fb_page_access_token: token })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("✅ Facebook Page Access Token সফলভাবে সংরক্ষিত হয়েছে!", "success");
+            loadSettings();
+        }
+    } catch (e) {
+        showToast("Failed to save Facebook token", "danger");
+    }
+}
+
+async function saveWhatsAppSettings() {
+    const phoneId = document.getElementById("setting-wa-phone-id") ? document.getElementById("setting-wa-phone-id").value.trim() : "";
+    const token = document.getElementById("setting-wa-token") ? document.getElementById("setting-wa-token").value.trim() : "";
+
+    try {
+        const res = await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                whatsapp_phone_number_id: phoneId,
+                whatsapp_access_token: token
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("✅ WhatsApp Settings সফলভাবে সংরক্ষিত হয়েছে!", "success");
+            loadSettings();
+        }
+    } catch (e) {
+        showToast("Failed to save WhatsApp settings", "danger");
+    }
+}
+
 async function saveAllSettings(e) {
     if (e) e.preventDefault();
     const payload = {
         shop_name: document.getElementById("setting-shop-name") ? document.getElementById("setting-shop-name").value : "আমার ই-কমার্স শপ",
         shop_phone: document.getElementById("setting-shop-phone") ? document.getElementById("setting-shop-phone").value : "01700000000",
         delivery_inside_dhaka: document.getElementById("setting-delivery-inside") ? document.getElementById("setting-delivery-inside").value : "70",
-        delivery_outside_dhaka: document.getElementById("setting-delivery-outside") ? document.getElementById("setting-delivery-outside").value : "130",
-        comment_reply_template: document.getElementById("setting-comment-reply-template") ? document.getElementById("setting-comment-reply-template").value : "",
-        comment_auto_reply: document.getElementById("setting-auto-comment") ? (document.getElementById("setting-auto-comment").checked ? "true" : "false") : "true",
-        private_message_on_comment: document.getElementById("setting-private-inbox") ? (document.getElementById("setting-private-inbox").checked ? "true" : "false") : "true",
-        fb_page_access_token: document.getElementById("setting-fb-token") ? document.getElementById("setting-fb-token").value : "",
-        whatsapp_access_token: document.getElementById("setting-wa-token") ? document.getElementById("setting-wa-token").value : "",
-        whatsapp_phone_number_id: document.getElementById("setting-wa-phone-id") ? document.getElementById("setting-wa-phone-id").value : ""
+        delivery_outside_dhaka: document.getElementById("setting-delivery-outside") ? document.getElementById("setting-delivery-outside").value : "130"
     };
 
     try {

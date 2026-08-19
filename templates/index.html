@@ -646,11 +646,16 @@
                             <i class="fab fa-facebook-messenger" style="color:#1877f2;"></i>
                             Meta Facebook Page Connection
                         </div>
-                        <span class="badge badge-confirmed">Ready to Connect</span>
+                        <span id="fb-status-badge" class="badge badge-pending">Ready to Connect</span>
                     </div>
                     <div class="form-group">
-                        <label>Facebook Page Access Token:</label>
-                        <input type="password" id="setting-fb-token" class="form-control" placeholder="EAA...">
+                        <label>Facebook Page Access Token: *</label>
+                        <div style="position: relative; display: flex; align-items: center;">
+                            <input type="password" id="setting-fb-token" class="form-control" placeholder="EAA..." style="padding-right: 44px;">
+                            <button type="button" class="btn" onclick="togglePasswordVisibility('setting-fb-token', this)" style="position: absolute; right: 6px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 6px 10px;">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
@@ -662,7 +667,9 @@
                             <input type="text" class="form-control" value="rs_secure_verify_token_2026" readonly style="background: rgba(0,0,0,0.3); font-weight: 600; color: #34d399;">
                         </div>
                     </div>
-                    <button class="btn btn-primary" onclick="saveAllSettings()">Save Facebook Settings</button>
+                    <button class="btn btn-primary" onclick="saveFacebookSettings()">
+                        <i class="fas fa-save"></i> Save Facebook Settings
+                    </button>
                 </div>
 
                 <div class="glass-card">
@@ -671,7 +678,7 @@
                             <i class="fab fa-whatsapp" style="color:#25d366;"></i>
                             WhatsApp Cloud API Connection
                         </div>
-                        <span class="badge badge-confirmed">1,000 Free Conversations / mo</span>
+                        <span id="wa-status-badge" class="badge badge-pending">Ready to Connect</span>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
@@ -680,7 +687,12 @@
                         </div>
                         <div class="form-group">
                             <label>WhatsApp Access Token:</label>
-                            <input type="password" id="setting-wa-token" class="form-control" placeholder="EAASG0eZCjnVw...">
+                            <div style="position: relative; display: flex; align-items: center;">
+                                <input type="password" id="setting-wa-token" class="form-control" placeholder="EAASG0eZCjnVw..." style="padding-right: 44px;">
+                                <button type="button" class="btn" onclick="togglePasswordVisibility('setting-wa-token', this)" style="position: absolute; right: 6px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 6px 10px;">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div class="form-row">
@@ -693,7 +705,9 @@
                             <input type="text" class="form-control" value="rs_whatsapp_token_2026" readonly style="background: rgba(0,0,0,0.3); font-weight: 600; color: #34d399;">
                         </div>
                     </div>
-                    <button class="btn btn-primary" onclick="saveAllSettings()">Save WhatsApp Settings</button>
+                    <button class="btn btn-primary" onclick="saveWhatsAppSettings()">
+                        <i class="fas fa-save"></i> Save WhatsApp Settings
+                    </button>
                 </div>
             </section>
 
