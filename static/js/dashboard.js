@@ -969,9 +969,11 @@ async function handleOmnichatSend(e) {
             loadOmnichatMessages(activeConversationId);
             loadOmnichatConversations();
             showToast("Message sent to customer", "success");
+        } else {
+            showToast(data.error || "Failed to send message via WhatsApp Cloud API", "danger");
         }
     } catch (e) {
-        showToast("Send failed", "danger");
+        showToast("Send failed: Server error", "danger");
     }
 }
 
@@ -1087,7 +1089,7 @@ async function disconnectWhatsApp() {
 }
 
 // Meta Embedded Signup for WhatsApp Business App Coexistence
-console.log("[WA EMBEDDED SIGNUP VERSION] 2026-08-19-COEXISTENCE-V2");
+console.log("[WA EMBEDDED SIGNUP VERSION] 2026-08-20-SENDFIX");
 let metaSDKInitialized = false;
 let embeddedSignupSessionInfo = null;
 

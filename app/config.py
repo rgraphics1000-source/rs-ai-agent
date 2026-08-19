@@ -32,16 +32,14 @@ class Settings:
     FB_PAGE_ID: str = os.getenv("FB_PAGE_ID", "")
     FB_APP_SECRET: str = os.getenv("FB_APP_SECRET", "")
     
-    # WhatsApp Cloud API & Coexistence (Target: 01816504097)
+    # WhatsApp Cloud API & Coexistence
     META_SYSTEM_USER_ACCESS_TOKEN: str = os.getenv("META_SYSTEM_USER_ACCESS_TOKEN", "")
     WHATSAPP_WABA_ID: str = os.getenv("WHATSAPP_WABA_ID", "27905447135785944")
-    WHATSAPP_PHONE_NUMBER_ID: str = (
-        "" if os.getenv("WHATSAPP_PHONE_NUMBER_ID") == "1265595526643418" 
-        else (os.getenv("WHATSAPP_PHONE_NUMBER_ID") or "")
-    )
+    WHATSAPP_PHONE_NUMBER_ID: str = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
     WHATSAPP_ACCESS_TOKEN: str = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
     WHATSAPP_VERIFY_TOKEN: str = os.getenv("WHATSAPP_VERIFY_TOKEN", "rs_whatsapp_token_2026")
     WHATSAPP_DISPLAY_PHONE_NUMBER: str = os.getenv("WHATSAPP_DISPLAY_PHONE_NUMBER", "+8801816504097")
+    META_GRAPH_VERSION: str = os.getenv("META_GRAPH_VERSION", "v23.0")
     
     # Shop Default Settings
     SHOP_NAME: str = os.getenv("SHOP_NAME", "আমার ই-কমার্স শপ")

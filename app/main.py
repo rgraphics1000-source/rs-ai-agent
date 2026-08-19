@@ -20,8 +20,13 @@ from app.ai_agent.gemini_brain import process_customer_message
 from app.ai_agent.voice_engine import generate_bangla_voice, list_available_voices
 from app.ai_agent.order_engine import list_orders, update_order_status, create_order
 from datetime import datetime
-from app.channels.facebook import handle_facebook_webhook_event
-from app.channels.whatsapp import handle_whatsapp_webhook_event, normalize_whatsapp_phone_number
+from app.channels.facebook import handle_facebook_webhook_event, send_fb_text_message
+from app.channels.whatsapp import (
+    handle_whatsapp_webhook_event, 
+    normalize_whatsapp_phone_number,
+    send_whatsapp_message,
+    send_whatsapp_image
+)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -433,6 +438,39 @@ async def api_omnichat_send(request: Request):
     cursor.execute("SELECT * FROM conversations WHERE id = ?", (cid,))
     conv = cursor.fetchone()
     
+    if not conv:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    channel = conv["channel"]
+    sender_id = conv["sender_id"]
+    
+    send_ok = False
+    error_detail = ""
+
+    # Dispatch to real channel first
+    if channel == "facebook":
+        send_ok = send_fb_text_message(sender_id, content)
+        if not send_ok:
+            error_detail = "Failed to send message via Facebook Messenger API. Check Facebook Page Access Token."
+    elif channel == "whatsapp":
+        send_ok = send_whatsapp_message(sender_id, content)
+        if not send_ok:
+            error_detail = "Failed to send message via WhatsApp Cloud API. Check WhatsApp Phone Number ID and Access Token."
+    else:
+        send_ok = True
+
+    if not send_ok:
+        conn.close()
+        return JSONResponse(
+            status_code=500, 
+            content={
+                "success": False, 
+                "error": error_detail or "Failed to deliver message to recipient"
+            }
+        )
+
+    # Only record message in database after confirmed Meta delivery
     cursor.execute("""
         INSERT INTO messages (conversation_id, sender_type, content)
         VALUES (?, 'admin', ?)
@@ -440,15 +478,6 @@ async def api_omnichat_send(request: Request):
     cursor.execute("UPDATE conversations SET last_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (content, cid))
     conn.commit()
     conn.close()
-
-    # Dispatch to real channel if active
-    if conv:
-        channel = conv["channel"]
-        sender_id = conv["sender_id"]
-        if channel == "facebook":
-            send_fb_text_message(sender_id, content)
-        elif channel == "whatsapp":
-            send_whatsapp_message(sender_id, content)
 
     return {"success": True}
 

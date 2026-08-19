@@ -238,11 +238,7 @@ def get_setting(key: str, default: str = "") -> str:
     # 1. First check environment variables (Render Environment)
     env_val = os.getenv(key.upper()) or os.getenv(key)
     if env_val is not None and str(env_val).strip() != "":
-        val = str(env_val).strip()
-        if key.lower() == "whatsapp_phone_number_id" and val == "1265595526643418":
-            pass # Ignore unrelated ID
-        else:
-            return val
+        return str(env_val).strip()
 
     # 2. Then check database settings
     conn = get_db_connection()
@@ -252,10 +248,7 @@ def get_setting(key: str, default: str = "") -> str:
     conn.close()
     
     if row and row["value"] is not None and str(row["value"]).strip() != "":
-        val = str(row["value"]).strip()
-        if key.lower() == "whatsapp_phone_number_id" and val == "1265595526643418":
-            return default
-        return val
+        return str(row["value"]).strip()
     return default
 
 def set_setting(key: str, value: str):
@@ -284,12 +277,7 @@ def get_all_settings(masked: bool = False) -> dict:
     for ek in env_keys:
         val = os.getenv(ek)
         if val is not None and str(val).strip() != "":
-            if ek == "WHATSAPP_PHONE_NUMBER_ID" and str(val).strip() == "1265595526643418":
-                continue
             result[ek.lower()] = str(val).strip()
-
-    if result.get("whatsapp_phone_number_id") == "1265595526643418":
-        result["whatsapp_phone_number_id"] = ""
             
     # Calculate connection statuses
     has_wa_token = bool(
