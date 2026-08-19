@@ -161,49 +161,9 @@ def init_db():
         ]
         cursor.executemany("INSERT INTO faqs (question, answer, category) VALUES (?, ?, ?)", sample_faqs)
 
-    # Seed sample products if none exist
-    cursor.execute("SELECT COUNT(*) FROM products")
-    if cursor.fetchone()[0] == 0:
-        sample_products = [
-            (
-                "প্রিমিয়াম সুতি পাঞ্জাবি (White Royal)",
-                "PJ-101",
-                "১০০% প্রিমিয়াম কটন কাপড়ের আরামদায়ক পাঞ্জাবি। সাইজ: M (40), L (42), XL (44)। কালার: সাদা।",
-                1450.0,
-                1250.0,
-                25,
-                "Men",
-                "/static/uploads/sample_panjabi.jpg",
-                "panjabi, cotton, white, eid"
-            ),
-            (
-                "ডিজাইনার জর্জেট থ্রি-পিস (Emerald Green)",
-                "TP-202",
-                "অরজিনাল পিওর জর্জেট থ্রি-পিস সাথে আকর্ষণীয় ডিজিটাল প্রিন্ট ও এমব্রয়ডারি ওয়ার্ক। ওড়না: শিফন।",
-                2600.0,
-                2190.0,
-                15,
-                "Women",
-                "/static/uploads/sample_threepiece.jpg",
-                "three piece, dress, georgette, green"
-            ),
-            (
-                "স্মার্ট লেদার ওয়ালেট ও বেল্ট কম্বো",
-                "CB-303",
-                "১০০% জেনুইন লেদার ওয়ালেট এবং প্রিমিয়াম স্টিল বাকেল বেল্ট কম্বো গিফট বক্স সহ।",
-                1200.0,
-                890.0,
-                40,
-                "Accessories",
-                "/static/uploads/sample_combo.jpg",
-                "leather, wallet, belt, combo, gift"
-            )
-        ]
-        cursor.executemany("""
-            INSERT INTO products (name, code, description, price, discount_price, stock, category, image_url, tags)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, sample_products)
-
+    # Clean up old demo products if present
+    cursor.execute("DELETE FROM products WHERE code IN ('PJ-101', 'TP-202', 'CB-303')")
+    
     conn.commit()
     conn.close()
 

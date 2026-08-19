@@ -700,10 +700,10 @@ function openProductGallery(productId) {
 async function deleteProduct(productId) {
     if (!confirm("Are you sure you want to delete this product?")) return;
     try {
-        const res = await fetch(`/api/products/${productId}`, { method: "DELETE" });
+        const res = await fetch(`/api/products/${productId}/delete`, { method: "POST" });
         const data = await res.json();
         if (data.success) {
-            showToast("Product deleted", "success");
+            showToast("Product deleted successfully!", "success");
             loadProducts();
             loadOverview();
         }

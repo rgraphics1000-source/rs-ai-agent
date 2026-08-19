@@ -293,6 +293,7 @@ async def api_edit_product(
     return {"success": True, "message": "Product updated successfully"}
 
 @app.delete("/api/products/{product_id}")
+@app.post("/api/products/{product_id}/delete")
 async def api_delete_product(product_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
