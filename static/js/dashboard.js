@@ -929,10 +929,15 @@ async function loadOmnichatMessages(cid) {
             
             let html = "";
             if (m.content) {
-                html += `<div>${m.content.replace(/\n/g, "<br>")}</div>`;
+                let formatted = m.content;
+                // Render any markdown images as beautiful image cards
+                formatted = formatted.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+                    return `<div style="margin: 6px 0;"><img src="${src}" alt="${alt || 'Image'}" style="max-width: 220px; max-height: 180px; object-fit: contain; border-radius: 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); display: block;"></div>`;
+                });
+                html += `<div>${formatted.replace(/\n/g, "<br>")}</div>`;
             }
             if (m.media_url) {
-                html += `<div style="margin-top: 6px;"><img src="${m.media_url}" style="max-width: 220px; max-height: 180px; object-fit: contain; border-radius: 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);"></div>`;
+                html += `<div style="margin-top: 6px;"><img src="${m.media_url}" style="max-width: 220px; max-height: 180px; object-fit: contain; border-radius: 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); display: block;"></div>`;
             }
             div.innerHTML = html;
             container.appendChild(div);
@@ -1089,7 +1094,7 @@ async function disconnectWhatsApp() {
 }
 
 // Meta Embedded Signup for WhatsApp Business App Coexistence
-console.log("[WA EMBEDDED SIGNUP VERSION] 2026-08-20-SENDFIX");
+console.log("[WA EMBEDDED SIGNUP VERSION] 2026-08-20-IMAGEFIX");
 let metaSDKInitialized = false;
 let embeddedSignupSessionInfo = null;
 
@@ -1555,7 +1560,11 @@ function appendPhoneMessage(sender, text, imgUrl = null, matchedImages = []) {
         html += `<img src="${imgUrl}" style="max-width: 100%; border-radius: 8px; margin-bottom: 6px; display: block;">`;
     }
     if (text) {
-        html += `<div>${text.replace(/\n/g, "<br>")}</div>`;
+        let formatted = text;
+        formatted = formatted.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+            return `<div style="margin: 6px 0;"><img src="${src}" alt="${alt || 'Image'}" style="max-width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); display: block;"></div>`;
+        });
+        html += `<div>${formatted.replace(/\n/g, "<br>")}</div>`;
     }
     if (matchedImages && matchedImages.length > 0) {
         html += `<div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">`;

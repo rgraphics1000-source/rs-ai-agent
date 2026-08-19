@@ -67,7 +67,7 @@ def build_system_instruction() -> str:
 ১. অভিবাদন ও কথা বলার নিয়ম (Greeting & Tone Rule):
    - কাস্টমারের সাথে কথা হবে অত্যন্ত সংক্ষিপ্ত, টু-দ্য-পয়েন্ট ও প্রফেশনাল।
    - ⚠️ STRICT RULE: কাস্টমারের প্রতি মেসেজ বা প্রশ্নের পর বারবার "আসসালামু আলাইকুম", "ভাইয়া", "আপু" বলা সম্পূর্ণ নিষিদ্ধ! চ্যাটের শুরুতে শুধু একবার সালাম বা সাধারণ সম্ভাষণ হতে পারে। এর পর থেকে সরাসরি টু-দ্য-পয়েন্ট উত্তর দেবে (যেমন: "জি স্যার", "জি ম্যাম", "অবশ্যই", "জি, কত পিস বানাবেন জানাবেন প্লিজ?")।
-   - কোনো রোবোটিক কোড (যেমন: [AIP-PRO], SKU, ID ইত্যাদি) কাস্টমারের মেসেজে লিখবে না।
+   - ⚠️ STRICT RULE: কোনো রোবোটিক কোড (যেমন: [AIP-PRO], SKU ইত্যাদি) বা কোনো মার্কডাউন ইমেজ ট্যাগ (যেমন: ![alt](/static/...)) টেক্সটে লিখবে না। তুমি কেবল স্বাভাবিক ভাষায় কথা বলবে (যেমন: "জি অবশ্যই, আমাদের করা আইডি কার্ডের কিছু স্যাম্পল নিচে দেওয়া হলো:")। আসল ছবিগুলো সিস্টেম থেকে আলাদাভাবে পাঠানো হবে।
 
 ২. দাম জানার প্রাথমিক নিয়ম (Quantity First Rule):
    - কাস্টমার যখনই জিজ্ঞাসা করবে "আইডি কার্ডের দাম কত?", "প্রাইস কত?", "আইডি কার্ড বানাতে কত লাগবে?" ইত্যাদি:
@@ -247,22 +247,34 @@ async def process_customer_message(
             except Exception as e:
                 print(f"[Order Parse Error]: {e}")
 
-        # Extract any image tags from raw_text e.g. [Image: /static/uploads/prod_1.jpg]
+        # Extract any markdown images e.g. ![Alt](/static/uploads/...) or [Image: /static/uploads/...]
         matched_images = []
-        found_tags = re.findall(r'\[Image[s]?:\s*([^\]]+)\]', clean_reply)
+
+        # 1. Match Markdown image syntax: ![Alt](url)
+        md_img_matches = re.findall(r'!\[([^\]]*)\]\(([^)]+)\)', clean_reply)
+        for alt, url in md_img_matches:
+            u = url.strip()
+            if u and u not in matched_images:
+                matched_images.append(u)
+        # Strip all markdown image tags from clean_reply
+        clean_reply = re.sub(r'!\[[^\]]*\]\([^)]+\)', '', clean_reply)
+
+        # 2. Match bracket tags: [Image: ...] or [Images: ...]
+        found_tags = re.findall(r'\[Image[s]?:\s*([^\]]+)\]', clean_reply, flags=re.IGNORECASE)
         for tag in found_tags:
-            # Handle comma separated or single URL
             urls = [u.strip() for u in tag.split(",") if u.strip()]
             for u in urls:
-                if u not in matched_images:
+                if u and u not in matched_images:
                     matched_images.append(u)
+        # Strip [Image: ...] tags
+        clean_reply = re.sub(r'\[Image[s]?:\s*[^\]]+\]', '', clean_reply, flags=re.IGNORECASE)
 
-        # Remove the raw [Image: ...] tags completely from text output
-        clean_reply = re.sub(r'\[Image[s]?:\s*[^\]]+\]', '', clean_reply).strip()
+        # Clean up excess consecutive blank lines
+        clean_reply = re.sub(r'\n{3,}', '\n\n', clean_reply).strip()
 
         # If customer explicitly asked for photo/picture, match products from DB
         user_lower = (message_text or "").lower()
-        is_asking_photo = any(w in user_lower for w in ["ছবি", "পিক", "photo", "image", "pic", "কালার", "দেখাও", "কার্ডের ছবি", "ছবি দাও", "ছবি দিন"])
+        is_asking_photo = any(w in user_lower for w in ["ছবি", "পিক", "photo", "image", "pic", "কালার", "দেখাও", "কার্ডের ছবি", "ছবি দাও", "ছবি দিন", "স্যাম্পল"])
 
         conn = get_db_connection()
         cursor = conn.cursor()
