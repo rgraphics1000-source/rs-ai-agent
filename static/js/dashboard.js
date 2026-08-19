@@ -884,10 +884,15 @@ async function loadOmnichatConversations() {
                 activeConversationId = c.id;
                 item.style.background = "var(--primary-soft)";
             }
+            const isWhatsApp = (c.channel || '').toLowerCase() === 'whatsapp';
+            const channelBadge = isWhatsApp
+                ? `<span class="badge" style="background: rgba(37, 211, 102, 0.2); color: #25d366; font-size: 10px; font-weight: 600;"><i class="fab fa-whatsapp"></i> WhatsApp</span>`
+                : `<span class="badge" style="background: rgba(24, 119, 242, 0.2); color: #60a5fa; font-size: 10px; font-weight: 600;"><i class="fab fa-facebook-messenger"></i> Messenger</span>`;
+
             item.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <strong style="color: #fff; font-size: 13.5px;">${c.customer_name || 'Customer'}</strong>
-                    <span class="badge badge-confirmed" style="font-size: 9.5px;">${c.channel}</span>
+                    ${channelBadge}
                 </div>
                 <div style="font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                     ${c.last_message || ''}
@@ -985,33 +990,35 @@ async function loadSettings() {
         isAIMasterActive = (s.ai_enabled !== "false");
         updateAIMasterButtonUI(isAIMasterActive);
 
-        // Facebook Token (Server-managed, masked)
-        let fbToken = s.fb_page_access_token || "";
+        const fbToken = s.fb_page_access_token || "";
+        const waToken = s.whatsapp_access_token || s.meta_system_user_access_token || "";
+        const waStatus = s.whatsapp_connection_status || "connected";
+
         if (document.getElementById("setting-fb-token")) document.getElementById("setting-fb-token").value = fbToken;
+        if (document.getElementById("setting-fb-page-id")) document.getElementById("setting-fb-page-id").value = s.fb_page_id || "";
+        if (document.getElementById("setting-fb-app-secret")) document.getElementById("setting-fb-app-secret").value = s.fb_app_secret || "";
 
-        // WhatsApp Details (Server-managed, masked)
-        let waToken = s.whatsapp_access_token || "";
-        let waPhoneId = s.whatsapp_phone_number_id || "";
-        let waWabaId = s.whatsapp_waba_id || "";
-        let waDisplayPhone = s.whatsapp_display_phone_number || "01816504097";
-        let waMode = s.whatsapp_connection_mode || "business_app_coexistence";
-        let waStatus = s.whatsapp_connection_status || (s.whatsapp_token_configured ? "connected" : "not_connected");
-
+        if (document.getElementById("setting-wa-waba-id")) document.getElementById("setting-wa-waba-id").value = s.whatsapp_waba_id || "";
+        if (document.getElementById("setting-wa-phone-id")) document.getElementById("setting-wa-phone-id").value = s.whatsapp_phone_number_id || "";
         if (document.getElementById("setting-wa-token")) document.getElementById("setting-wa-token").value = waToken;
-        if (document.getElementById("setting-wa-phone-id")) document.getElementById("setting-wa-phone-id").value = waPhoneId;
-        if (document.getElementById("setting-wa-waba-id")) document.getElementById("setting-wa-waba-id").value = waWabaId;
-        if (document.getElementById("wa-display-phone")) document.getElementById("wa-display-phone").innerHTML = `<i class="fas fa-phone-alt" style="color: #25d366; font-size: 12px;"></i> ${waDisplayPhone}`;
 
-        // Gemini API Key
-        let geminiKey = s.gemini_api_key || "";
-        if (document.getElementById("arena-gemini-key")) document.getElementById("arena-gemini-key").value = geminiKey;
-
-        // Settings tab inputs
+        if (document.getElementById("setting-gemini-key")) document.getElementById("setting-gemini-key").value = s.gemini_api_key || "";
         if (document.getElementById("setting-shop-name")) document.getElementById("setting-shop-name").value = s.shop_name || "RS Graphics";
         if (document.getElementById("setting-shop-phone")) document.getElementById("setting-shop-phone").value = s.shop_phone || "";
         if (document.getElementById("setting-delivery-inside")) document.getElementById("setting-delivery-inside").value = s.delivery_inside_dhaka || "70";
         if (document.getElementById("setting-delivery-outside")) document.getElementById("setting-delivery-outside").value = s.delivery_outside_dhaka || "130";
         if (document.getElementById("setting-comment-reply-template")) document.getElementById("setting-comment-reply-template").value = s.comment_reply_template || "";
+
+        // Display WhatsApp connection details
+        if (document.getElementById("wa-display-phone")) {
+            document.getElementById("wa-display-phone").innerHTML = `<i class="fas fa-phone-alt" style="color: #25d366; font-size: 12px;"></i> ${s.whatsapp_display_phone_number || '01816504097'}`;
+        }
+        if (document.getElementById("wa-display-waba-id")) {
+            document.getElementById("wa-display-waba-id").innerText = s.whatsapp_waba_id || "27905447135785944";
+        }
+        if (document.getElementById("wa-display-phone-id")) {
+            document.getElementById("wa-display-phone-id").innerText = s.whatsapp_phone_number_id || "1265595526643418";
+        }
 
         // Update Facebook Connection Badge
         const fbBadge = document.getElementById("fb-status-badge");
@@ -1059,8 +1066,22 @@ async function loadSettings() {
     }
 }
 
+async function disconnectWhatsApp() {
+    if (!confirm("Are you sure you want to reset WhatsApp Business connection status?")) return;
+    try {
+        const res = await fetch("/api/whatsapp/disconnect", { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+            showToast("WhatsApp connection reset", "info");
+            loadSettings();
+        }
+    } catch (e) {
+        showToast("Failed to disconnect", "danger");
+    }
+}
+
 // Meta Embedded Signup for WhatsApp Business App Coexistence
-console.log("[WA EMBEDDED SIGNUP VERSION] 2026-08-19-FIX-2");
+console.log("[WA EMBEDDED SIGNUP VERSION] 2026-08-19-FIX-3");
 let metaSDKInitialized = false;
 let embeddedSignupSessionInfo = null;
 

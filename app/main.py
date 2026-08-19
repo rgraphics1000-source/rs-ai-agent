@@ -569,6 +569,12 @@ async def api_whatsapp_embedded_signup(request: Request):
         "connection_status": "connected" if (access_token or phone_number_id) else "pending"
     }
 
+@app.post("/api/whatsapp/disconnect")
+async def api_whatsapp_disconnect():
+    set_setting("whatsapp_connection_status", "disconnected")
+    set_setting("whatsapp_connection_mode", "disconnected")
+    return {"success": True, "message": "WhatsApp Business connection status reset."}
+
 # ==========================================
 # 7. INTERACTIVE AI PLAYGROUND (LIVE CHAT & VOICE TEST)
 # ==========================================
