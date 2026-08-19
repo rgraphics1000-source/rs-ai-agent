@@ -985,56 +985,25 @@ async function loadSettings() {
         isAIMasterActive = (s.ai_enabled !== "false");
         updateAIMasterButtonUI(isAIMasterActive);
 
-        // Facebook Token
+        // Facebook Token (Server-managed, masked)
         let fbToken = s.fb_page_access_token || "";
-        if (!fbToken || fbToken.trim().length === 0) {
-            fbToken = localStorage.getItem("rs_fb_page_access_token") || "";
-            if (fbToken) {
-                fetch("/api/settings", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ fb_page_access_token: fbToken })
-                });
-            }
-        } else {
-            localStorage.setItem("rs_fb_page_access_token", fbToken);
-        }
         if (document.getElementById("setting-fb-token")) document.getElementById("setting-fb-token").value = fbToken;
 
-        // WhatsApp Token & Phone ID
+        // WhatsApp Details (Server-managed, masked)
         let waToken = s.whatsapp_access_token || "";
         let waPhoneId = s.whatsapp_phone_number_id || "";
-        if (!waToken) {
-            waToken = localStorage.getItem("rs_wa_token") || "";
-            waPhoneId = localStorage.getItem("rs_wa_phone_id") || waPhoneId;
-            if (waToken) {
-                fetch("/api/settings", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ whatsapp_access_token: waToken, whatsapp_phone_number_id: waPhoneId })
-                });
-            }
-        } else {
-            localStorage.setItem("rs_wa_token", waToken);
-            if (waPhoneId) localStorage.setItem("rs_wa_phone_id", waPhoneId);
-        }
+        let waWabaId = s.whatsapp_waba_id || "";
+        let waDisplayPhone = s.whatsapp_display_phone_number || "01816504097";
+        let waMode = s.whatsapp_connection_mode || "business_app_coexistence";
+        let waStatus = s.whatsapp_connection_status || (s.whatsapp_token_configured ? "connected" : "not_connected");
+
         if (document.getElementById("setting-wa-token")) document.getElementById("setting-wa-token").value = waToken;
         if (document.getElementById("setting-wa-phone-id")) document.getElementById("setting-wa-phone-id").value = waPhoneId;
+        if (document.getElementById("setting-wa-waba-id")) document.getElementById("setting-wa-waba-id").value = waWabaId;
+        if (document.getElementById("wa-display-phone")) document.getElementById("wa-display-phone").innerHTML = `<i class="fas fa-phone-alt" style="color: #25d366; font-size: 12px;"></i> ${waDisplayPhone}`;
 
         // Gemini API Key
         let geminiKey = s.gemini_api_key || "";
-        if (!geminiKey) {
-            geminiKey = localStorage.getItem("rs_gemini_api_key") || "";
-            if (geminiKey) {
-                fetch("/api/settings", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ gemini_api_key: geminiKey })
-                });
-            }
-        } else {
-            localStorage.setItem("rs_gemini_api_key", geminiKey);
-        }
         if (document.getElementById("arena-gemini-key")) document.getElementById("arena-gemini-key").value = geminiKey;
 
         // Settings tab inputs
@@ -1047,7 +1016,7 @@ async function loadSettings() {
         // Update Facebook Connection Badge
         const fbBadge = document.getElementById("fb-status-badge");
         if (fbBadge) {
-            if (fbToken && fbToken.trim().length > 10) {
+            if (s.fb_token_configured || (fbToken && fbToken.trim().length > 5)) {
                 fbBadge.className = "badge badge-confirmed";
                 fbBadge.innerHTML = `<i class="fas fa-check-circle"></i> Connected & Saved`;
             } else {
@@ -1059,9 +1028,12 @@ async function loadSettings() {
         // Update WhatsApp Connection Badge
         const waBadge = document.getElementById("wa-status-badge");
         if (waBadge) {
-            if (waToken && waToken.trim().length > 10) {
+            if (waStatus === "connected" || s.whatsapp_token_configured || (waToken && waToken.trim().length > 5)) {
                 waBadge.className = "badge badge-confirmed";
-                waBadge.innerHTML = `<i class="fas fa-check-circle"></i> Connected & Saved`;
+                waBadge.innerHTML = `<i class="fas fa-check-circle"></i> Connected (Coexistence Active)`;
+            } else if (waStatus === "pending") {
+                waBadge.className = "badge badge-pending";
+                waBadge.innerText = "Connecting / Pending";
             } else {
                 waBadge.className = "badge badge-pending";
                 waBadge.innerText = "Ready to Connect";
@@ -1084,6 +1056,136 @@ async function loadSettings() {
 
     } catch (e) {
         console.error("Load settings error:", e);
+    }
+}
+
+// Meta Embedded Signup for WhatsApp Business App Coexistence
+let metaSDKInitialized = false;
+let embeddedSignupSessionInfo = null;
+
+// Listen for WhatsApp Embedded Signup message events from Meta
+window.addEventListener('message', (event) => {
+    if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") return;
+    try {
+        const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+        if (data && (data.type === 'WA_EMBEDDED_SIGNUP' || data.event === 'FINISH' || data.event === 'COMPLETE')) {
+            console.log('[Meta WhatsApp Embedded Signup Event]:', data);
+            embeddedSignupSessionInfo = data.data || data;
+        }
+    } catch (e) {}
+});
+
+async function initMetaSDK() {
+    if (metaSDKInitialized && window.FB) return;
+
+    try {
+        const res = await fetch("/api/whatsapp/embedded-config");
+        const config = await res.json();
+        const appId = config.app_id || "1274136137801052";
+
+        if (!window.FB) {
+            await new Promise((resolve) => {
+                window.fbAsyncInit = function() {
+                    FB.init({
+                        appId: appId,
+                        autoLogAppEvents: true,
+                        xfbml: true,
+                        version: 'v19.0'
+                    });
+                    metaSDKInitialized = true;
+                    resolve();
+                };
+                if (!document.getElementById("facebook-jssdk")) {
+                    const js = document.createElement("script");
+                    js.id = "facebook-jssdk";
+                    js.src = "https://connect.facebook.net/en_US/sdk.js";
+                    document.head.appendChild(js);
+                }
+            });
+        } else {
+            FB.init({
+                appId: appId,
+                autoLogAppEvents: true,
+                xfbml: true,
+                version: 'v19.0'
+            });
+            metaSDKInitialized = true;
+        }
+    } catch (e) {
+        console.error("Meta SDK Init Error:", e);
+    }
+}
+
+async function launchWhatsAppEmbeddedSignup() {
+    showToast("Connecting to Meta WhatsApp Business...", "info");
+    await initMetaSDK();
+
+    try {
+        const res = await fetch("/api/whatsapp/embedded-config");
+        const config = await res.json();
+        const configId = config.config_id;
+
+        if (!configId) {
+            showToast("ℹ️ Meta Embedded Signup Config ID is not set yet in environment. If needed, configure META_EMBEDDED_SIGNUP_CONFIG_ID or use manual fallback below.", "warning");
+            const manualDetails = document.querySelector("#tab-integrations details");
+            if (manualDetails) manualDetails.open = true;
+            return;
+        }
+
+        if (!window.FB) {
+            showToast("Could not load Meta SDK. Please check your network.", "danger");
+            return;
+        }
+
+        const loginOptions = {
+            config_id: configId,
+            response_type: 'code',
+            override_default_response_type: true,
+            extras: {
+                feature: 'whatsapp_embedded_signup',
+                setup: {
+                    business: {
+                        name: 'RS Graphics'
+                    },
+                    phone: {
+                        displayName: 'RS Graphics',
+                        category: 'OTHER'
+                    }
+                }
+            }
+        };
+
+        FB.login((response) => {
+            if (response.authResponse) {
+                const code = response.authResponse.code;
+                const wabaId = embeddedSignupSessionInfo ? (embeddedSignupSessionInfo.waba_id || embeddedSignupSessionInfo.wabaId) : null;
+                const phoneId = embeddedSignupSessionInfo ? (embeddedSignupSessionInfo.phone_number_id || embeddedSignupSessionInfo.phoneNumberId) : null;
+
+                fetch("/api/whatsapp/embedded-signup", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        code: code,
+                        waba_id: wabaId,
+                        phone_number_id: phoneId,
+                        display_phone_number: '01816504097'
+                    })
+                }).then(r => r.json()).then(result => {
+                    if (result.success) {
+                        showToast("✅ WhatsApp Business App Connected (Coexistence Mode Active)!", "success");
+                        loadSettings();
+                    } else {
+                        showToast(result.message || "Embedded Signup failed", "danger");
+                    }
+                });
+            } else {
+                showToast("WhatsApp Embedded Signup was cancelled or closed.", "warning");
+            }
+        }, loginOptions);
+
+    } catch (err) {
+        console.error("Embedded Signup Launch Error:", err);
+        showToast("Failed to launch Meta Embedded Signup", "danger");
     }
 }
 
@@ -1164,7 +1266,10 @@ async function saveFacebookSettings() {
         return;
     }
 
-    localStorage.setItem("rs_fb_page_access_token", token);
+    if (token.includes("...")) {
+        showToast("Token is already configured securely.", "info");
+        return;
+    }
 
     try {
         const res = await fetch("/api/settings", {
@@ -1183,20 +1288,21 @@ async function saveFacebookSettings() {
 }
 
 async function saveWhatsAppSettings() {
+    const wabaId = document.getElementById("setting-wa-waba-id") ? document.getElementById("setting-wa-waba-id").value.trim() : "";
     const phoneId = document.getElementById("setting-wa-phone-id") ? document.getElementById("setting-wa-phone-id").value.trim() : "";
     const token = document.getElementById("setting-wa-token") ? document.getElementById("setting-wa-token").value.trim() : "";
 
-    if (token) localStorage.setItem("rs_wa_token", token);
-    if (phoneId) localStorage.setItem("rs_wa_phone_id", phoneId);
+    const payload = {};
+    if (wabaId) payload.whatsapp_waba_id = wabaId;
+    if (phoneId) payload.whatsapp_phone_number_id = phoneId;
+    if (token && !token.includes("...")) payload.whatsapp_access_token = token;
+    payload.whatsapp_connection_mode = "business_app_coexistence";
 
     try {
         const res = await fetch("/api/settings", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                whatsapp_phone_number_id: phoneId,
-                whatsapp_access_token: token
-            })
+            body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (data.success) {

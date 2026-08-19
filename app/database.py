@@ -142,8 +142,17 @@ def init_db():
             "সব প্রয়োজনীয় তথ্য পাওয়ার সাথে সাথে কাস্টমারকে অর্ডারের সামারি দিয়ে কনফার্ম করবে।"
         ),
         "gemini_api_key": settings.GEMINI_API_KEY,
+        "meta_app_id": settings.META_APP_ID,
+        "meta_embedded_signup_config_id": settings.META_EMBEDDED_SIGNUP_CONFIG_ID,
         "fb_page_access_token": settings.FB_PAGE_ACCESS_TOKEN,
         "fb_verify_token": settings.FB_VERIFY_TOKEN,
+        "whatsapp_waba_id": settings.WHATSAPP_WABA_ID,
+        "whatsapp_phone_number_id": settings.WHATSAPP_PHONE_NUMBER_ID,
+        "whatsapp_access_token": settings.WHATSAPP_ACCESS_TOKEN,
+        "whatsapp_verify_token": settings.WHATSAPP_VERIFY_TOKEN,
+        "whatsapp_display_phone_number": settings.WHATSAPP_DISPLAY_PHONE_NUMBER,
+        "whatsapp_connection_mode": "business_app_coexistence",
+        "whatsapp_connection_status": "connected" if settings.WHATSAPP_ACCESS_TOKEN else "not_connected",
         "voice_enabled": "true",
         "voice_type": "bn-BD-NabanitaNeural" # Bangla female natural voice
     }
@@ -243,7 +252,7 @@ def set_setting(key: str, value: str):
     conn.commit()
     conn.close()
 
-def get_all_settings() -> dict:
+def get_all_settings(masked: bool = False) -> dict:
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT key, value FROM settings")
@@ -253,10 +262,39 @@ def get_all_settings() -> dict:
     result = {row["key"]: row["value"] for row in rows}
     
     # Overlay environment variables if present
-    env_keys = ["FB_PAGE_ACCESS_TOKEN", "GEMINI_API_KEY", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"]
+    env_keys = [
+        "META_APP_ID", "META_EMBEDDED_SIGNUP_CONFIG_ID", "FB_PAGE_ACCESS_TOKEN", 
+        "FB_VERIFY_TOKEN", "FB_PAGE_ID", "FB_APP_SECRET", "GEMINI_API_KEY", 
+        "WHATSAPP_WABA_ID", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN", 
+        "WHATSAPP_VERIFY_TOKEN", "WHATSAPP_DISPLAY_PHONE_NUMBER"
+    ]
     for ek in env_keys:
         val = os.getenv(ek)
         if val:
             result[ek.lower()] = val
             
+    # Calculate connection statuses
+    has_wa_token = bool(result.get("whatsapp_access_token") and len(str(result.get("whatsapp_access_token")).strip()) > 10)
+    has_fb_token = bool(result.get("fb_page_access_token") and len(str(result.get("fb_page_access_token")).strip()) > 10)
+    
+    result["whatsapp_token_configured"] = has_wa_token
+    result["fb_token_configured"] = has_fb_token
+    
+    if not result.get("whatsapp_connection_status") or result.get("whatsapp_connection_status") == "not_connected":
+        result["whatsapp_connection_status"] = "connected" if has_wa_token else "not_connected"
+        
+    if not result.get("whatsapp_connection_mode"):
+        result["whatsapp_connection_mode"] = "business_app_coexistence"
+
+    if masked:
+        if has_fb_token:
+            raw = str(result["fb_page_access_token"]).strip()
+            result["fb_page_access_token"] = f"{raw[:6]}...{raw[-4:]}" if len(raw) > 12 else "********"
+        if has_wa_token:
+            raw = str(result["whatsapp_access_token"]).strip()
+            result["whatsapp_access_token"] = f"{raw[:6]}...{raw[-4:]}" if len(raw) > 12 else "********"
+        if result.get("gemini_api_key"):
+            raw = str(result["gemini_api_key"]).strip()
+            result["gemini_api_key"] = f"{raw[:6]}...{raw[-4:]}" if len(raw) > 12 else "********"
+
     return result

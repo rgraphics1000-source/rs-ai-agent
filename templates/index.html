@@ -672,29 +672,44 @@
                     </button>
                 </div>
 
-                <div class="glass-card">
+                <div class="glass-card" style="border-left: 3px solid #25d366;">
                     <div class="card-header">
                         <div class="card-title">
-                            <i class="fab fa-whatsapp" style="color:#25d366;"></i>
-                            WhatsApp Cloud API Connection
+                            <i class="fab fa-whatsapp" style="color:#25d366; font-size: 19px;"></i>
+                            WhatsApp Business App Connection
                         </div>
                         <span id="wa-status-badge" class="badge badge-pending">Ready to Connect</span>
                     </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>WhatsApp Phone Number ID:</label>
-                            <input type="text" id="setting-wa-phone-id" class="form-control" placeholder="যেমন: 1246563008549188">
-                        </div>
-                        <div class="form-group">
-                            <label>WhatsApp Access Token:</label>
-                            <div style="position: relative; display: flex; align-items: center;">
-                                <input type="password" id="setting-wa-token" class="form-control" placeholder="EAASG0eZCjnVw..." style="padding-right: 44px;">
-                                <button type="button" class="btn" onclick="togglePasswordVisibility('setting-wa-token', this)" style="position: absolute; right: 6px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 6px 10px;">
-                                    <i class="fas fa-eye"></i>
-                                </button>
+
+                    <div style="background: rgba(37, 211, 102, 0.07); border: 1px solid rgba(37, 211, 102, 0.2); border-radius: 10px; padding: 14px; margin-bottom: 18px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Connection Mode</div>
+                                <div style="font-size: 13.5px; font-weight: 600; color: #34d399; margin-top: 2px;">
+                                    <i class="fas fa-layer-group"></i> Business App + Cloud API Coexistence
+                                </div>
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Active Business Number</div>
+                                <div style="font-size: 14px; font-weight: 700; color: #fff; margin-top: 2px;" id="wa-display-phone">
+                                    <i class="fas fa-phone-alt" style="color: #25d366; font-size: 12px;"></i> 01816504097
+                                </div>
                             </div>
                         </div>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px; margin-bottom: 0; line-height: 1.5;">
+                            ✨ <strong>Coexistence Mode:</strong> Your mobile WhatsApp Business App remains fully active on your phone while RS_AI Agent automatically receives customer inquiries via Cloud API webhooks and auto-replies.
+                        </p>
                     </div>
+
+                    <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
+                        <button type="button" id="btn-connect-wa-embedded" class="btn" onclick="launchWhatsAppEmbeddedSignup()" style="background: linear-gradient(135deg, #25d366, #128c7e); color: #fff; font-weight: 600; padding: 10px 22px; border-radius: 8px; border: none; box-shadow: 0 4px 14px rgba(37, 211, 102, 0.3); display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <i class="fab fa-whatsapp" style="font-size: 18px;"></i> Connect WhatsApp Business
+                        </button>
+                        <span id="wa-embedded-status-hint" style="font-size: 12px; color: var(--text-muted);">
+                            Launches official Meta Embedded Signup for coexistence onboarding.
+                        </span>
+                    </div>
+
                     <div class="form-row">
                         <div class="form-group">
                             <label>WhatsApp Webhook Callback URL:</label>
@@ -705,9 +720,37 @@
                             <input type="text" class="form-control" value="rs_whatsapp_token_2026" readonly style="background: rgba(0,0,0,0.3); font-weight: 600; color: #34d399;">
                         </div>
                     </div>
-                    <button class="btn btn-primary" onclick="saveWhatsAppSettings()">
-                        <i class="fas fa-save"></i> Save WhatsApp Settings
-                    </button>
+
+                    <!-- Advanced / Manual Fallback -->
+                    <details style="margin-top: 14px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-glass); border-radius: 8px; padding: 10px 14px;">
+                        <summary style="font-size: 12.5px; font-weight: 600; color: var(--text-muted); cursor: pointer;">
+                            <i class="fas fa-sliders-h"></i> Advanced / Manual Configuration (Fallback)
+                        </summary>
+                        <div style="margin-top: 14px;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>WhatsApp WABA ID:</label>
+                                    <input type="text" id="setting-wa-waba-id" class="form-control" placeholder="e.g. 27905447135785944">
+                                </div>
+                                <div class="form-group">
+                                    <label>WhatsApp Phone Number ID:</label>
+                                    <input type="text" id="setting-wa-phone-id" class="form-control" placeholder="e.g. 1265595526643418">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>WhatsApp Access Token (Server-Side Stored):</label>
+                                <div style="position: relative; display: flex; align-items: center;">
+                                    <input type="password" id="setting-wa-token" class="form-control" placeholder="EAASG0eZCjnVw..." style="padding-right: 44px;">
+                                    <button type="button" class="btn" onclick="togglePasswordVisibility('setting-wa-token', this)" style="position: absolute; right: 6px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 6px 10px;">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 14px;" onclick="saveWhatsAppSettings()">
+                                <i class="fas fa-save"></i> Save Manual Credentials
+                            </button>
+                        </div>
+                    </details>
                 </div>
             </section>
 

@@ -3,6 +3,7 @@ import json
 import csv
 import io
 import uuid
+import requests
 from typing import Optional, List
 from fastapi import FastAPI, Request, Response, Form, File, UploadFile, Query, HTTPException, Depends
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, PlainTextResponse, Response
@@ -455,7 +456,7 @@ async def api_omnichat_send(request: Request):
 # ==========================================
 @app.get("/api/settings")
 async def api_get_settings():
-    all_s = get_all_settings()
+    all_s = get_all_settings(masked=True)
     voices = list_available_voices()
     return {"settings": all_s, "voices": voices}
 
@@ -465,6 +466,77 @@ async def api_save_settings(request: Request):
     for k, v in data.items():
         set_setting(k, str(v))
     return {"success": True, "message": "Settings updated successfully"}
+
+@app.get("/api/whatsapp/embedded-config")
+async def api_whatsapp_embedded_config():
+    """Returns configuration for Meta Embedded Signup."""
+    app_id = get_setting("meta_app_id", settings.META_APP_ID)
+    config_id = get_setting("meta_embedded_signup_config_id", settings.META_EMBEDDED_SIGNUP_CONFIG_ID)
+    waba_id = get_setting("whatsapp_waba_id", settings.WHATSAPP_WABA_ID)
+    phone_number_id = get_setting("whatsapp_phone_number_id", settings.WHATSAPP_PHONE_NUMBER_ID)
+    display_phone_number = get_setting("whatsapp_display_phone_number", settings.WHATSAPP_DISPLAY_PHONE_NUMBER)
+    connection_mode = get_setting("whatsapp_connection_mode", "business_app_coexistence")
+    connection_status = get_setting("whatsapp_connection_status", "not_connected")
+    
+    return {
+        "app_id": app_id,
+        "config_id": config_id,
+        "version": "v19.0",
+        "waba_id": waba_id,
+        "phone_number_id": phone_number_id,
+        "display_phone_number": display_phone_number,
+        "connection_mode": connection_mode,
+        "connection_status": connection_status,
+        "is_configured": bool(config_id and config_id.strip())
+    }
+
+@app.post("/api/whatsapp/embedded-signup")
+async def api_whatsapp_embedded_signup(request: Request):
+    """Processes the WhatsApp Business App Coexistence Embedded Signup result."""
+    data = await request.json()
+    code = data.get("code")
+    waba_id = data.get("waba_id")
+    phone_number_id = data.get("phone_number_id")
+    display_phone_number = data.get("display_phone_number") or get_setting("whatsapp_display_phone_number", "01816504097")
+    access_token = data.get("access_token")
+
+    # If code is present, exchange for token if FB_APP_SECRET is set
+    app_id = get_setting("meta_app_id", settings.META_APP_ID)
+    app_secret = get_setting("fb_app_secret", settings.FB_APP_SECRET)
+
+    if code and app_secret and app_id:
+        try:
+            token_url = "https://graph.facebook.com/v19.0/oauth/access_token"
+            params = {
+                "client_id": app_id,
+                "client_secret": app_secret,
+                "code": code
+            }
+            resp = requests.get(token_url, params=params, timeout=10)
+            if resp.status_code == 200:
+                tdata = resp.json()
+                access_token = tdata.get("access_token") or access_token
+        except Exception as e:
+            print(f"[WhatsApp Embedded Signup Token Exchange Error]: {e}")
+
+    if waba_id:
+        set_setting("whatsapp_waba_id", str(waba_id))
+    if phone_number_id:
+        set_setting("whatsapp_phone_number_id", str(phone_number_id))
+    if access_token:
+        set_setting("whatsapp_access_token", str(access_token))
+    if display_phone_number:
+        set_setting("whatsapp_display_phone_number", str(display_phone_number))
+
+    set_setting("whatsapp_connection_mode", "business_app_coexistence")
+    set_setting("whatsapp_connection_status", "connected" if (access_token or phone_number_id) else "pending")
+
+    return {
+        "success": True,
+        "message": "WhatsApp Business App successfully connected in Coexistence Mode!",
+        "connection_mode": "business_app_coexistence",
+        "connection_status": "connected" if (access_token or phone_number_id) else "pending"
+    }
 
 # ==========================================
 # 7. INTERACTIVE AI PLAYGROUND (LIVE CHAT & VOICE TEST)
