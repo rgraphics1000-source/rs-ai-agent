@@ -16,10 +16,20 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ==========================================
-// 1. NAVIGATION & TAB SWITCHING
+// 1. NAVIGATION & TAB SWITCHING (DESKTOP & MOBILE)
 // ==========================================
+function toggleMobileSidebar() {
+    const sidebar = document.getElementById("app-sidebar");
+    const backdrop = document.getElementById("sidebar-backdrop");
+    if (!sidebar) return;
+
+    sidebar.classList.toggle("mobile-open");
+    if (backdrop) backdrop.classList.toggle("active");
+}
+
 function initNavigation() {
     const navItems = document.querySelectorAll(".nav-item");
+    const mobileNavLinks = document.querySelectorAll(".mobile-nav-link[data-tab]");
     const tabPanes = document.querySelectorAll(".tab-pane");
     const pageTitle = document.getElementById("page-title");
     const pageSubtitle = document.getElementById("page-subtitle");
@@ -38,23 +48,50 @@ function initNavigation() {
         "support": { title: "📞 Help & Support", sub: "Platform documentation, contact info and FAQs" }
     };
 
+    function switchTab(target) {
+        if (!target) return;
+
+        navItems.forEach(n => {
+            if (n.getAttribute("data-tab") === target) n.classList.add("active");
+            else n.classList.remove("active");
+        });
+
+        mobileNavLinks.forEach(m => {
+            if (m.getAttribute("data-tab") === target) m.classList.add("active");
+            else m.classList.remove("active");
+        });
+
+        tabPanes.forEach(p => p.classList.remove("active"));
+        const activePane = document.getElementById(`tab-${target}`);
+        if (activePane) activePane.classList.add("active");
+
+        if (titles[target] && pageTitle && pageSubtitle) {
+            pageTitle.innerText = titles[target].title;
+            pageSubtitle.innerText = titles[target].sub;
+        }
+
+        // Close mobile drawer if open
+        const sidebar = document.getElementById("app-sidebar");
+        const backdrop = document.getElementById("sidebar-backdrop");
+        if (sidebar && sidebar.classList.contains("mobile-open")) {
+            sidebar.classList.remove("mobile-open");
+            if (backdrop) backdrop.classList.remove("active");
+        }
+
+        refreshCurrentTab(target);
+    }
+
     navItems.forEach(item => {
         item.addEventListener("click", () => {
             const target = item.getAttribute("data-tab");
-            
-            navItems.forEach(n => n.classList.remove("active"));
-            tabPanes.forEach(p => p.classList.remove("active"));
+            switchTab(target);
+        });
+    });
 
-            item.classList.add("active");
-            const activePane = document.getElementById(`tab-${target}`);
-            if (activePane) activePane.classList.add("active");
-
-            if (titles[target]) {
-                pageTitle.innerText = titles[target].title;
-                pageSubtitle.innerText = titles[target].sub;
-            }
-
-            refreshCurrentTab(target);
+    mobileNavLinks.forEach(item => {
+        item.addEventListener("click", () => {
+            const target = item.getAttribute("data-tab");
+            switchTab(target);
         });
     });
 }
@@ -939,18 +976,35 @@ async function loadSettings() {
 function updateAIMasterButtonUI(active) {
     const btn = document.getElementById("ai-master-toggle-btn");
     const text = document.getElementById("ai-master-status-text");
-    if (!btn || !text) return;
+    const mobileBtn = document.getElementById("mobile-ai-master-btn");
+    const mobileText = document.getElementById("mobile-ai-master-text");
 
-    if (active) {
-        btn.style.background = "rgba(16, 185, 129, 0.15)";
-        btn.style.borderColor = "#10b981";
-        btn.style.color = "#34d399";
-        btn.innerHTML = `<i class="fas fa-circle" style="font-size: 9px; color: #34d399;"></i> <span id="ai-master-status-text">AI Agent: Active (Auto-Reply)</span>`;
-    } else {
-        btn.style.background = "rgba(239, 68, 68, 0.15)";
-        btn.style.borderColor = "#ef4444";
-        btn.style.color = "#f87171";
-        btn.innerHTML = `<i class="fas fa-pause-circle" style="font-size: 11px; color: #f87171;"></i> <span id="ai-master-status-text">AI Agent: Paused (Manual Mode)</span>`;
+    if (btn) {
+        if (active) {
+            btn.style.background = "rgba(16, 185, 129, 0.15)";
+            btn.style.borderColor = "#10b981";
+            btn.style.color = "#34d399";
+            btn.innerHTML = `<i class="fas fa-circle" style="font-size: 9px; color: #34d399;"></i> <span id="ai-master-status-text">AI Agent: Active (Auto-Reply)</span>`;
+        } else {
+            btn.style.background = "rgba(239, 68, 68, 0.15)";
+            btn.style.borderColor = "#ef4444";
+            btn.style.color = "#f87171";
+            btn.innerHTML = `<i class="fas fa-pause-circle" style="font-size: 11px; color: #f87171;"></i> <span id="ai-master-status-text">AI Agent: Paused (Manual Mode)</span>`;
+        }
+    }
+
+    if (mobileBtn) {
+        if (active) {
+            mobileBtn.style.background = "rgba(16, 185, 129, 0.15)";
+            mobileBtn.style.borderColor = "#10b981";
+            mobileBtn.style.color = "#34d399";
+            mobileBtn.innerHTML = `<i class="fas fa-circle" style="font-size: 7px;"></i> <span id="mobile-ai-master-text">Active</span>`;
+        } else {
+            mobileBtn.style.background = "rgba(239, 68, 68, 0.15)";
+            mobileBtn.style.borderColor = "#ef4444";
+            mobileBtn.style.color = "#f87171";
+            mobileBtn.innerHTML = `<i class="fas fa-pause-circle" style="font-size: 8px;"></i> <span id="mobile-ai-master-text">Paused</span>`;
+        }
     }
 }
 

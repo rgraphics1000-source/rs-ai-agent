@@ -9,14 +9,18 @@
 </head>
 <body>
 
+    <!-- Sidebar Backdrop for Mobile -->
+    <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="toggleMobileSidebar()"></div>
+
     <!-- Sidebar Navigation (RS_AI Style) -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="app-sidebar">
         <div class="brand">
             <div class="brand-logo-badge">RS</div>
             <div class="brand-text-wrapper">
                 <div class="brand-title">RS_AI</div>
                 <div class="brand-tagline">Autonomous Sales Platform</div>
             </div>
+            <button class="mobile-sidebar-close" onclick="toggleMobileSidebar()">&times;</button>
         </div>
 
         <ul class="nav-links">
@@ -74,7 +78,23 @@
 
     <!-- Main Content Wrapper -->
     <div class="main-wrapper">
-        <!-- Top Header -->
+        <!-- Mobile Top Nav Header -->
+        <div class="mobile-top-bar">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <button class="mobile-menu-btn" onclick="toggleMobileSidebar()" aria-label="Open Menu">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <div class="brand-logo-badge" style="width: 32px; height: 32px; font-size: 14px;">RS</div>
+                <div style="font-weight: 700; font-size: 16px; letter-spacing: -0.5px;">RS_AI</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button id="mobile-ai-master-btn" class="btn" style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; font-size: 11px; padding: 5px 10px; border-radius: 20px; font-weight: 600;" onclick="toggleAIMasterSwitch()">
+                    <i class="fas fa-circle" style="font-size: 7px;"></i> <span id="mobile-ai-master-text">Active</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Top Header (Desktop & Tablet) -->
         <header class="top-header">
             <div class="header-title">
                 <h1 id="page-title">⚡ AI Setup & Live Simulator</h1>
@@ -914,11 +934,33 @@
                 <h3><i class="fas fa-file-invoice" style="color:var(--primary-light);"></i> Order Summary & Invoice</h3>
                 <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-order-details')">&times;</button>
             </div>
-            <div id="order-details-content">
-                <!-- Populated dynamically -->
-            </div>
-        </div>
-    </div>
+    <!-- Mobile App-Like Bottom Navigation -->
+    <nav class="mobile-bottom-nav">
+        <a href="javascript:void(0)" class="mobile-nav-link active" data-tab="test-arena">
+            <i class="fas fa-robot"></i>
+            <span>AI Setup</span>
+        </a>
+        <a href="javascript:void(0)" class="mobile-nav-link" data-tab="dashboard">
+            <i class="fas fa-chart-pie"></i>
+            <span>Dashboard</span>
+        </a>
+        <a href="javascript:void(0)" class="mobile-nav-link" data-tab="orders">
+            <i class="fas fa-box"></i>
+            <span>Orders</span>
+        </a>
+        <a href="javascript:void(0)" class="mobile-nav-link" data-tab="products">
+            <i class="fas fa-tags"></i>
+            <span>Products</span>
+        </a>
+        <a href="javascript:void(0)" class="mobile-nav-link" data-tab="omnichat">
+            <i class="fas fa-comments"></i>
+            <span>Inbox</span>
+        </a>
+        <a href="javascript:void(0)" class="mobile-nav-link" onclick="toggleMobileSidebar()">
+            <i class="fas fa-bars"></i>
+            <span>More</span>
+        </a>
+    </nav>
 
     <script src="/static/js/dashboard.js"></script>
 </body>
