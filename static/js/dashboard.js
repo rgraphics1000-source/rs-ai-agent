@@ -1163,7 +1163,8 @@ async function launchWhatsAppEmbeddedSignup() {
     try {
         const res = await fetch("/api/whatsapp/embedded-config");
         const config = await res.json();
-        const configId = String(config.config_id || "10034031760860138").trim();
+        let rawId = String(config.config_id || "1003403176086013").trim();
+        const configId = (rawId === "10034031760860138") ? "1003403176086013" : rawId;
         const appId = String(config.app_id || "1274136137801052").trim();
 
         if (!configId || configId.length === 0) {

@@ -471,7 +471,8 @@ async def api_save_settings(request: Request):
 async def api_whatsapp_embedded_config():
     """Returns configuration for Meta Embedded Signup."""
     app_id = get_setting("meta_app_id", settings.META_APP_ID)
-    config_id = get_setting("meta_embedded_signup_config_id", settings.META_EMBEDDED_SIGNUP_CONFIG_ID)
+    raw_config_id = get_setting("meta_embedded_signup_config_id", settings.META_EMBEDDED_SIGNUP_CONFIG_ID)
+    config_id = "1003403176086013" if raw_config_id in ["10034031760860138", ""] else raw_config_id
     
     print(f"[WA CONFIG CHECK] appId = {app_id}")
     print(f"[WA CONFIG CHECK] configId = {config_id}")
