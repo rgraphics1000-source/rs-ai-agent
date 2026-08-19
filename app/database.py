@@ -168,12 +168,21 @@ def init_db():
     conn.close()
 
 def get_setting(key: str, default: str = "") -> str:
+    # 1. First check environment variables (Render Environment)
+    env_val = os.getenv(key.upper()) or os.getenv(key)
+    if env_val:
+        return env_val
+
+    # 2. Then check database settings
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
     row = cursor.fetchone()
     conn.close()
-    return row["value"] if row else default
+    
+    if row and row["value"]:
+        return row["value"]
+    return default
 
 def set_setting(key: str, value: str):
     conn = get_db_connection()
@@ -188,4 +197,14 @@ def get_all_settings() -> dict:
     cursor.execute("SELECT key, value FROM settings")
     rows = cursor.fetchall()
     conn.close()
-    return {row["key"]: row["value"] for row in rows}
+    
+    result = {row["key"]: row["value"] for row in rows}
+    
+    # Overlay environment variables if present
+    env_keys = ["FB_PAGE_ACCESS_TOKEN", "GEMINI_API_KEY", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"]
+    for ek in env_keys:
+        val = os.getenv(ek)
+        if val:
+            result[ek.lower()] = val
+            
+    return result

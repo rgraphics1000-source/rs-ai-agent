@@ -302,6 +302,32 @@ async def api_delete_product(product_id: int):
     conn.close()
     return {"success": True, "message": "Product deleted"}
 
+@app.post("/api/products/batch-restore")
+async def api_batch_restore_products(request: Request):
+    data = await request.json()
+    products = data.get("products", [])
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    for p in products:
+        code = p.get("code")
+        if not code:
+            continue
+        cursor.execute("SELECT id FROM products WHERE code = ?", (code,))
+        if not cursor.fetchone():
+            g_imgs = p.get("gallery_images")
+            g_json = json.dumps(g_imgs) if isinstance(g_imgs, list) else str(g_imgs or "[]")
+            cursor.execute("""
+                INSERT INTO products (name, code, price, discount_price, stock, category, description, tags, image_url, gallery_images)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                p.get("name"), code, p.get("price"), p.get("discount_price"),
+                p.get("stock", 10), p.get("category", "General"), p.get("description", ""),
+                p.get("tags", ""), p.get("image_url", ""), g_json
+            ))
+    conn.commit()
+    conn.close()
+    return {"success": True}
+
 # ==========================================
 # 5. COMMENT AUTOMATION & LOGS APIS
 # ==========================================

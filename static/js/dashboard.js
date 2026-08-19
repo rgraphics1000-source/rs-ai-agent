@@ -519,10 +519,35 @@ async function loadProducts() {
     try {
         const res = await fetch("/api/products");
         const data = await res.json();
-        cachedProductsList = data.products || [];
+        let products = data.products || [];
 
+        if (products.length > 0) {
+            localStorage.setItem("rs_cached_products", JSON.stringify(products));
+        } else {
+            // Check if we have backup in localStorage to auto-restore
+            const savedLocal = localStorage.getItem("rs_cached_products");
+            if (savedLocal) {
+                try {
+                    const parsed = JSON.parse(savedLocal);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        await fetch("/api/products/batch-restore", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ products: parsed })
+                        });
+                        const refreshRes = await fetch("/api/products");
+                        const refreshData = await refreshRes.json();
+                        products = refreshData.products || parsed;
+                    }
+                } catch (e) {
+                    console.error("Auto-restore products error:", e);
+                }
+            }
+        }
+
+        cachedProductsList = products;
         grid.innerHTML = "";
-        if (!data.products || data.products.length === 0) {
+        if (products.length === 0) {
             grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">No products added yet. Click '+ Add New Product' above.</div>`;
             return;
         }
@@ -960,20 +985,69 @@ async function loadSettings() {
         isAIMasterActive = (s.ai_enabled !== "false");
         updateAIMasterButtonUI(isAIMasterActive);
 
+        // Facebook Token
+        let fbToken = s.fb_page_access_token || "";
+        if (!fbToken || fbToken.trim().length === 0) {
+            fbToken = localStorage.getItem("rs_fb_page_access_token") || "";
+            if (fbToken) {
+                fetch("/api/settings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ fb_page_access_token: fbToken })
+                });
+            }
+        } else {
+            localStorage.setItem("rs_fb_page_access_token", fbToken);
+        }
+        if (document.getElementById("setting-fb-token")) document.getElementById("setting-fb-token").value = fbToken;
+
+        // WhatsApp Token & Phone ID
+        let waToken = s.whatsapp_access_token || "";
+        let waPhoneId = s.whatsapp_phone_number_id || "";
+        if (!waToken) {
+            waToken = localStorage.getItem("rs_wa_token") || "";
+            waPhoneId = localStorage.getItem("rs_wa_phone_id") || waPhoneId;
+            if (waToken) {
+                fetch("/api/settings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ whatsapp_access_token: waToken, whatsapp_phone_number_id: waPhoneId })
+                });
+            }
+        } else {
+            localStorage.setItem("rs_wa_token", waToken);
+            if (waPhoneId) localStorage.setItem("rs_wa_phone_id", waPhoneId);
+        }
+        if (document.getElementById("setting-wa-token")) document.getElementById("setting-wa-token").value = waToken;
+        if (document.getElementById("setting-wa-phone-id")) document.getElementById("setting-wa-phone-id").value = waPhoneId;
+
+        // Gemini API Key
+        let geminiKey = s.gemini_api_key || "";
+        if (!geminiKey) {
+            geminiKey = localStorage.getItem("rs_gemini_api_key") || "";
+            if (geminiKey) {
+                fetch("/api/settings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ gemini_api_key: geminiKey })
+                });
+            }
+        } else {
+            localStorage.setItem("rs_gemini_api_key", geminiKey);
+        }
+        if (document.getElementById("arena-gemini-key")) document.getElementById("arena-gemini-key").value = geminiKey;
+
         // Settings tab inputs
-        if (document.getElementById("setting-shop-name")) document.getElementById("setting-shop-name").value = s.shop_name || "";
+        if (document.getElementById("setting-shop-name")) document.getElementById("setting-shop-name").value = s.shop_name || "RS Graphics";
         if (document.getElementById("setting-shop-phone")) document.getElementById("setting-shop-phone").value = s.shop_phone || "";
         if (document.getElementById("setting-delivery-inside")) document.getElementById("setting-delivery-inside").value = s.delivery_inside_dhaka || "70";
         if (document.getElementById("setting-delivery-outside")) document.getElementById("setting-delivery-outside").value = s.delivery_outside_dhaka || "130";
-        if (document.getElementById("setting-fb-token")) document.getElementById("setting-fb-token").value = s.fb_page_access_token || "";
-        if (document.getElementById("setting-wa-token")) document.getElementById("setting-wa-token").value = s.whatsapp_access_token || "";
-        if (document.getElementById("setting-wa-phone-id")) document.getElementById("setting-wa-phone-id").value = s.whatsapp_phone_number_id || "";
         if (document.getElementById("setting-comment-reply-template")) document.getElementById("setting-comment-reply-template").value = s.comment_reply_template || "";
 
         // Update Facebook Connection Badge
         const fbBadge = document.getElementById("fb-status-badge");
         if (fbBadge) {
-            if (s.fb_page_access_token && s.fb_page_access_token.trim().length > 10) {
+            if (fbToken && fbToken.trim().length > 10) {
                 fbBadge.className = "badge badge-confirmed";
                 fbBadge.innerHTML = `<i class="fas fa-check-circle"></i> Connected & Saved`;
             } else {
@@ -985,7 +1059,7 @@ async function loadSettings() {
         // Update WhatsApp Connection Badge
         const waBadge = document.getElementById("wa-status-badge");
         if (waBadge) {
-            if (s.whatsapp_access_token && s.whatsapp_access_token.trim().length > 10) {
+            if (waToken && waToken.trim().length > 10) {
                 waBadge.className = "badge badge-confirmed";
                 waBadge.innerHTML = `<i class="fas fa-check-circle"></i> Connected & Saved`;
             } else {
@@ -1004,10 +1078,9 @@ async function loadSettings() {
         }
 
         // AI Arena Setup tab inputs
-        if (document.getElementById("arena-shop-name")) document.getElementById("arena-shop-name").value = s.shop_name || "";
-        if (document.getElementById("arena-gemini-key")) document.getElementById("arena-gemini-key").value = s.gemini_api_key || "";
+        if (document.getElementById("arena-shop-name")) document.getElementById("arena-shop-name").value = s.shop_name || "RS Graphics";
         if (document.getElementById("arena-system-prompt")) document.getElementById("arena-system-prompt").value = s.ai_system_prompt || "";
-        if (document.getElementById("phone-header-shop-name")) document.getElementById("phone-header-shop-name").innerText = s.shop_name || "My Shop Admin";
+        if (document.getElementById("phone-header-shop-name")) document.getElementById("phone-header-shop-name").innerText = s.shop_name || "RS Graphics";
 
     } catch (e) {
         console.error("Load settings error:", e);
@@ -1091,6 +1164,8 @@ async function saveFacebookSettings() {
         return;
     }
 
+    localStorage.setItem("rs_fb_page_access_token", token);
+
     try {
         const res = await fetch("/api/settings", {
             method: "POST",
@@ -1110,6 +1185,9 @@ async function saveFacebookSettings() {
 async function saveWhatsAppSettings() {
     const phoneId = document.getElementById("setting-wa-phone-id") ? document.getElementById("setting-wa-phone-id").value.trim() : "";
     const token = document.getElementById("setting-wa-token") ? document.getElementById("setting-wa-token").value.trim() : "";
+
+    if (token) localStorage.setItem("rs_wa_token", token);
+    if (phoneId) localStorage.setItem("rs_wa_phone_id", phoneId);
 
     try {
         const res = await fetch("/api/settings", {
