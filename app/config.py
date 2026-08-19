@@ -25,8 +25,8 @@ class Settings:
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     
     # Meta & Facebook Graph API
-    META_APP_ID: str = os.getenv("META_APP_ID", "1274136137801052")
-    META_EMBEDDED_SIGNUP_CONFIG_ID: str = os.getenv("META_EMBEDDED_SIGNUP_CONFIG_ID", "")
+    META_APP_ID: str = os.getenv("META_APP_ID") or "1274136137801052"
+    META_EMBEDDED_SIGNUP_CONFIG_ID: str = os.getenv("META_EMBEDDED_SIGNUP_CONFIG_ID") or "10034031760860138"
     FB_PAGE_ACCESS_TOKEN: str = os.getenv("FB_PAGE_ACCESS_TOKEN", "")
     FB_VERIFY_TOKEN: str = os.getenv("FB_VERIFY_TOKEN", "rs_secure_verify_token_2026")
     FB_PAGE_ID: str = os.getenv("FB_PAGE_ID", "")

@@ -232,8 +232,8 @@ def init_db():
 def get_setting(key: str, default: str = "") -> str:
     # 1. First check environment variables (Render Environment)
     env_val = os.getenv(key.upper()) or os.getenv(key)
-    if env_val:
-        return env_val
+    if env_val is not None and str(env_val).strip() != "":
+        return str(env_val).strip()
 
     # 2. Then check database settings
     conn = get_db_connection()
@@ -242,8 +242,8 @@ def get_setting(key: str, default: str = "") -> str:
     row = cursor.fetchone()
     conn.close()
     
-    if row and row["value"]:
-        return row["value"]
+    if row and row["value"] is not None and str(row["value"]).strip() != "":
+        return str(row["value"]).strip()
     return default
 
 def set_setting(key: str, value: str):
@@ -271,8 +271,8 @@ def get_all_settings(masked: bool = False) -> dict:
     ]
     for ek in env_keys:
         val = os.getenv(ek)
-        if val:
-            result[ek.lower()] = val
+        if val is not None and str(val).strip() != "":
+            result[ek.lower()] = str(val).strip()
             
     # Calculate connection statuses
     has_wa_token = bool(

@@ -500,6 +500,12 @@ async def api_whatsapp_embedded_signup(request: Request):
     display_phone_number = data.get("display_phone_number") or get_setting("whatsapp_display_phone_number", "01816504097")
     access_token = data.get("access_token")
 
+    print("[WhatsApp Embedded Signup] Started processing callback")
+    print(f"[WhatsApp Embedded Signup] Authorization code received: {'YES' if code else 'NO'}")
+    print(f"[WhatsApp Embedded Signup] WABA ID received: {waba_id or 'None'}")
+    print(f"[WhatsApp Embedded Signup] Phone Number ID received: {phone_number_id or 'None'}")
+    print(f"[WhatsApp Embedded Signup] Display Phone: {display_phone_number or 'None'}")
+
     # If code is present, exchange for token if FB_APP_SECRET is set
     app_id = get_setting("meta_app_id", settings.META_APP_ID)
     app_secret = get_setting("fb_app_secret", settings.FB_APP_SECRET)
@@ -516,8 +522,11 @@ async def api_whatsapp_embedded_signup(request: Request):
             if resp.status_code == 200:
                 tdata = resp.json()
                 access_token = tdata.get("access_token") or access_token
+                print("[WhatsApp Embedded Signup] Token exchange: SUCCESS")
+            else:
+                print(f"[WhatsApp Embedded Signup] Token exchange response code: {resp.status_code}")
         except Exception as e:
-            print(f"[WhatsApp Embedded Signup Token Exchange Error]: {e}")
+            print(f"[WhatsApp Embedded Signup] Token Exchange Error: {e}")
 
     if waba_id:
         set_setting("whatsapp_waba_id", str(waba_id))
@@ -530,6 +539,28 @@ async def api_whatsapp_embedded_signup(request: Request):
 
     set_setting("whatsapp_connection_mode", "business_app_coexistence")
     set_setting("whatsapp_connection_status", "connected" if (access_token or phone_number_id) else "pending")
+
+    # Subscribe App to WhatsApp Business Account Webhooks if possible
+    effective_token = (
+        access_token 
+        or get_setting("meta_system_user_access_token") 
+        or settings.META_SYSTEM_USER_ACCESS_TOKEN 
+        or get_setting("whatsapp_access_token") 
+        or settings.WHATSAPP_ACCESS_TOKEN
+    )
+    effective_waba = waba_id or get_setting("whatsapp_waba_id", settings.WHATSAPP_WABA_ID)
+    if effective_waba and effective_token:
+        try:
+            sub_url = f"https://graph.facebook.com/v19.0/{effective_waba}/subscribed_apps"
+            sub_resp = requests.post(sub_url, headers={"Authorization": f"Bearer {effective_token}"}, timeout=10)
+            if sub_resp.status_code == 200:
+                print("[WhatsApp Embedded Signup] Webhook app subscription: SUCCESS")
+            else:
+                print(f"[WhatsApp Embedded Signup] Webhook app subscription status: {sub_resp.status_code}")
+        except Exception as sub_err:
+            print(f"[WhatsApp Embedded Signup] Webhook app subscription error: {sub_err}")
+
+    print("[WhatsApp Embedded Signup] Completed successfully")
 
     return {
         "success": True,
