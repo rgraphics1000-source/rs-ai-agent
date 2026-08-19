@@ -603,11 +603,17 @@ async function handleOmnichatSend(e) {
 // ==========================================
 // 8. SETTINGS & AI CONFIGURATION
 // ==========================================
+let isAIMasterActive = true;
+
 async function loadSettings() {
     try {
         const res = await fetch("/api/settings");
         const data = await res.json();
         const s = data.settings || {};
+
+        // Master Switch state
+        isAIMasterActive = (s.ai_enabled !== "false");
+        updateAIMasterButtonUI(isAIMasterActive);
 
         // Settings tab inputs
         if (document.getElementById("setting-shop-name")) document.getElementById("setting-shop-name").value = s.shop_name || "";
@@ -625,6 +631,47 @@ async function loadSettings() {
 
     } catch (e) {
         console.error("Load settings error:", e);
+    }
+}
+
+function updateAIMasterButtonUI(active) {
+    const btn = document.getElementById("ai-master-toggle-btn");
+    const text = document.getElementById("ai-master-status-text");
+    if (!btn || !text) return;
+
+    if (active) {
+        btn.style.background = "rgba(16, 185, 129, 0.15)";
+        btn.style.borderColor = "#10b981";
+        btn.style.color = "#34d399";
+        btn.innerHTML = `<i class="fas fa-circle" style="font-size: 9px; color: #34d399;"></i> <span id="ai-master-status-text">AI Agent: Active (Auto-Reply)</span>`;
+    } else {
+        btn.style.background = "rgba(239, 68, 68, 0.15)";
+        btn.style.borderColor = "#ef4444";
+        btn.style.color = "#f87171";
+        btn.innerHTML = `<i class="fas fa-pause-circle" style="font-size: 11px; color: #f87171;"></i> <span id="ai-master-status-text">AI Agent: Paused (Manual Mode)</span>`;
+    }
+}
+
+async function toggleAIMasterSwitch() {
+    isAIMasterActive = !isAIMasterActive;
+    updateAIMasterButtonUI(isAIMasterActive);
+
+    try {
+        const res = await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ai_enabled: isAIMasterActive ? "true" : "false" })
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (isAIMasterActive) {
+                showToast("🟢 এআই এজেন্ট চালু করা হয়েছে (২৪ ঘণ্টা অটো-রিপ্লাই মোড)", "success");
+            } else {
+                showToast("⏸️ এআই এজেন্ট বন্ধ করা হয়েছে (ম্যানুয়াল মোড)", "danger");
+            }
+        }
+    } catch (e) {
+        showToast("Switch update failed", "danger");
     }
 }
 

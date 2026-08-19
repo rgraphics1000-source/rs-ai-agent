@@ -88,6 +88,12 @@ async def handle_whatsapp_webhook_event(data: dict):
                                 print(f"[WhatsApp Audio DL Error]: {dl_err}")
 
                     if msg_text or image_bytes or audio_bytes:
+                        # Check if AI Master Switch is enabled
+                        ai_enabled = get_setting("ai_enabled", "true").lower() == "true"
+                        if not ai_enabled:
+                            print("[WhatsApp]: AI Agent is currently PAUSED by Admin.")
+                            continue
+
                         ai_result = await process_customer_message(
                             message_text=msg_text,
                             image_bytes=image_bytes,

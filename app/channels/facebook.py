@@ -134,6 +134,12 @@ async def handle_facebook_webhook_event(data: dict):
                             except Exception as dl_err:
                                 print(f"[Attachment Download Error]: {dl_err}")
 
+                    # Check if AI Master Switch is enabled
+                    ai_enabled = get_setting("ai_enabled", "true").lower() == "true"
+                    if not ai_enabled:
+                        print("[Facebook Messenger]: AI Agent is currently PAUSED by Admin.")
+                        continue
+
                     # Process with Gemini AI Brain
                     ai_result = await process_customer_message(
                         message_text=msg_text,
@@ -176,6 +182,10 @@ async def handle_facebook_webhook_event(data: dict):
                             continue
 
                         # Check settings
+                        ai_enabled = get_setting("ai_enabled", "true").lower() == "true"
+                        if not ai_enabled:
+                            continue
+
                         auto_comment = get_setting("comment_auto_reply", "true").lower() == "true"
                         send_private = get_setting("private_message_on_comment", "true").lower() == "true"
                         template = get_setting("comment_reply_template", "ধন্যবাদ {name} আপু/ভাইয়া! বিস্তারিত তথ্য আপনার ইনবক্সে পাঠানো হয়েছে 🥰")
