@@ -26,7 +26,10 @@ class Settings:
     
     # Meta & Facebook Graph API
     META_APP_ID: str = os.getenv("META_APP_ID") or "1274136137801052"
-    META_EMBEDDED_SIGNUP_CONFIG_ID: str = os.getenv("META_EMBEDDED_SIGNUP_CONFIG_ID") or "10034031760860138"
+    META_EMBEDDED_SIGNUP_CONFIG_ID: str = (
+        "1003403176086013" if os.getenv("META_EMBEDDED_SIGNUP_CONFIG_ID") == "10034031760860138" 
+        else (os.getenv("META_EMBEDDED_SIGNUP_CONFIG_ID") or "1003403176086013")
+    )
     FB_PAGE_ACCESS_TOKEN: str = os.getenv("FB_PAGE_ACCESS_TOKEN", "")
     FB_VERIFY_TOKEN: str = os.getenv("FB_VERIFY_TOKEN", "rs_secure_verify_token_2026")
     FB_PAGE_ID: str = os.getenv("FB_PAGE_ID", "")

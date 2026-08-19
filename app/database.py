@@ -161,6 +161,9 @@ def init_db():
     for k, v in default_settings.items():
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
 
+    # Migration: update any stale 17-digit config_id to official 16-digit ID
+    cursor.execute("UPDATE settings SET value = '1003403176086013' WHERE key = 'meta_embedded_signup_config_id' AND value = '10034031760860138'")
+
     # Seed FAQs if none exist
     cursor.execute("DELETE FROM faqs")
     sample_faqs = [
@@ -233,7 +236,10 @@ def get_setting(key: str, default: str = "") -> str:
     # 1. First check environment variables (Render Environment)
     env_val = os.getenv(key.upper()) or os.getenv(key)
     if env_val is not None and str(env_val).strip() != "":
-        return str(env_val).strip()
+        val = str(env_val).strip()
+        if key.lower() == "meta_embedded_signup_config_id" and val == "10034031760860138":
+            return "1003403176086013"
+        return val
 
     # 2. Then check database settings
     conn = get_db_connection()
@@ -243,7 +249,10 @@ def get_setting(key: str, default: str = "") -> str:
     conn.close()
     
     if row and row["value"] is not None and str(row["value"]).strip() != "":
-        return str(row["value"]).strip()
+        val = str(row["value"]).strip()
+        if key.lower() == "meta_embedded_signup_config_id" and val == "10034031760860138":
+            return "1003403176086013"
+        return val
     return default
 
 def set_setting(key: str, value: str):
@@ -273,6 +282,9 @@ def get_all_settings(masked: bool = False) -> dict:
         val = os.getenv(ek)
         if val is not None and str(val).strip() != "":
             result[ek.lower()] = str(val).strip()
+
+    if result.get("meta_embedded_signup_config_id") == "10034031760860138":
+        result["meta_embedded_signup_config_id"] = "1003403176086013"
             
     # Calculate connection statuses
     has_wa_token = bool(

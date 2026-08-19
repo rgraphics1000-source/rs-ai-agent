@@ -1081,7 +1081,7 @@ async function disconnectWhatsApp() {
 }
 
 // Meta Embedded Signup for WhatsApp Business App Coexistence
-console.log("[WA EMBEDDED SIGNUP VERSION] 2026-08-19-FIX-3");
+console.log("[WA EMBEDDED SIGNUP VERSION] 2026-08-19-FIX-4");
 let metaSDKInitialized = false;
 let embeddedSignupSessionInfo = null;
 
@@ -1165,7 +1165,10 @@ async function launchWhatsAppEmbeddedSignup() {
     try {
         const res = await fetch("/api/whatsapp/embedded-config");
         const config = await res.json();
-        const configId = String(config.config_id || "10034031760860138").trim();
+        let configId = String(config.config_id || "1003403176086013").trim();
+        if (configId === "10034031760860138") {
+            configId = "1003403176086013";
+        }
         const appId = String(config.app_id || "1274136137801052").trim();
 
         if (!configId || configId.length === 0) {
