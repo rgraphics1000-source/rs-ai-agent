@@ -27,11 +27,19 @@ def init_db():
         stock INTEGER DEFAULT 10,
         category TEXT DEFAULT 'General',
         image_url TEXT,
+        gallery_images TEXT DEFAULT '[]',
         tags TEXT,
         is_active INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
+
+    # Auto-migration for existing databases
+    try:
+        cursor.execute("ALTER TABLE products ADD COLUMN gallery_images TEXT DEFAULT '[]'")
+        conn.commit()
+    except Exception:
+        pass
 
     # 2. Orders Table
     cursor.execute("""

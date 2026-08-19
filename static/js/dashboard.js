@@ -297,8 +297,184 @@ async function handleManualOrder(e) {
 }
 
 // ==========================================
-// 4. PRODUCT CATALOG
+// 4. PRODUCT CATALOG (MULTI-IMAGE SUPPORT)
 // ==========================================
+let addProductSelectedFiles = [];
+let editProductExistingImages = [];
+let editProductNewFiles = [];
+
+function previewAddProductImages(e) {
+    const files = Array.from(e.target.files);
+    addProductSelectedFiles = addProductSelectedFiles.concat(files);
+    renderAddProductPreviews();
+}
+
+function renderAddProductPreviews() {
+    const wrapper = document.getElementById("add-prod-preview-wrapper");
+    const container = document.getElementById("add-prod-images-preview");
+    if (!container || !wrapper) return;
+
+    if (addProductSelectedFiles.length === 0) {
+        wrapper.style.display = "none";
+        container.innerHTML = "";
+        return;
+    }
+
+    wrapper.style.display = "block";
+    container.innerHTML = "";
+
+    addProductSelectedFiles.forEach((file, idx) => {
+        const item = document.createElement("div");
+        item.style.position = "relative";
+        item.style.width = "70px";
+        item.style.height = "70px";
+        item.style.borderRadius = "6px";
+        item.style.overflow = "hidden";
+        item.style.border = idx === 0 ? "2px solid #ea580c" : "1px solid var(--border-glass)";
+
+        const img = document.createElement("img");
+        img.src = URL.createObjectURL(file);
+        img.style.width = "100%";
+        img.style.height = "100%";
+        img.style.objectFit = "cover";
+
+        const badge = document.createElement("span");
+        if (idx === 0) {
+            badge.innerText = "Cover";
+            badge.style.position = "absolute";
+            badge.style.bottom = "0";
+            badge.style.left = "0";
+            badge.style.right = "0";
+            badge.style.background = "rgba(234, 88, 12, 0.85)";
+            badge.style.fontSize = "9px";
+            badge.style.textAlign = "center";
+            badge.style.color = "#fff";
+            badge.style.fontWeight = "bold";
+        }
+
+        const delBtn = document.createElement("button");
+        delBtn.innerHTML = "&times;";
+        delBtn.type = "button";
+        delBtn.style.position = "absolute";
+        delBtn.style.top = "2px";
+        delBtn.style.right = "2px";
+        delBtn.style.background = "rgba(239, 68, 68, 0.9)";
+        delBtn.style.color = "#fff";
+        delBtn.style.border = "none";
+        delBtn.style.borderRadius = "50%";
+        delBtn.style.width = "18px";
+        delBtn.style.height = "18px";
+        delBtn.style.cursor = "pointer";
+        delBtn.style.fontSize = "12px";
+        delBtn.style.lineHeight = "1";
+        delBtn.onclick = () => {
+            addProductSelectedFiles.splice(idx, 1);
+            renderAddProductPreviews();
+        };
+
+        item.appendChild(img);
+        if (idx === 0) item.appendChild(badge);
+        item.appendChild(delBtn);
+        container.appendChild(item);
+    });
+}
+
+function previewEditProductImages(e) {
+    const files = Array.from(e.target.files);
+    editProductNewFiles = editProductNewFiles.concat(files);
+    renderEditProductPreviews();
+}
+
+function renderEditProductPreviews() {
+    const container = document.getElementById("edit-prod-images-preview");
+    if (!container) return;
+    container.innerHTML = "";
+
+    // Render existing images
+    editProductExistingImages.forEach((url, idx) => {
+        const item = document.createElement("div");
+        item.style.position = "relative";
+        item.style.width = "70px";
+        item.style.height = "70px";
+        item.style.borderRadius = "6px";
+        item.style.overflow = "hidden";
+        item.style.border = idx === 0 ? "2px solid #ea580c" : "1px solid var(--border-glass)";
+
+        const img = document.createElement("img");
+        img.src = url;
+        img.style.width = "100%";
+        img.style.height = "100%";
+        img.style.objectFit = "cover";
+
+        const delBtn = document.createElement("button");
+        delBtn.innerHTML = "&times;";
+        delBtn.type = "button";
+        delBtn.style.position = "absolute";
+        delBtn.style.top = "2px";
+        delBtn.style.right = "2px";
+        delBtn.style.background = "rgba(239, 68, 68, 0.9)";
+        delBtn.style.color = "#fff";
+        delBtn.style.border = "none";
+        delBtn.style.borderRadius = "50%";
+        delBtn.style.width = "18px";
+        delBtn.style.height = "18px";
+        delBtn.style.cursor = "pointer";
+        delBtn.style.fontSize = "12px";
+        delBtn.style.lineHeight = "1";
+        delBtn.onclick = () => {
+            editProductExistingImages.splice(idx, 1);
+            renderEditProductPreviews();
+        };
+
+        item.appendChild(img);
+        item.appendChild(delBtn);
+        container.appendChild(item);
+    });
+
+    // Render newly selected files
+    editProductNewFiles.forEach((file, idx) => {
+        const item = document.createElement("div");
+        item.style.position = "relative";
+        item.style.width = "70px";
+        item.style.height = "70px";
+        item.style.borderRadius = "6px";
+        item.style.overflow = "hidden";
+        item.style.border = "1px dashed #34d399";
+
+        const img = document.createElement("img");
+        img.src = URL.createObjectURL(file);
+        img.style.width = "100%";
+        img.style.height = "100%";
+        img.style.objectFit = "cover";
+
+        const delBtn = document.createElement("button");
+        delBtn.innerHTML = "&times;";
+        delBtn.type = "button";
+        delBtn.style.position = "absolute";
+        delBtn.style.top = "2px";
+        delBtn.style.right = "2px";
+        delBtn.style.background = "rgba(239, 68, 68, 0.9)";
+        delBtn.style.color = "#fff";
+        delBtn.style.border = "none";
+        delBtn.style.borderRadius = "50%";
+        delBtn.style.width = "18px";
+        delBtn.style.height = "18px";
+        delBtn.style.cursor = "pointer";
+        delBtn.style.fontSize = "12px";
+        delBtn.style.lineHeight = "1";
+        delBtn.onclick = () => {
+            editProductNewFiles.splice(idx, 1);
+            renderEditProductPreviews();
+        };
+
+        item.appendChild(img);
+        item.appendChild(delBtn);
+        container.appendChild(item);
+    });
+}
+
+let cachedProductsList = [];
+
 async function loadProducts() {
     const grid = document.getElementById("products-grid");
     if (!grid) return;
@@ -306,6 +482,7 @@ async function loadProducts() {
     try {
         const res = await fetch("/api/products");
         const data = await res.json();
+        cachedProductsList = data.products || [];
 
         grid.innerHTML = "";
         if (!data.products || data.products.length === 0) {
@@ -316,26 +493,46 @@ async function loadProducts() {
         data.products.forEach(p => {
             const card = document.createElement("div");
             card.className = "product-card";
-            const imgUrl = p.image_url || "/static/uploads/sample_panjabi.jpg";
+            const gallery = (p.gallery_images && p.gallery_images.length > 0) ? p.gallery_images : (p.image_url ? [p.image_url] : ["/static/uploads/sample_panjabi.jpg"]);
+            const coverImg = gallery[0];
             const priceHtml = p.discount_price 
                 ? `<span>৳${p.discount_price}</span> <span class="product-old-price">৳${p.price}</span>` 
                 : `<span>৳${p.price}</span>`;
 
+            const photoBadge = gallery.length > 1 
+                ? `<span style="position:absolute; top: 10px; right: 10px; background: rgba(10,13,20,0.85); color: #fff; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid rgba(255,255,255,0.2);" onclick="openProductGallery(${p.id})"><i class="fas fa-images"></i> ${gallery.length} Photos</span>` 
+                : '';
+
             card.innerHTML = `
-                <img src="${imgUrl}" alt="${p.name}" class="product-thumb" onerror="this.src='/static/uploads/sample_panjabi.jpg'">
+                <div style="position: relative; cursor: pointer;" onclick="openProductGallery(${p.id})">
+                    <img src="${coverImg}" alt="${p.name}" class="product-thumb" onerror="this.src='/static/uploads/sample_panjabi.jpg'">
+                    ${photoBadge}
+                </div>
                 <div class="product-body">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span class="product-code">${p.code}</span>
                         <span class="badge ${p.stock > 0 ? 'badge-delivered' : 'badge-cancelled'}">${p.stock > 0 ? `Stock: ${p.stock}` : 'Out of stock'}</span>
                     </div>
-                    <h4 class="product-name">${p.name}</h4>
+                    <h4 class="product-name" style="cursor: pointer;" onclick="openProductGallery(${p.id})">${p.name}</h4>
                     <div class="product-price">${priceHtml}</div>
                     <p style="font-size: 12px; color: var(--text-muted); margin-top: 6px; flex: 1;">${p.description || ''}</p>
+                    
+                    ${gallery.length > 1 ? `
+                    <div style="display:flex; gap: 4px; margin: 8px 0; overflow-x: auto;">
+                        ${gallery.slice(0, 4).map(u => `<img src="${u}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-glass);" onclick="openProductGallery(${p.id})">`).join('')}
+                        ${gallery.length > 4 ? `<span style="font-size: 10px; align-self: center; color: var(--text-muted);">+${gallery.length - 4}</span>` : ''}
+                    </div>` : ''}
+
                     <div class="product-footer">
                         <span style="font-size: 11px; color: var(--text-dim);">${p.category}</span>
-                        <button class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" onclick="deleteProduct(${p.id})">
-                            <i class="fas fa-trash"></i> Delete
-                        </button>
+                        <div style="display: flex; gap: 6px;">
+                            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="openEditProductModal(${p.id})">
+                                <i class="fas fa-edit"></i> Edit
+                            </button>
+                            <button class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" onclick="deleteProduct(${p.id})">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
@@ -351,6 +548,13 @@ async function handleAddProduct(e) {
     const form = document.getElementById("form-add-product");
     const formData = new FormData(form);
 
+    // Remove single file image if present, and append all addProductSelectedFiles
+    formData.delete("image");
+    formData.delete("images");
+    addProductSelectedFiles.forEach(file => {
+        formData.append("images", file);
+    });
+
     try {
         const res = await fetch("/api/products", {
             method: "POST",
@@ -358,8 +562,10 @@ async function handleAddProduct(e) {
         });
         const data = await res.json();
         if (data.success) {
-            showToast("Product added successfully!", "success");
+            showToast("Product added with all photos!", "success");
             form.reset();
+            addProductSelectedFiles = [];
+            renderAddProductPreviews();
             closeModal("modal-add-product");
             loadProducts();
             loadOverview();
@@ -367,6 +573,91 @@ async function handleAddProduct(e) {
     } catch (e) {
         showToast("Could not add product", "danger");
     }
+}
+
+function openEditProductModal(productId) {
+    const p = cachedProductsList.find(item => item.id === productId);
+    if (!p) return;
+
+    document.getElementById("edit-prod-id").value = p.id;
+    document.getElementById("edit-prod-name").value = p.name || "";
+    document.getElementById("edit-prod-code").value = p.code || "";
+    document.getElementById("edit-prod-category").value = p.category || "General";
+    document.getElementById("edit-prod-price").value = p.price || "";
+    document.getElementById("edit-prod-discount-price").value = p.discount_price || "";
+    document.getElementById("edit-prod-stock").value = p.stock || "10";
+    document.getElementById("edit-prod-description").value = p.description || "";
+
+    editProductExistingImages = (p.gallery_images && p.gallery_images.length > 0) ? [...p.gallery_images] : (p.image_url ? [p.image_url] : []);
+    editProductNewFiles = [];
+    renderEditProductPreviews();
+
+    openModal("modal-edit-product");
+}
+
+async function handleEditProduct(e) {
+    e.preventDefault();
+    const productId = document.getElementById("edit-prod-id").value;
+    const formData = new FormData();
+    formData.append("name", document.getElementById("edit-prod-name").value);
+    formData.append("code", document.getElementById("edit-prod-code").value);
+    formData.append("category", document.getElementById("edit-prod-category").value);
+    formData.append("price", document.getElementById("edit-prod-price").value);
+    formData.append("discount_price", document.getElementById("edit-prod-discount-price").value);
+    formData.append("stock", document.getElementById("edit-prod-stock").value);
+    formData.append("description", document.getElementById("edit-prod-description").value);
+    formData.append("existing_images", JSON.stringify(editProductExistingImages));
+
+    editProductNewFiles.forEach(file => {
+        formData.append("images", file);
+    });
+
+    try {
+        const res = await fetch(`/api/products/${productId}/edit`, {
+            method: "POST",
+            body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("Product updated successfully!", "success");
+            closeModal("modal-edit-product");
+            loadProducts();
+        }
+    } catch (e) {
+        showToast("Update failed", "danger");
+    }
+}
+
+function openProductGallery(productId) {
+    const p = cachedProductsList.find(item => item.id === productId);
+    if (!p) return;
+
+    const gallery = (p.gallery_images && p.gallery_images.length > 0) ? p.gallery_images : (p.image_url ? [p.image_url] : ["/static/uploads/sample_panjabi.jpg"]);
+    const title = document.getElementById("gallery-modal-title");
+    const body = document.getElementById("gallery-modal-body");
+    if (!title || !body) return;
+
+    title.innerHTML = `<i class="fas fa-images" style="color:var(--primary-light);"></i> ${p.name} (${gallery.length} Photos)`;
+
+    body.innerHTML = `
+        <div style="margin-bottom: 12px;">
+            <img id="gallery-main-view" src="${gallery[0]}" style="width: 100%; max-height: 380px; object-fit: contain; border-radius: 8px; background: rgba(0,0,0,0.4);">
+        </div>
+        <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; max-height: 100px; overflow-y: auto; padding: 6px;">
+            ${gallery.map((url, idx) => `
+                <img src="${url}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 6px; cursor: pointer; border: ${idx === 0 ? '2px solid #ea580c' : '1px solid var(--border-glass)'};" onclick="document.getElementById('gallery-main-view').src='${url}'; this.parentElement.querySelectorAll('img').forEach(i => i.style.border='1px solid var(--border-glass)'); this.style.border='2px solid #ea580c';">
+            `).join('')}
+        </div>
+        <div style="margin-top: 14px; text-align: left; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between;">
+                <span style="font-weight: 600; font-size: 15px;">${p.name}</span>
+                <span style="color: #34d399; font-weight: 700;">৳${p.discount_price || p.price}</span>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">${p.description || ''}</p>
+        </div>
+    `;
+
+    openModal("modal-view-gallery");
 }
 
 async function deleteProduct(productId) {

@@ -14,7 +14,7 @@ def get_product_catalog_context() -> str:
     """Fetches active products from DB to feed into Gemini prompt."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, code, price, discount_price, stock, category, description, image_url FROM products WHERE is_active = 1")
+    cursor.execute("SELECT id, name, code, price, discount_price, stock, category, description, image_url, gallery_images FROM products WHERE is_active = 1")
     products = cursor.fetchall()
     conn.close()
 
@@ -26,9 +26,20 @@ def get_product_catalog_context() -> str:
         price = p["discount_price"] if p["discount_price"] and p["discount_price"] < p["price"] else p["price"]
         old_price = f" (আগের দাম: {p['price']}৳)" if p["discount_price"] and p["discount_price"] < p["price"] else ""
         stock_status = f"স্টক: {p['stock']} টি" if p['stock'] > 0 else "স্টক আউট"
-        img = f" [Image: {p['image_url']}]" if p['image_url'] else ""
+        
+        gallery_info = ""
+        try:
+            imgs = json.loads(p["gallery_images"] or "[]")
+            if imgs:
+                gallery_info = f" [Images: {', '.join(imgs)}]"
+            elif p["image_url"]:
+                gallery_info = f" [Image: {p['image_url']}]"
+        except Exception:
+            if p["image_url"]:
+                gallery_info = f" [Image: {p['image_url']}]"
+
         lines.append(
-            f"• [{p['code']}] {p['name']} - দাম: {price}৳{old_price} | {stock_status} | বিবরণ: {p['description']}{img}"
+            f"• [{p['code']}] {p['name']} - দাম: {price}৳{old_price} | {stock_status} | বিবরণ: {p['description']}{gallery_info}"
         )
     return "\n".join(lines)
 

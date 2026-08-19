@@ -741,9 +741,9 @@
          ========================================== -->
     <!-- Add Product Modal -->
     <div id="modal-add-product" class="modal-overlay">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 580px;">
             <div class="modal-header">
-                <h3><i class="fas fa-plus-circle" style="color:var(--primary-light);"></i> Add New Product</h3>
+                <h3><i class="fas fa-plus-circle" style="color:var(--primary-light);"></i> Add New Product (একাধিক ছবি সহ)</h3>
                 <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-add-product')">&times;</button>
             </div>
             <form id="form-add-product" onsubmit="handleAddProduct(event)">
@@ -777,9 +777,13 @@
                         <input type="number" name="stock" class="form-control" value="15">
                     </div>
                     <div class="form-group">
-                        <label>Product Photo:</label>
-                        <input type="file" name="image" class="form-control" accept="image/*">
+                        <label><i class="fas fa-images"></i> Product Photos (একাধিক ছবি সিলেক্ট করুন):</label>
+                        <input type="file" id="add-prod-images-input" class="form-control" accept="image/*" multiple onchange="previewAddProductImages(event)">
                     </div>
+                </div>
+                <div class="form-group" id="add-prod-preview-wrapper" style="display: none;">
+                    <label style="font-size: 12px; color: var(--text-muted);">Selected Photos Preview (ছবি প্রিভিউ):</label>
+                    <div id="add-prod-images-preview" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;"></div>
                 </div>
                 <div class="form-group">
                     <label>Description & Sizes:</label>
@@ -787,9 +791,81 @@
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-product')">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Product</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Product</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Edit Product Modal -->
+    <div id="modal-edit-product" class="modal-overlay">
+        <div class="modal-content" style="max-width: 580px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-edit" style="color:var(--primary-light);"></i> Edit Product</h3>
+                <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-edit-product')">&times;</button>
+            </div>
+            <form id="form-edit-product" onsubmit="handleEditProduct(event)">
+                <input type="hidden" id="edit-prod-id">
+                <div class="form-group">
+                    <label>Product Name: *</label>
+                    <input type="text" id="edit-prod-name" class="form-control" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>SKU / Code: *</label>
+                        <input type="text" id="edit-prod-code" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Category:</label>
+                        <input type="text" id="edit-prod-category" class="form-control">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Regular Price (৳): *</label>
+                        <input type="number" id="edit-prod-price" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Offer Price (৳):</label>
+                        <input type="number" id="edit-prod-discount-price" class="form-control">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Stock Count:</label>
+                        <input type="number" id="edit-prod-stock" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-plus"></i> Add More Photos:</label>
+                        <input type="file" id="edit-prod-images-input" class="form-control" accept="image/*" multiple onchange="previewEditProductImages(event)">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 12px; color: var(--text-muted);">Product Gallery Photos (ছবি ডিলিট করতে ক্রসে ক্লিক করুন):</label>
+                    <div id="edit-prod-images-preview" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;"></div>
+                </div>
+                <div class="form-group">
+                    <label>Description & Sizes:</label>
+                    <textarea id="edit-prod-description" class="form-control" rows="2"></textarea>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-edit-product')">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Update Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Product Gallery Modal -->
+    <div id="modal-view-gallery" class="modal-overlay">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 id="gallery-modal-title"><i class="fas fa-images" style="color:var(--primary-light);"></i> Product Photos</h3>
+                <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-view-gallery')">&times;</button>
+            </div>
+            <div id="gallery-modal-body" style="padding: 10px 0;">
+                <!-- Populated dynamically -->
+            </div>
         </div>
     </div>
 

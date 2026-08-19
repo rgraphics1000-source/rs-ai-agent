@@ -3,7 +3,7 @@ import json
 import csv
 import io
 import uuid
-from typing import Optional
+from typing import Optional, List
 from fastapi import FastAPI, Request, Response, Form, File, UploadFile, Query, HTTPException, Depends
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -191,7 +191,17 @@ async def api_list_products():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM products ORDER BY id DESC")
-    products = [dict(r) for r in cursor.fetchall()]
+    products = []
+    for r in cursor.fetchall():
+        d = dict(r)
+        # Parse gallery images JSON
+        try:
+            d["gallery_images"] = json.loads(d.get("gallery_images") or "[]")
+        except Exception:
+            d["gallery_images"] = []
+        if not d["gallery_images"] and d.get("image_url"):
+            d["gallery_images"] = [d["image_url"]]
+        products.append(d)
     conn.close()
     return {"products": products}
 
@@ -205,27 +215,82 @@ async def api_add_product(
     category: str = Form("General"),
     description: str = Form(""),
     tags: Optional[str] = Form(""),
+    images: Optional[List[UploadFile]] = File(None),
     image: Optional[UploadFile] = File(None)
 ):
-    image_url = ""
+    all_image_urls = []
+    files_to_process = []
+    if images:
+        files_to_process.extend(images)
     if image and image.filename:
-        ext = Path(image.filename).suffix
-        unique_name = f"prod_{uuid.uuid4().hex[:8]}{ext}"
-        save_path = settings.UPLOADS_DIR / unique_name
-        contents = await image.read()
-        with open(save_path, "wb") as f:
-            f.write(contents)
-        image_url = f"/static/uploads/{unique_name}"
+        files_to_process.append(image)
+
+    for file_obj in files_to_process:
+        if file_obj and file_obj.filename:
+            ext = Path(file_obj.filename).suffix or ".jpg"
+            unique_name = f"prod_{uuid.uuid4().hex[:8]}{ext}"
+            save_path = settings.UPLOADS_DIR / unique_name
+            contents = await file_obj.read()
+            with open(save_path, "wb") as f:
+                f.write(contents)
+            all_image_urls.append(f"/static/uploads/{unique_name}")
+
+    primary_image_url = all_image_urls[0] if all_image_urls else ""
+    gallery_images_json = json.dumps(all_image_urls)
 
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO products (name, code, price, discount_price, stock, category, description, tags, image_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (name, code, price, discount_price, stock, category, description, tags, image_url))
+        INSERT INTO products (name, code, price, discount_price, stock, category, description, tags, image_url, gallery_images)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (name, code, price, discount_price, stock, category, description, tags, primary_image_url, gallery_images_json))
     conn.commit()
     conn.close()
-    return {"success": True, "message": "Product added successfully"}
+    return {"success": True, "message": "Product added successfully", "image_urls": all_image_urls}
+
+@app.post("/api/products/{product_id}/edit")
+async def api_edit_product(
+    product_id: int,
+    name: str = Form(...),
+    code: str = Form(...),
+    price: float = Form(...),
+    discount_price: Optional[float] = Form(None),
+    stock: int = Form(10),
+    category: str = Form("General"),
+    description: str = Form(""),
+    tags: Optional[str] = Form(""),
+    existing_images: Optional[str] = Form("[]"),
+    images: Optional[List[UploadFile]] = File(None)
+):
+    try:
+        current_images = json.loads(existing_images) if existing_images else []
+    except Exception:
+        current_images = []
+
+    if images:
+        for file_obj in images:
+            if file_obj and file_obj.filename:
+                ext = Path(file_obj.filename).suffix or ".jpg"
+                unique_name = f"prod_{uuid.uuid4().hex[:8]}{ext}"
+                save_path = settings.UPLOADS_DIR / unique_name
+                contents = await file_obj.read()
+                with open(save_path, "wb") as f:
+                    f.write(contents)
+                current_images.append(f"/static/uploads/{unique_name}")
+
+    primary_image_url = current_images[0] if current_images else ""
+    gallery_images_json = json.dumps(current_images)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE products 
+        SET name = ?, code = ?, price = ?, discount_price = ?, stock = ?, category = ?, description = ?, tags = ?, image_url = ?, gallery_images = ?
+        WHERE id = ?
+    """, (name, code, price, discount_price, stock, category, description, tags, primary_image_url, gallery_images_json, product_id))
+    conn.commit()
+    conn.close()
+    return {"success": True, "message": "Product updated successfully"}
 
 @app.delete("/api/products/{product_id}")
 async def api_delete_product(product_id: int):
