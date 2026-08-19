@@ -162,6 +162,57 @@ def init_db():
     ]
     cursor.executemany("INSERT INTO faqs (question, answer, category) VALUES (?, ?, ?)", sample_faqs)
 
+    # Seed Real Products if none exist
+    cursor.execute("SELECT COUNT(*) FROM products")
+    if cursor.fetchone()[0] == 0:
+        id_card_imgs = [f'/static/uploads/id_card/{f.name}' for f in (settings.UPLOADS_DIR / 'id_card').glob('*.jpg')] if (settings.UPLOADS_DIR / 'id_card').exists() else []
+        fita_imgs = [f'/static/uploads/fita/{f.name}' for f in (settings.UPLOADS_DIR / 'fita').glob('*.jpg')] if (settings.UPLOADS_DIR / 'fita').exists() else []
+        cover_imgs = [f'/static/uploads/cover/{f.name}' for f in (settings.UPLOADS_DIR / 'cover').glob('*.jpg')] if (settings.UPLOADS_DIR / 'cover').exists() else []
+        pkg_imgs = [f'/static/uploads/pakage/{f.name}' for f in (settings.UPLOADS_DIR / 'pakage').glob('*.jpg')] if (settings.UPLOADS_DIR / 'pakage').exists() else []
+
+        real_products = [
+            (
+                'আইডি কার্ড (জাপানি মেশিনের UV PRINT)',
+                'IDC-01',
+                'জাপানি মেশিনের অরজিনাল হাই-কোয়ালিটি UV কালার প্রিন্ট, ১০০% ওয়াটারপ্রুফ এবং প্রিমিয়াম ফ্লেক্সিবল PVC ফিনিশিং।',
+                35.0, 30.0, 1000, 'আইডি কার্ড',
+                id_card_imgs[0] if id_card_imgs else '',
+                json.dumps(id_card_imgs),
+                'id card, uv print, pvc card'
+            ),
+            (
+                'ডিজিটাল সাবলিমেশন ফিতা (Lanyards / Ribbons)',
+                'FITA-02',
+                'ডিজিটাল মাল্টিকালর সাবলিমেশন প্রিন্ট, প্রিমিয়াম সাটিন ফেব্রিক ও হেভি ডিউটি হুক। স্কুল, কলেজ ও মাদ্রাসার কাস্টমাইজড নাম ও লোগো সহ প্রস্তুত করা হয়।',
+                25.0, 20.0, 1000, 'ফিতা ও লেইনিয়ার্ড',
+                fita_imgs[0] if fita_imgs else '',
+                json.dumps(fita_imgs),
+                'fita, lanyard, ribbon'
+            ),
+            (
+                'আইডি কার্ড হোল্ডার ও কভার (Card Holders)',
+                'COV-03',
+                'স্বচ্ছ প্লাস্টিক কভার, কালারফুল বর্ডার ও প্রিমিয়াম হার্ড প্লাস্টিক ডাবল সাইডেড হোল্ডার।',
+                15.0, 12.0, 1000, 'কভার ও হোল্ডার',
+                cover_imgs[0] if cover_imgs else '',
+                json.dumps(cover_imgs),
+                'holder, cover, card holder'
+            ),
+            (
+                'আইডি কার্ড সম্পূর্ণ কম্বো প্যাকেজ (কার্ড + ফিতা + কভার)',
+                'PKG-COMBO',
+                'জাপানি মেশিনের UV প্রিন্ট কার্ড + ডিজিটাল প্রিন্ট ফিতা (১.৫/২ সেমি) + কভার। প্যাকেজ ০১ (৭০৳), প্যাকেজ ০২ (৭০৳), প্যাকেজ ০৩ (৮৩৳), প্যাকেজ ০৭ (৯১৳) ইত্যাদি। (১০০+ অর্ডারে স্পেশাল রেট)',
+                85.0, 70.0, 1000, 'প্যাকেজ সমূহ',
+                pkg_imgs[0] if pkg_imgs else '',
+                json.dumps(pkg_imgs),
+                'package, combo, full set'
+            )
+        ]
+        cursor.executemany("""
+            INSERT INTO products (name, code, description, price, discount_price, stock, category, image_url, gallery_images, tags, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        """, real_products)
+
     # Clean up old demo products if present
     cursor.execute("DELETE FROM products WHERE code IN ('PJ-101', 'TP-202', 'CB-303')")
     
