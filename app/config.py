@@ -33,6 +33,7 @@ class Settings:
     FB_APP_SECRET: str = os.getenv("FB_APP_SECRET", "")
     
     # WhatsApp Cloud API & Coexistence
+    META_SYSTEM_USER_ACCESS_TOKEN: str = os.getenv("META_SYSTEM_USER_ACCESS_TOKEN", "")
     WHATSAPP_WABA_ID: str = os.getenv("WHATSAPP_WABA_ID", "27905447135785944")
     WHATSAPP_PHONE_NUMBER_ID: str = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "1265595526643418")
     WHATSAPP_ACCESS_TOKEN: str = os.getenv("WHATSAPP_ACCESS_TOKEN", "")

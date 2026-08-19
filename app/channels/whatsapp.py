@@ -9,7 +9,12 @@ GRAPH_API_URL = "https://graph.facebook.com/v19.0"
 
 def get_whatsapp_credentials():
     phone_id = get_setting("whatsapp_phone_number_id", settings.WHATSAPP_PHONE_NUMBER_ID)
-    token = get_setting("whatsapp_access_token", settings.WHATSAPP_ACCESS_TOKEN)
+    token = (
+        get_setting("meta_system_user_access_token")
+        or get_setting("whatsapp_access_token")
+        or settings.META_SYSTEM_USER_ACCESS_TOKEN
+        or settings.WHATSAPP_ACCESS_TOKEN
+    )
     return phone_id, token
 
 def send_whatsapp_message(to_number: str, text: str) -> bool:

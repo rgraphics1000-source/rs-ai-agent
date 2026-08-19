@@ -148,11 +148,12 @@ def init_db():
         "fb_verify_token": settings.FB_VERIFY_TOKEN,
         "whatsapp_waba_id": settings.WHATSAPP_WABA_ID,
         "whatsapp_phone_number_id": settings.WHATSAPP_PHONE_NUMBER_ID,
+        "meta_system_user_access_token": settings.META_SYSTEM_USER_ACCESS_TOKEN,
         "whatsapp_access_token": settings.WHATSAPP_ACCESS_TOKEN,
         "whatsapp_verify_token": settings.WHATSAPP_VERIFY_TOKEN,
         "whatsapp_display_phone_number": settings.WHATSAPP_DISPLAY_PHONE_NUMBER,
         "whatsapp_connection_mode": "business_app_coexistence",
-        "whatsapp_connection_status": "connected" if settings.WHATSAPP_ACCESS_TOKEN else "not_connected",
+        "whatsapp_connection_status": "connected" if (settings.META_SYSTEM_USER_ACCESS_TOKEN or settings.WHATSAPP_ACCESS_TOKEN) else "not_connected",
         "voice_enabled": "true",
         "voice_type": "bn-BD-NabanitaNeural" # Bangla female natural voice
     }
@@ -265,8 +266,8 @@ def get_all_settings(masked: bool = False) -> dict:
     env_keys = [
         "META_APP_ID", "META_EMBEDDED_SIGNUP_CONFIG_ID", "FB_PAGE_ACCESS_TOKEN", 
         "FB_VERIFY_TOKEN", "FB_PAGE_ID", "FB_APP_SECRET", "GEMINI_API_KEY", 
-        "WHATSAPP_WABA_ID", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN", 
-        "WHATSAPP_VERIFY_TOKEN", "WHATSAPP_DISPLAY_PHONE_NUMBER"
+        "META_SYSTEM_USER_ACCESS_TOKEN", "WHATSAPP_WABA_ID", "WHATSAPP_PHONE_NUMBER_ID", 
+        "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_VERIFY_TOKEN", "WHATSAPP_DISPLAY_PHONE_NUMBER"
     ]
     for ek in env_keys:
         val = os.getenv(ek)
@@ -274,7 +275,10 @@ def get_all_settings(masked: bool = False) -> dict:
             result[ek.lower()] = val
             
     # Calculate connection statuses
-    has_wa_token = bool(result.get("whatsapp_access_token") and len(str(result.get("whatsapp_access_token")).strip()) > 10)
+    has_wa_token = bool(
+        (result.get("meta_system_user_access_token") and len(str(result.get("meta_system_user_access_token")).strip()) > 10)
+        or (result.get("whatsapp_access_token") and len(str(result.get("whatsapp_access_token")).strip()) > 10)
+    )
     has_fb_token = bool(result.get("fb_page_access_token") and len(str(result.get("fb_page_access_token")).strip()) > 10)
     
     result["whatsapp_token_configured"] = has_wa_token
@@ -290,7 +294,10 @@ def get_all_settings(masked: bool = False) -> dict:
         if has_fb_token:
             raw = str(result["fb_page_access_token"]).strip()
             result["fb_page_access_token"] = f"{raw[:6]}...{raw[-4:]}" if len(raw) > 12 else "********"
-        if has_wa_token:
+        if result.get("meta_system_user_access_token") and len(str(result.get("meta_system_user_access_token")).strip()) > 10:
+            raw = str(result["meta_system_user_access_token"]).strip()
+            result["meta_system_user_access_token"] = f"{raw[:6]}...{raw[-4:]}" if len(raw) > 12 else "********"
+        if result.get("whatsapp_access_token") and len(str(result.get("whatsapp_access_token")).strip()) > 10:
             raw = str(result["whatsapp_access_token"]).strip()
             result["whatsapp_access_token"] = f"{raw[:6]}...{raw[-4:]}" if len(raw) > 12 else "********"
         if result.get("gemini_api_key"):
