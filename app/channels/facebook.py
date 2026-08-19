@@ -170,10 +170,16 @@ async def handle_facebook_webhook_event(data: dict):
                         print(f"[Facebook Messenger Replying]: '{reply_text[:60]}...' to {sender_id}")
                         send_fb_text_message(sender_id, reply_text)
 
-                    # If AI generated a voice response, send audio
-                    voice_url = ai_result.get("voice_url")
-                    if voice_url:
-                        pass
+                    # Send all matched product images as rich media attachments
+                    matched_images = ai_result.get("matched_images", [])
+                    base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
+
+                    for img_path in matched_images:
+                        if not img_path:
+                            continue
+                        full_img_url = img_path if img_path.startswith("http") else f"{base_server_url}{img_path}"
+                        print(f"[Facebook Messenger Sending Image]: {full_img_url} to {sender_id}")
+                        send_fb_media_message(sender_id, "image", full_img_url)
 
             # 2. Handle Feed Comments (Auto Comment Reply & Private Inbox Message)
             if "changes" in entry:

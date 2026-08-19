@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import base64
 from pathlib import Path
 from google import genai
@@ -214,21 +215,48 @@ async def process_customer_message(
             except Exception as e:
                 print(f"[Order Parse Error]: {e}")
 
-        # AI always replies in pure text
-        voice_url = ""
-
-        # Check if reply recommends any specific product with images to return
+        # Extract any image tags from raw_text e.g. [Image: /static/uploads/prod_1.jpg]
         matched_images = []
+        found_tags = re.findall(r'\[Image[s]?:\s*([^\]]+)\]', clean_reply)
+        for tag in found_tags:
+            # Handle comma separated or single URL
+            urls = [u.strip() for u in tag.split(",") if u.strip()]
+            for u in urls:
+                if u not in matched_images:
+                    matched_images.append(u)
+
+        # Remove the raw [Image: ...] tags completely from text output
+        clean_reply = re.sub(r'\[Image[s]?:\s*[^\]]+\]', '', clean_reply).strip()
+
+        # If customer explicitly asked for photo/picture, match products from DB
+        user_lower = (message_text or "").lower()
+        is_asking_photo = any(w in user_lower for w in ["ছবি", "পিক", "photo", "image", "pic", "কালার", "দেখাও", "কার্ডের ছবি", "ছবি দাও", "ছবি দিন"])
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT code, name, image_url FROM products WHERE is_active = 1 AND image_url IS NOT NULL")
+        cursor.execute("SELECT code, name, image_url, gallery_images FROM products WHERE is_active = 1")
         all_prods = cursor.fetchall()
         conn.close()
 
         for p in all_prods:
-            if p["code"] in clean_reply or p["name"] in clean_reply:
+            name_match = (p["name"] and p["name"] in clean_reply) or (p["name"] and p["name"].lower() in user_lower)
+            code_match = (p["code"] and p["code"] in clean_reply) or (p["code"] and p["code"].lower() in user_lower)
+            
+            if name_match or code_match or is_asking_photo:
+                # Add main image
                 if p["image_url"] and p["image_url"] not in matched_images:
                     matched_images.append(p["image_url"])
+                # Add gallery images
+                try:
+                    g_imgs = json.loads(p["gallery_images"] or "[]")
+                    for gu in g_imgs:
+                        if gu and gu not in matched_images:
+                            matched_images.append(gu)
+                except Exception:
+                    pass
+
+        # AI always replies in pure text
+        voice_url = ""
 
         return {
             "reply_text": clean_reply,

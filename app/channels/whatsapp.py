@@ -36,6 +36,34 @@ def send_whatsapp_message(to_number: str, text: str) -> bool:
         print(f"[WhatsApp Send Error]: {e}")
         return False
 
+def send_whatsapp_image(to_number: str, image_url: str, caption: str = "") -> bool:
+    """Sends an image via WhatsApp Cloud API."""
+    phone_id, token = get_whatsapp_credentials()
+    if not phone_id or not token or not to_number or not image_url:
+        return False
+
+    url = f"{GRAPH_API_URL}/{phone_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to_number,
+        "type": "image",
+        "image": {
+            "link": image_url,
+            "caption": caption
+        }
+    }
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=10)
+        return r.status_code == 200
+    except Exception as e:
+        print(f"[WhatsApp Image Send Error]: {e}")
+        return False
+
 async def handle_whatsapp_webhook_event(data: dict):
     """Processes incoming WhatsApp messages."""
     try:
@@ -106,6 +134,16 @@ async def handle_whatsapp_webhook_event(data: dict):
                         reply_text = ai_result.get("reply_text", "")
                         if reply_text and sender_phone:
                             send_whatsapp_message(sender_phone, reply_text)
+
+                        # Send all matched product images
+                        matched_images = ai_result.get("matched_images", [])
+                        base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
+
+                        for img_path in matched_images:
+                            if not img_path:
+                                continue
+                            full_img_url = img_path if img_path.startswith("http") else f"{base_server_url}{img_path}"
+                            send_whatsapp_image(sender_phone, full_img_url)
 
     except Exception as e:
         print(f"[WhatsApp Webhook Handler Error]: {e}")
