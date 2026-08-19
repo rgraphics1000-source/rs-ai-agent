@@ -151,15 +151,15 @@ def init_db():
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
 
     # Seed FAQs if none exist
-    cursor.execute("SELECT COUNT(*) FROM faqs")
-    if cursor.fetchone()[0] == 0:
-        sample_faqs = [
-            ("ডেলিভারি চার্জ কত?", "ঢাকার ভেতরে ডেলিভারি চার্জ ৭০ টাকা এবং ঢাকার বাইরে ১৩০ টাকা।", "Delivery"),
-            ("পণ্য রিটার্ন বা এক্সচেঞ্জ পলিসি কী?", "পণ্য হাতে পাওয়ার পর কোনো সমস্যা থাকলে ২৪ ঘণ্টার মধ্যে জানালে ফ্রি এক্সচেঞ্জ করে দেওয়া হবে।", "Return Policy"),
-            ("ক্যাশ অন ডেলিভারি দেওয়া যাবে?", "জি অবশ্যই! সারা বাংলাদেশে ক্যাশ অন ডেলিভারি (Cash on Delivery) সুবিধা রয়েছে। পণ্য দেখে টাকা দিতে পারবেন।", "Payment"),
-            ("ডেলিভারি হতে কত দিন সময় লাগে?", "ঢাকার ভেতরে ২৪-৪৮ ঘণ্টার মধ্যে এবং ঢাকার বাইরে ২-৩ দিনের মধ্যে ডেলিভারি সম্পন্ন হয়।", "Delivery")
-        ]
-        cursor.executemany("INSERT INTO faqs (question, answer, category) VALUES (?, ?, ?)", sample_faqs)
+    cursor.execute("DELETE FROM faqs")
+    sample_faqs = [
+        ("ন্যূনতম কত পিস অর্ডার নেওয়া হয়?", "আমাদের ন্যূনতম অর্ডার পরিমাণ (MOQ) ২০ পিস। ২০ পিসের কম অর্ডার নেওয়া হচ্ছে না।", "Order MOQ"),
+        ("আইডি কার্ডের কোয়ালিটি কেমন?", "আমরা জাপানি মেশিনের অরজিনাল UV কালার প্রিন্ট করি, যা ১০০% ওয়াটারপ্রুফ, প্রিমিয়াম ফিনিশিং এবং দীর্ঘস্থায়ী।", "Quality"),
+        ("ডেলিভারি চার্জ কত?", "ঢাকার ভেতরে ডেলিভারি চার্জ ৭০ টাকা এবং ঢাকার বাইরে ১৩০ টাকা।", "Delivery"),
+        ("ডেলিভারি হতে কত দিন সময় লাগে?", "ডিজাইন ফাইনাল হওয়ার পর ২-৩ কার্যদিবসের মধ্যে সারা বাংলাদেশে কুরিয়ারে ডেলিভারি সম্পন্ন হয়।", "Delivery"),
+        ("ক্যাশ অন ডেলিভারি দেওয়া যাবে?", "জি অবশ্যই! সারা বাংলাদেশে ক্যাশ অন ডেলিভারি (Cash on Delivery) সুবিধা রয়েছে।", "Payment")
+    ]
+    cursor.executemany("INSERT INTO faqs (question, answer, category) VALUES (?, ?, ?)", sample_faqs)
 
     # Clean up old demo products if present
     cursor.execute("DELETE FROM products WHERE code IN ('PJ-101', 'TP-202', 'CB-303')")
