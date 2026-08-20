@@ -21,7 +21,7 @@ from app.database import (
     get_muted_contacts_detailed, get_muted_numbers, add_muted_number, remove_muted_number,
     get_all_connected_pages, get_connected_page, save_connected_page, delete_connected_page,
     get_all_whatsapp_accounts, get_whatsapp_account_by_phone_id, get_whatsapp_account_by_page_id,
-    save_whatsapp_account, delete_whatsapp_account, get_page_ai_config,
+    get_whatsapp_account_by_workspace_id, save_whatsapp_account, delete_whatsapp_account, get_page_ai_config,
     get_all_workspaces, get_workspace, save_workspace, delete_workspace,
     get_faqs, create_faq, delete_faq
 )
@@ -680,10 +680,11 @@ async def api_admin_send_reply(request: Request):
     channel = conv["channel"]
     sender_id = conv["sender_id"]
     page_id = conv["page_id"] if "page_id" in conv.keys() else ""
+    workspace_id = conv["workspace_id"] if "workspace_id" in conv.keys() else 1
 
     send_ok = False
     if channel == "whatsapp":
-        send_ok = send_whatsapp_message(sender_id, reply_text, page_id=page_id)
+        send_ok = send_whatsapp_message(sender_id, reply_text, page_id=page_id, workspace_id=workspace_id)
     elif channel == "facebook":
         send_ok = send_fb_text_message(sender_id, reply_text, page_id=page_id)
     else:
@@ -948,6 +949,46 @@ async def api_remove_muted_contact(request: Request):
     updated_numbers = remove_muted_number(phone)
     contacts = get_muted_contacts_detailed()
     return {"success": True, "message": f"{phone} আন-মিউট করা হয়েছে", "contacts": contacts, "numbers": updated_numbers}
+
+# ==========================================
+# DIAGNOSTICS & SYSTEM STATUS APIS
+# ==========================================
+@app.get("/api/diagnostic/whatsapp")
+@app.get("/api/diagnostics")
+async def api_get_diagnostics():
+    """Safe admin diagnostic endpoint returning masked configuration for debugging."""
+    workspaces = get_all_workspaces()
+    pages = get_all_connected_pages()
+    whatsapp_accounts = get_all_whatsapp_accounts()
+    
+    masked_pages = []
+    for p in pages:
+        p_dict = dict(p)
+        tok = str(p_dict.get("page_access_token") or "")
+        p_dict["page_access_token"] = f"{tok[:6]}...{tok[-4:]}" if len(tok) > 10 else ("********" if tok else "")
+        masked_pages.append(p_dict)
+
+    masked_wa = []
+    for wa in whatsapp_accounts:
+        wa_dict = dict(wa)
+        tok = str(wa_dict.get("access_token") or "")
+        wa_dict["access_token"] = f"{tok[:6]}...{tok[-4:]}" if len(tok) > 10 else ("********" if tok else "")
+        masked_wa.append(wa_dict)
+
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "workspaces": workspaces,
+        "connected_pages": masked_pages,
+        "whatsapp_accounts": masked_wa,
+        "meta_cloud_settings": {
+            "whatsapp_waba_id": get_setting("whatsapp_waba_id", settings.WHATSAPP_WABA_ID),
+            "whatsapp_phone_number_id": get_setting("whatsapp_phone_number_id", settings.WHATSAPP_PHONE_NUMBER_ID),
+            "whatsapp_display_phone_number": get_setting("whatsapp_display_phone_number", settings.WHATSAPP_DISPLAY_PHONE_NUMBER),
+            "meta_app_id": get_setting("meta_app_id", settings.META_APP_ID),
+            "has_whatsapp_access_token": bool(get_setting("whatsapp_access_token") or settings.WHATSAPP_ACCESS_TOKEN or get_setting("meta_system_user_access_token"))
+        }
+    }
 
 @app.get("/api/whatsapp/embedded-config")
 async def api_whatsapp_embedded_config():

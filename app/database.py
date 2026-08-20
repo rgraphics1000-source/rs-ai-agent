@@ -394,24 +394,29 @@ def init_db():
         print(f"[Auto-Migration] Existing Page 1 ('{p1_name}', Page ID: {p1_id}) initialized in connected_pages.")
 
     # Safe Automatic Migration for Existing WhatsApp Account 1 into whatsapp_accounts
+    target_wa_phone_id = str(settings.WHATSAPP_PHONE_NUMBER_ID or "4184514263660680").strip()
+    target_waba_id = str(settings.WHATSAPP_WABA_ID or "27905447135785944").strip()
+    target_wa_display = str(settings.WHATSAPP_DISPLAY_PHONE_NUMBER or "+8801816504097").strip()
+    target_wa_token = str(settings.WHATSAPP_ACCESS_TOKEN or settings.META_SYSTEM_USER_ACCESS_TOKEN or "").strip()
+
     cursor.execute("SELECT COUNT(*) FROM whatsapp_accounts")
     wa_count = cursor.fetchone()[0]
     if wa_count == 0:
         cursor.execute("SELECT value FROM settings WHERE key = 'whatsapp_phone_number_id'")
         wa_p_row = cursor.fetchone()
-        wa_phone_id = wa_p_row["value"] if (wa_p_row and wa_p_row["value"]) else (settings.WHATSAPP_PHONE_NUMBER_ID or "8801816504097_wa")
+        wa_phone_id = wa_p_row["value"] if (wa_p_row and wa_p_row["value"]) else target_wa_phone_id
 
         cursor.execute("SELECT value FROM settings WHERE key = 'whatsapp_waba_id'")
         wa_w_row = cursor.fetchone()
-        wa_waba_id = wa_w_row["value"] if (wa_w_row and wa_w_row["value"]) else settings.WHATSAPP_WABA_ID
+        wa_waba_id = wa_w_row["value"] if (wa_w_row and wa_w_row["value"]) else target_waba_id
 
         cursor.execute("SELECT value FROM settings WHERE key = 'whatsapp_display_phone_number'")
         wa_d_row = cursor.fetchone()
-        wa_display = wa_d_row["value"] if (wa_d_row and wa_d_row["value"]) else "+8801816504097"
+        wa_display = wa_d_row["value"] if (wa_d_row and wa_d_row["value"]) else target_wa_display
 
         cursor.execute("SELECT value FROM settings WHERE key = 'whatsapp_access_token'")
         wa_t_row = cursor.fetchone()
-        wa_token = wa_t_row["value"] if (wa_t_row and wa_t_row["value"]) else settings.WHATSAPP_ACCESS_TOKEN
+        wa_token = wa_t_row["value"] if (wa_t_row and wa_t_row["value"]) else target_wa_token
         if not wa_token:
             cursor.execute("SELECT value FROM settings WHERE key = 'meta_system_user_access_token'")
             ms_row = cursor.fetchone()
@@ -429,6 +434,24 @@ def init_db():
             ) VALUES (1, ?, ?, ?, ?, ?, 'business_app_coexistence', 'connected', 1)
         """, (primary_cp_id, wa_waba_id, wa_phone_id, wa_display, wa_token))
         print(f"[Auto-Migration] Existing WhatsApp Account ({wa_display}, Phone ID: {wa_phone_id}) initialized in whatsapp_accounts.")
+    else:
+        # Idempotent upgrade for Workspace 1: ensure phone_number_id has verified Meta Cloud API ID
+        cursor.execute("SELECT id, phone_number_id, display_phone_number FROM whatsapp_accounts WHERE workspace_id = 1 ORDER BY id ASC")
+        w1_wa_rows = cursor.fetchall()
+        for w1_acc in w1_wa_rows:
+            curr_pid = str(w1_acc["phone_number_id"] or "").strip()
+            if curr_pid in ["8801816504097_wa", "", None] or (w1_acc["display_phone_number"] and "01816504097" in str(w1_acc["display_phone_number"]) and curr_pid != target_wa_phone_id):
+                # Check if target_wa_phone_id already exists in another row
+                cursor.execute("SELECT id FROM whatsapp_accounts WHERE phone_number_id = ? AND id != ?", (target_wa_phone_id, w1_acc["id"]))
+                existing_target = cursor.fetchone()
+                if existing_target:
+                    cursor.execute("DELETE FROM whatsapp_accounts WHERE id = ?", (w1_acc["id"],))
+                else:
+                    cursor.execute("UPDATE whatsapp_accounts SET phone_number_id = ?, display_phone_number = '+8801816504097', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (target_wa_phone_id, w1_acc["id"]))
+                print(f"[Auto-Migration] Updated Workspace 1 WhatsApp Account (ID: {w1_acc['id']}) phone_number_id to '{target_wa_phone_id}'.")
+
+    # Update settings table key whatsapp_phone_number_id
+    cursor.execute("UPDATE settings SET value = ? WHERE key = 'whatsapp_phone_number_id' AND (value = '' OR value = '8801816504097_wa' OR value IS NULL)", (target_wa_phone_id,))
 
     # Scope legacy conversations and comment_logs to primary Page 1
     cursor.execute("SELECT page_id FROM connected_pages ORDER BY id ASC LIMIT 1")
@@ -1093,6 +1116,7 @@ def delete_connected_page(page_id: str) -> bool:
 
 def get_all_whatsapp_accounts() -> list:
     """Returns all configured WhatsApp Business accounts."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1104,16 +1128,19 @@ def get_all_whatsapp_accounts() -> list:
             ORDER BY wa.id ASC
         """)
         rows = cursor.fetchall()
-        conn.close()
         return [dict(r) for r in rows]
     except Exception as e:
         print(f"[DB get_all_whatsapp_accounts Error]: {e}")
         return []
+    finally:
+        if conn:
+            conn.close()
 
 def get_whatsapp_account_by_phone_id(phone_number_id: str) -> Optional[dict]:
     """Finds a WhatsApp account record by its Meta phone_number_id."""
     if not phone_number_id:
         return None
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1127,32 +1154,65 @@ def get_whatsapp_account_by_phone_id(phone_number_id: str) -> Optional[dict]:
             WHERE wa.phone_number_id = ?
         """, (str(phone_number_id),))
         row = cursor.fetchone()
-        conn.close()
         return dict(row) if row else None
     except Exception as e:
         print(f"[DB get_whatsapp_account_by_phone_id Error]: {e}")
         return None
+    finally:
+        if conn:
+            conn.close()
 
 def get_whatsapp_account_by_page_id(page_id: str) -> Optional[dict]:
     """Finds the WhatsApp account linked to a specific connected Facebook Page."""
     if not page_id:
         return None
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT wa.*, cp.page_id, cp.page_name
+            SELECT wa.*, cp.page_id, cp.page_name, w.name as workspace_name, w.id as ws_id
             FROM whatsapp_accounts wa
             JOIN connected_pages cp ON wa.connected_page_id = cp.id
+            LEFT JOIN workspaces w ON wa.workspace_id = w.id
             WHERE cp.page_id = ?
             ORDER BY wa.id ASC LIMIT 1
         """, (str(page_id),))
         row = cursor.fetchone()
-        conn.close()
         return dict(row) if row else None
     except Exception as e:
         print(f"[DB get_whatsapp_account_by_page_id Error]: {e}")
         return None
+    finally:
+        if conn:
+            conn.close()
+
+def get_whatsapp_account_by_workspace_id(workspace_id: int) -> Optional[dict]:
+    """Finds the primary WhatsApp account linked to a specific workspace."""
+    if not workspace_id:
+        return None
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT wa.*, cp.page_id, cp.page_name, cp.shop_name, cp.ai_enabled as page_ai_enabled,
+                   cp.ai_system_prompt as page_ai_prompt, cp.delivery_inside_dhaka, cp.delivery_outside_dhaka,
+                   w.name as workspace_name, w.id as ws_id
+            FROM whatsapp_accounts wa
+            LEFT JOIN connected_pages cp ON wa.connected_page_id = cp.id
+            LEFT JOIN workspaces w ON wa.workspace_id = w.id
+            WHERE wa.workspace_id = ?
+            ORDER BY wa.id ASC LIMIT 1
+        """, (int(workspace_id),))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_whatsapp_account_by_workspace_id Error]: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
 
 def save_whatsapp_account(data: dict) -> int:
     """Inserts or updates a WhatsApp Business account record."""
@@ -1160,84 +1220,91 @@ def save_whatsapp_account(data: dict) -> int:
     if not phone_id:
         raise ValueError("phone_number_id is required")
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM whatsapp_accounts WHERE phone_number_id = ?", (phone_id,))
-    existing = cursor.fetchone()
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM whatsapp_accounts WHERE phone_number_id = ?", (phone_id,))
+        existing = cursor.fetchone()
 
-    connected_page_pk = data.get("connected_page_id")
-    workspace_id = data.get("workspace_id")
-    if not connected_page_pk and data.get("page_id"):
-        cursor.execute("SELECT id, workspace_id FROM connected_pages WHERE page_id = ?", (str(data.get("page_id")),))
-        cp = cursor.fetchone()
-        if cp:
-            connected_page_pk = cp["id"]
-            if not workspace_id:
-                workspace_id = cp["workspace_id"]
+        connected_page_pk = data.get("connected_page_id")
+        workspace_id = data.get("workspace_id")
+        if not connected_page_pk and data.get("page_id"):
+            cursor.execute("SELECT id, workspace_id FROM connected_pages WHERE page_id = ?", (str(data.get("page_id")),))
+            cp = cursor.fetchone()
+            if cp:
+                connected_page_pk = cp["id"]
+                if not workspace_id:
+                    workspace_id = cp["workspace_id"]
 
-    if not workspace_id:
-        workspace_id = 1
+        if not workspace_id:
+            workspace_id = 1
 
-    if existing:
-        wa_pk = existing["id"]
-        cursor.execute("""
-            UPDATE whatsapp_accounts SET
-                workspace_id = COALESCE(?, workspace_id),
-                connected_page_id = COALESCE(?, connected_page_id),
-                waba_id = COALESCE(?, waba_id),
-                display_phone_number = COALESCE(?, display_phone_number),
-                access_token = COALESCE(?, access_token),
-                connection_mode = COALESCE(?, connection_mode),
-                connection_status = COALESCE(?, connection_status),
-                coexistence_active = COALESCE(?, coexistence_active),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (
-            workspace_id,
-            connected_page_pk,
-            data.get("waba_id"),
-            data.get("display_phone_number"),
-            data.get("access_token"),
-            data.get("connection_mode", "business_app_coexistence"),
-            data.get("connection_status", "connected"),
-            data.get("coexistence_active", 1),
-            wa_pk
-        ))
-    else:
-        cursor.execute("""
-            INSERT INTO whatsapp_accounts (
-                workspace_id, connected_page_id, waba_id, phone_number_id, display_phone_number,
-                access_token, connection_mode, connection_status, coexistence_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            workspace_id,
-            connected_page_pk,
-            data.get("waba_id", ""),
-            phone_id,
-            data.get("display_phone_number", ""),
-            data.get("access_token", ""),
-            data.get("connection_mode", "business_app_coexistence"),
-            data.get("connection_status", "connected"),
-            data.get("coexistence_active", 1)
-        ))
-        wa_pk = cursor.lastrowid
+        if existing:
+            wa_pk = existing["id"]
+            cursor.execute("""
+                UPDATE whatsapp_accounts SET
+                    workspace_id = COALESCE(?, workspace_id),
+                    connected_page_id = COALESCE(?, connected_page_id),
+                    waba_id = COALESCE(?, waba_id),
+                    display_phone_number = COALESCE(?, display_phone_number),
+                    access_token = COALESCE(?, access_token),
+                    connection_mode = COALESCE(?, connection_mode),
+                    connection_status = COALESCE(?, connection_status),
+                    coexistence_active = COALESCE(?, coexistence_active),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (
+                workspace_id,
+                connected_page_pk,
+                data.get("waba_id"),
+                data.get("display_phone_number"),
+                data.get("access_token"),
+                data.get("connection_mode", "business_app_coexistence"),
+                data.get("connection_status", "connected"),
+                data.get("coexistence_active", 1),
+                wa_pk
+            ))
+        else:
+            cursor.execute("""
+                INSERT INTO whatsapp_accounts (
+                    workspace_id, connected_page_id, waba_id, phone_number_id, display_phone_number,
+                    access_token, connection_mode, connection_status, coexistence_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                workspace_id,
+                connected_page_pk,
+                data.get("waba_id", ""),
+                phone_id,
+                data.get("display_phone_number", ""),
+                data.get("access_token", ""),
+                data.get("connection_mode", "business_app_coexistence"),
+                data.get("connection_status", "connected"),
+                data.get("coexistence_active", 1)
+            ))
+            wa_pk = cursor.lastrowid
 
-    conn.commit()
-    conn.close()
-    return wa_pk
+        conn.commit()
+        return wa_pk
+    finally:
+        if conn:
+            conn.close()
 
 def delete_whatsapp_account(phone_number_id: str) -> bool:
     """Removes a WhatsApp account connection."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM whatsapp_accounts WHERE phone_number_id = ?", (str(phone_number_id),))
         conn.commit()
-        conn.close()
         return True
     except Exception as e:
         print(f"[DB delete_whatsapp_account Error]: {e}")
         return False
+    finally:
+        if conn:
+            conn.close()
 
 # ============================================================
 # WORKSPACE & BUSINESS TENANT HELPERS

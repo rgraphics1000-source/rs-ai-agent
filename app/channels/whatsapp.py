@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Optional, Tuple
 from app.config import settings
 from app.database import (
-    get_setting, set_setting, get_all_settings,
+    get_setting, set_setting, get_all_settings, get_db_connection,
     is_conversation_ai_active, get_whatsapp_account_by_phone_id,
-    get_whatsapp_account_by_page_id, get_all_whatsapp_accounts, get_page_ai_config
+    get_whatsapp_account_by_page_id, get_whatsapp_account_by_workspace_id,
+    get_all_whatsapp_accounts, get_page_ai_config
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.ai_agent.gemini_brain import process_customer_message
@@ -28,8 +29,8 @@ def normalize_whatsapp_phone_number(raw_phone: str) -> str:
         pass
     return digits
 
-def get_whatsapp_credentials(phone_number_id: str = None, page_id: str = None) -> Tuple[str, str]:
-    """Gets valid Phone Number ID and Access Token for a specific account, page, or global default."""
+def get_whatsapp_credentials(phone_number_id: str = None, page_id: str = None, workspace_id: int = None) -> Tuple[str, str]:
+    """Gets valid Phone Number ID and Access Token for a specific account, page, workspace, or global default."""
     if phone_number_id:
         acc = get_whatsapp_account_by_phone_id(phone_number_id)
         if acc:
@@ -52,12 +53,24 @@ def get_whatsapp_credentials(phone_number_id: str = None, page_id: str = None) -
             )
             return p_id, token
 
+    if workspace_id:
+        acc = get_whatsapp_account_by_workspace_id(workspace_id)
+        if acc:
+            p_id = acc.get("phone_number_id")
+            token = acc.get("access_token") or (
+                get_setting("meta_system_user_access_token") 
+                or get_setting("whatsapp_access_token") 
+                or get_setting("fb_page_access_token")
+            )
+            return p_id, token
+
     all_s = get_all_settings(masked=False)
-    phone_id = all_s.get("whatsapp_phone_number_id", "")
+    phone_id = all_s.get("whatsapp_phone_number_id", "") or settings.WHATSAPP_PHONE_NUMBER_ID
     token = (
         all_s.get("meta_system_user_access_token") 
         or all_s.get("whatsapp_access_token") 
         or all_s.get("fb_page_access_token")
+        or settings.WHATSAPP_ACCESS_TOKEN
     )
     if not phone_id or not token:
         all_wa = get_all_whatsapp_accounts()
@@ -67,15 +80,16 @@ def get_whatsapp_credentials(phone_number_id: str = None, page_id: str = None) -
 
     return phone_id, token
 
-def send_whatsapp_message(to_number: str, message_text: str, phone_id: str = None, token: str = None, page_id: str = None) -> bool:
+def send_whatsapp_message(to_number: str, message_text: str, phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
     """Sends a text message via WhatsApp Cloud API using specified or default account."""
     if not phone_id or not token:
-        resolved_pid, resolved_tok = get_whatsapp_credentials(phone_number_id=phone_id, page_id=page_id)
+        resolved_pid, resolved_tok = get_whatsapp_credentials(phone_number_id=phone_id, page_id=page_id, workspace_id=workspace_id)
         phone_id = phone_id or resolved_pid
         token = token or resolved_tok
 
+    masked_rec = f"{to_number[:5]}****{to_number[-4:]}" if len(to_number) > 8 else "***"
     if not phone_id or not token or not to_number or not message_text:
-        print(f"[WhatsApp Send] Missing credentials or recipient! phone_id={'SET' if phone_id else 'MISSING'}, token={'SET' if token else 'MISSING'}, recipient={to_number}")
+        print(f"[WhatsApp Send] Missing credentials or recipient! phone_id={'SET' if phone_id else 'MISSING'}, token={'SET' if token else 'MISSING'}, recipient={masked_rec}")
         return False
 
     norm_to = normalize_whatsapp_phone_number(to_number)
@@ -94,30 +108,27 @@ def send_whatsapp_message(to_number: str, message_text: str, phone_id: str = Non
         }
     }
 
-    print(f"[WhatsApp Send (Phone ID: {phone_id})] recipient={norm_to}")
-
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
-        print(f"[WhatsApp Send Result] status={r.status_code}, response={r.text}")
-
-        if r.status_code in [200, 201]:
-            return True
-        else:
-            print(f"[WhatsApp Send ERROR] recipient={norm_to} status={r.status_code} response={r.text}")
-            return False
+        status_ok = r.status_code in [200, 201]
+        print(f"[WhatsApp Send] phone_number_id={phone_id} recipient={masked_rec} status={'success' if status_ok else 'failed'}")
+        if not status_ok:
+            print(f"[WhatsApp Send ERROR] status={r.status_code} response={r.text}")
+        return status_ok
     except Exception as e:
         print(f"[WhatsApp Send Exception]: {e}")
         return False
 
-def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone_id: str = None, token: str = None, page_id: str = None) -> bool:
+def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
     """Sends an image via WhatsApp Cloud API using specified or default account."""
     if not phone_id or not token:
-        resolved_pid, resolved_tok = get_whatsapp_credentials(phone_number_id=phone_id, page_id=page_id)
+        resolved_pid, resolved_tok = get_whatsapp_credentials(phone_number_id=phone_id, page_id=page_id, workspace_id=workspace_id)
         phone_id = phone_id or resolved_pid
         token = token or resolved_tok
 
+    masked_rec = f"{to_number[:5]}****{to_number[-4:]}" if len(to_number) > 8 else "***"
     if not phone_id or not token or not to_number or not image_url:
-        print(f"[WhatsApp Image Send] Missing credentials or recipient! phone_id={'SET' if phone_id else 'MISSING'}, token={'SET' if token else 'MISSING'}, recipient={to_number}")
+        print(f"[WhatsApp Image Send] Missing credentials or recipient! phone_id={'SET' if phone_id else 'MISSING'}, token={'SET' if token else 'MISSING'}, recipient={masked_rec}")
         return False
 
     norm_to = normalize_whatsapp_phone_number(to_number)
@@ -144,16 +155,17 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone
 
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
-        print(f"[WhatsApp Image Send (Phone ID: {phone_id})] status={r.status_code}")
-        return r.status_code in [200, 201]
+        status_ok = r.status_code in [200, 201]
+        print(f"[WhatsApp Image Send] phone_number_id={phone_id} recipient={masked_rec} status={'success' if status_ok else 'failed'}")
+        return status_ok
     except Exception as e:
         print(f"[WhatsApp Image Send Exception]: {e}")
         return False
 
-def send_whatsapp_audio(to_number: str, audio_url: str, phone_id: str = None, token: str = None, page_id: str = None) -> bool:
+def send_whatsapp_audio(to_number: str, audio_url: str, phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
     """Sends a voice note / audio clip via WhatsApp Cloud API."""
     if not phone_id or not token:
-        resolved_pid, resolved_tok = get_whatsapp_credentials(phone_number_id=phone_id, page_id=page_id)
+        resolved_pid, resolved_tok = get_whatsapp_credentials(phone_number_id=phone_id, page_id=page_id, workspace_id=workspace_id)
         phone_id = phone_id or resolved_pid
         token = token or resolved_tok
 
@@ -182,16 +194,15 @@ def send_whatsapp_audio(to_number: str, audio_url: str, phone_id: str = None, to
 
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
-        print(f"[WhatsApp Audio Send (Phone ID: {phone_id})] status={r.status_code}")
         return r.status_code in [200, 201]
     except Exception as e:
         print(f"[WhatsApp Audio Send Exception]: {e}")
         return False
 
-def send_whatsapp_video(to_number: str, video_url: str, caption: str = "", phone_id: str = None, token: str = None, page_id: str = None) -> bool:
+def send_whatsapp_video(to_number: str, video_url: str, caption: str = "", phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
     """Sends a video clip via WhatsApp Cloud API."""
     if not phone_id or not token:
-        resolved_pid, resolved_tok = get_whatsapp_credentials(phone_number_id=phone_id, page_id=page_id)
+        resolved_pid, resolved_tok = get_whatsapp_credentials(phone_number_id=phone_id, page_id=page_id, workspace_id=workspace_id)
         phone_id = phone_id or resolved_pid
         token = token or resolved_tok
 
@@ -222,7 +233,6 @@ def send_whatsapp_video(to_number: str, video_url: str, caption: str = "", phone
 
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=20)
-        print(f"[WhatsApp Video Send (Phone ID: {phone_id})] status={r.status_code}")
         return r.status_code in [200, 201]
     except Exception as e:
         print(f"[WhatsApp Video Send Exception]: {e}")
@@ -238,33 +248,56 @@ async def handle_whatsapp_webhook_event(data: dict):
                 
                 # Identify exact recipient WhatsApp Phone Number ID from metadata
                 metadata = value.get("metadata", {})
-                meta_phone_id = metadata.get("phone_number_id")
+                meta_phone_id = str(metadata.get("phone_number_id", "")).strip()
+                display_phone_number = str(metadata.get("display_phone_number", "")).strip()
 
-                # Resolve specific WhatsApp account and linked Workspace configuration
+                print(f"[WhatsApp Webhook] phone_number_id={meta_phone_id} display_phone_number={display_phone_number}")
+
+                # 1. Resolve specific WhatsApp account by phone_number_id
                 wa_account = get_whatsapp_account_by_phone_id(meta_phone_id)
+
+                # 2. If not found by phone_number_id, check if display_phone_number or known primary phone_id matches Workspace 1
+                if not wa_account and meta_phone_id:
+                    primary_phone_id = str(get_setting("whatsapp_phone_number_id") or settings.WHATSAPP_PHONE_NUMBER_ID or "").strip()
+                    primary_display = str(get_setting("whatsapp_display_phone_number") or settings.WHATSAPP_DISPLAY_PHONE_NUMBER or "").strip()
+
+                    is_primary_match = (
+                        (primary_phone_id and meta_phone_id == primary_phone_id) or
+                        (meta_phone_id == "4184514263660680") or
+                        (display_phone_number and primary_display and normalize_whatsapp_phone_number(display_phone_number) == normalize_whatsapp_phone_number(primary_display))
+                    )
+
+                    if is_primary_match:
+                        # Auto-heal / link the live phone_number_id to Workspace 1
+                        try:
+                            conn = get_db_connection()
+                            cursor = conn.cursor()
+                            cursor.execute("UPDATE whatsapp_accounts SET phone_number_id = ?, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = 1", (meta_phone_id,))
+                            cursor.execute("UPDATE settings SET value = ? WHERE key = 'whatsapp_phone_number_id'", (meta_phone_id,))
+                            conn.commit()
+                            conn.close()
+                            wa_account = get_whatsapp_account_by_phone_id(meta_phone_id)
+                        except Exception as sync_err:
+                            print(f"[WhatsApp Webhook Auto-Sync Error]: {sync_err}")
+
                 if wa_account:
-                    effective_phone_id = wa_account.get("phone_number_id")
+                    effective_phone_id = wa_account.get("phone_number_id") or meta_phone_id
                     effective_token = wa_account.get("access_token") or (
                         get_setting("meta_system_user_access_token") 
                         or get_setting("whatsapp_access_token") 
                         or get_setting("fb_page_access_token")
                     )
                     page_id = wa_account.get("page_id") or ""
-                    page_name = wa_account.get("shop_name") or wa_account.get("page_name") or "WhatsApp Business"
+                    page_name = wa_account.get("shop_name") or wa_account.get("page_name") or wa_account.get("workspace_name") or "RS Graphics"
                     workspace_id = wa_account.get("workspace_id") or wa_account.get("ws_id") or 1
+                    workspace_name = wa_account.get("workspace_name") or "RS Graphics"
+
+                    print(f"[WhatsApp Routing] matched_account_id={wa_account.get('id')} workspace_id={workspace_id} workspace={workspace_name}")
                 else:
-                    # Check if this matches primary Workspace 1 phone number
-                    primary_phone_id = get_setting("whatsapp_phone_number_id", settings.WHATSAPP_PHONE_NUMBER_ID)
-                    if meta_phone_id and (meta_phone_id == primary_phone_id or str(meta_phone_id).strip() == str(primary_phone_id).strip()):
-                        effective_phone_id, effective_token = get_whatsapp_credentials(meta_phone_id)
-                        page_id = get_setting("fb_page_id", settings.FB_PAGE_ID)
-                        page_name = get_setting("shop_name", settings.SHOP_NAME)
-                        workspace_id = 1
-                    else:
-                        # Strict rule: Unknown Phone ID cannot be resolved to any registered workspace.
-                        # Log the routing error and DO NOT send an AI reply (never fall back to Workspace 1).
-                        print(f"[WhatsApp Routing Error]: Unknown phone_number_id {meta_phone_id}. No matching whatsapp_account found. Event dropped without fallback.")
-                        continue
+                    # Strict rule: Unknown Phone ID cannot be resolved to any registered workspace.
+                    # Log the routing error and DO NOT send an AI reply (never fall back to Workspace 1).
+                    print(f"[WhatsApp Routing Error]: Unknown phone_number_id {meta_phone_id}. No matching whatsapp_account found. Event dropped without fallback.")
+                    continue
 
                 messages = value.get("messages", [])
                 contacts = value.get("contacts", [])
@@ -334,6 +367,7 @@ async def handle_whatsapp_webhook_event(data: dict):
 
                         # Fetch conversation history scoped strictly to Workspace
                         history = get_conversation_history("whatsapp", sender_phone, limit=8, page_id=page_id, workspace_id=workspace_id)
+                        print(f"[WhatsApp AI] workspace_id={workspace_id} training_rules_loaded={len(history)}")
 
                         # Process with Gemini AI Brain with Workspace isolation
                         ai_result = await process_customer_message(
@@ -357,7 +391,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                         if reply_text and sender_phone:
                             send_ok = send_whatsapp_message(
                                 sender_phone, reply_text,
-                                phone_id=effective_phone_id, token=effective_token, page_id=page_id
+                                phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
                             )
                             if send_ok:
                                 record_conversation_message("whatsapp", sender_phone, customer_name, "bot", reply_text, page_id=page_id, workspace_id=workspace_id)
@@ -373,7 +407,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                                     continue
                                 img_ok = send_whatsapp_image(
                                     sender_phone, img_path,
-                                    phone_id=effective_phone_id, token=effective_token, page_id=page_id
+                                    phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
                                 )
                                 if img_ok:
                                     record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "", img_path, page_id=page_id, workspace_id=workspace_id)
@@ -385,7 +419,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                             print(f"[WhatsApp Video on Workspace {workspace_id}] Sending video demo to {sender_phone}...")
                             v_ok = send_whatsapp_video(
                                 sender_phone, matched_video,
-                                phone_id=effective_phone_id, token=effective_token, page_id=page_id
+                                phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
                             )
                             if v_ok:
                                 record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "[Video Demo]", matched_video, page_id=page_id, workspace_id=workspace_id)
@@ -396,7 +430,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                             print(f"[WhatsApp Voice on Workspace {workspace_id}] Sending voice note to {sender_phone}...")
                             a_ok = send_whatsapp_audio(
                                 sender_phone, voice_url,
-                                phone_id=effective_phone_id, token=effective_token, page_id=page_id
+                                phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
                             )
                             if a_ok:
                                 record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "[Voice Note]", voice_url, page_id=page_id, workspace_id=workspace_id)
