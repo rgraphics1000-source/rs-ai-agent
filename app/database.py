@@ -457,16 +457,25 @@ def toggle_conversation_ai(conversation_id: int, status: int = None) -> bool:
 
 def is_conversation_ai_active(sender_id: str = None, conversation_id: int = None) -> bool:
     """Returns True if AI is allowed to auto-reply to this customer."""
-    # Check Master Switch first
+    # 1. Check Master Switch
     if get_setting("ai_enabled", "true").lower() == "false":
         return False
+
+    # 2. Check Blacklisted / Muted Phone Numbers
+    blacklisted = get_setting("blacklisted_ai_numbers", "")
+    if blacklisted and sender_id:
+        clean_sender = "".join([c for c in str(sender_id) if c.isdigit()])
+        for bl in blacklisted.replace(",", "\n").split("\n"):
+            bl_clean = "".join([c for c in bl.strip() if c.isdigit()])
+            if bl_clean and (bl_clean in clean_sender or clean_sender in bl_clean):
+                return False
 
     conn = get_db_connection()
     cursor = conn.cursor()
     if conversation_id:
         cursor.execute("SELECT human_takeover FROM conversations WHERE id = ?", (conversation_id,))
     elif sender_id:
-        cursor.execute("SELECT human_takeover FROM conversations WHERE sender_id = ?", (sender_id,))
+        cursor.execute("SELECT human_takeover FROM conversations WHERE sender_id = ? ORDER BY id DESC LIMIT 1", (sender_id,))
     else:
         conn.close()
         return True

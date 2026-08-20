@@ -84,6 +84,19 @@ async def get_manifest():
 async def get_favicon():
     return FileResponse(settings.STATIC_DIR / "favicon.ico", media_type="image/x-icon")
 
+# Android APK Download Endpoint
+@app.get("/download/app.apk")
+@app.get("/download/RS_AI.apk")
+async def download_android_apk():
+    apk_path = settings.STATIC_DIR / "download" / "RS_AI.apk"
+    if not apk_path.exists():
+        raise HTTPException(status_code=404, detail="APK build not found")
+    return FileResponse(
+        path=apk_path,
+        filename="RS_AI.apk",
+        media_type="application/vnd.android.package-archive"
+    )
+
 # ==========================================
 # 1. FRONTEND DASHBOARD ROUTE
 # ==========================================

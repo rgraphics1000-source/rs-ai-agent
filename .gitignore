@@ -10,3 +10,7 @@ venv/
 *.log
 .DS_Store
 Thumbs.db
+android_app/.gradle/
+android_app/**/build/
+android_app/local.properties
+

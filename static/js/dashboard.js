@@ -2271,3 +2271,65 @@ async function deleteSavedMediaById(id) {
     }
 }
 
+// ==========================================
+// 12. GENERAL & BLACKLIST SETTINGS
+// ==========================================
+async function loadAllSettings() {
+    try {
+        const res = await fetch("/api/settings");
+        const data = await res.json();
+        const settings = data.settings || {};
+
+        const setVal = (id, key, def) => {
+            const el = document.getElementById(id);
+            if (el && settings[key] !== undefined) el.value = settings[key];
+            else if (el && def !== undefined) el.value = def;
+        };
+
+        setVal("setting-shop-name", "shop_name", "আমার ই-কমার্স শপ");
+        setVal("setting-shop-phone", "shop_phone", "01700000000");
+        setVal("setting-delivery-inside", "delivery_charge_inside", 70);
+        setVal("setting-delivery-outside", "delivery_charge_outside", 130);
+        setVal("setting-blacklisted-numbers", "blacklisted_ai_numbers", "");
+    } catch (e) {
+        console.error("loadAllSettings error:", e);
+    }
+}
+
+async function saveAllSettings() {
+    const getVal = (id) => {
+        const el = document.getElementById(id);
+        return el ? el.value.trim() : "";
+    };
+
+    const payload = {
+        shop_name: getVal("setting-shop-name"),
+        shop_phone: getVal("setting-shop-phone"),
+        delivery_charge_inside: getVal("setting-delivery-inside"),
+        delivery_charge_outside: getVal("setting-delivery-outside"),
+        blacklisted_ai_numbers: getVal("setting-blacklisted-numbers")
+    };
+
+    try {
+        const res = await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("✅ সেটিংস এবং মিউট করা নম্বর সফলভাবে সেভ হয়েছে!", "success");
+        } else {
+            showToast("সেটিংস সেভ করতে সমস্যা হয়েছে", "danger");
+        }
+    } catch (e) {
+        console.error("saveAllSettings error:", e);
+        showToast("সার্ভার এরর", "danger");
+    }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    loadAllSettings();
+});
+
+
