@@ -2604,26 +2604,38 @@ function filterMuteChatSelectorList() {
 
 async function confirmChatSelectorMute() {
     const checkboxes = document.querySelectorAll(".mute-chat-checkbox");
-    const selected = [];
-    checkboxes.forEach(cb => {
-        if (cb.checked && cb.value) {
-            selected.push(cb.value.trim());
-        }
-    });
+    const currentMutedNumbers = cachedMutedContacts.map(c => c.phone);
+    let addedCount = 0;
+    let removedCount = 0;
 
-    try {
-        // Save full selected list
-        const res = await fetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ blacklisted_ai_numbers: selected.join(", ") })
-        });
-        await loadMutedContacts();
-        closeModal("modal-select-chats-to-mute");
-        showToast(`✅ ${selected.length}টি কাস্টমার নম্বর এআই মিউট লিস্টে আপডেট হয়েছে!`, "success");
-    } catch (e) {
-        console.error("confirmChatSelectorMute error:", e);
+    for (const cb of checkboxes) {
+        const val = cb.value.trim();
+        if (!val) continue;
+
+        if (cb.checked) {
+            await fetch("/api/muted-contacts/add", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ phone: val })
+            });
+            addedCount++;
+        } else {
+            // If it was previously muted and now unchecked, unblock it
+            const isCurrentlyMuted = currentMutedNumbers.some(m => val.includes(m) || m.includes(val));
+            if (isCurrentlyMuted) {
+                await fetch("/api/muted-contacts/remove", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ phone: val })
+                });
+                removedCount++;
+            }
+        }
     }
+
+    await loadMutedContacts();
+    closeModal("modal-select-chats-to-mute");
+    showToast(`✅ কন্টাক্ট ব্লক লিস্ট সফলভাবে আপডেট হয়েছে!`, "success");
 }
 
 async function saveAllSettings() {
