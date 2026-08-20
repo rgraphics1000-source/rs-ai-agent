@@ -178,7 +178,7 @@ def send_fb_private_reply_to_comment(comment_id: str, message: str, page_token: 
         return False
 
 async def handle_facebook_webhook_event(data: dict):
-    """Processes incoming Facebook Messenger messages and post comments across multiple connected Pages."""
+    """Processes incoming Facebook Messenger messages and post comments across multiple connected Pages with strict workspace isolation."""
     try:
         entries = data.get("entry", [])
         for entry in entries:
@@ -193,9 +193,14 @@ async def handle_facebook_webhook_event(data: dict):
 
                     # Look up the specific connected page for this message
                     page_conn = get_connected_page(recipient_id)
-                    page_id = page_conn.get("page_id") if page_conn else (recipient_id or get_setting("fb_page_id", settings.FB_PAGE_ID))
-                    page_token = page_conn.get("page_access_token") if page_conn else get_fb_token(page_id)
-                    page_name = page_conn.get("page_name") if page_conn else get_setting("shop_name", settings.SHOP_NAME)
+                    if not page_conn:
+                        print(f"[Facebook Routing Error]: Unknown recipient_id {recipient_id}. No matching connected_page found. Event dropped without fallback.")
+                        continue
+
+                    workspace_id = page_conn.get("workspace_id", 1)
+                    page_id = page_conn.get("page_id", recipient_id)
+                    page_token = page_conn.get("page_access_token")
+                    page_name = page_conn.get("page_name", "Facebook Page")
 
                     # Prevent replying to messages sent by our own pages
                     if sender_id == recipient_id or get_connected_page(sender_id) is not None:
@@ -243,19 +248,19 @@ async def handle_facebook_webhook_event(data: dict):
                         except Exception as e:
                             print(f"[Facebook Media DL Error]: {e}")
 
-                    # Fetch customer name and record customer message scoped to this Page
+                    # Fetch customer name and record customer message scoped to this Workspace & Page
                     customer_name = get_fb_user_profile(sender_id, page_token=page_token, page_id=page_id)
-                    record_conversation_message("facebook", sender_id, customer_name, "user", msg_text, page_id=page_id)
+                    record_conversation_message("facebook", sender_id, customer_name, "user", msg_text, page_id=page_id, workspace_id=workspace_id)
 
                     # Check if AI Master Switch or Per-Customer Takeover is active
                     if not is_conversation_ai_active(sender_id=sender_id):
                         print(f"[Facebook Messenger]: AI is PAUSED for customer {sender_id} on Page {page_name} (Human Takeover). AI will stay silent.")
                         continue
 
-                    # Fetch conversation history scoped to this Page
-                    history = get_conversation_history("facebook", sender_id, limit=8, page_id=page_id)
+                    # Fetch conversation history scoped strictly to this Workspace
+                    history = get_conversation_history("facebook", sender_id, limit=8, page_id=page_id, workspace_id=workspace_id)
 
-                    # Process with Gemini AI Brain with Page-specific context
+                    # Process with Gemini AI Brain with Workspace-isolated context
                     ai_result = await process_customer_message(
                         message_text=msg_text,
                         image_bytes=image_bytes,
@@ -266,14 +271,16 @@ async def handle_facebook_webhook_event(data: dict):
                         channel="facebook",
                         sender_id=sender_id,
                         customer_name=customer_name,
-                        generate_voice_reply=bool(audio_bytes)
+                        generate_voice_reply=bool(audio_bytes),
+                        workspace_id=workspace_id,
+                        page_id=page_id
                     )
 
                     reply_text = ai_result.get("reply_text", "")
                     if reply_text:
-                        print(f"[Facebook Messenger Replying on Page '{page_name}']: '{reply_text[:60]}...' to {sender_id}")
+                        print(f"[Facebook Messenger Replying on Workspace {workspace_id} ('{page_name}')]: '{reply_text[:60]}...' to {sender_id}")
                         send_fb_text_message(sender_id, reply_text, page_token=page_token, page_id=page_id)
-                        record_conversation_message("facebook", sender_id, customer_name, "bot", reply_text, page_id=page_id)
+                        record_conversation_message("facebook", sender_id, customer_name, "bot", reply_text, page_id=page_id, workspace_id=workspace_id)
 
                     # Send all matched product images as rich media attachments
                     matched_images = ai_result.get("matched_images", [])
@@ -283,31 +290,36 @@ async def handle_facebook_webhook_event(data: dict):
                         if not img_path:
                             continue
                         full_img_url = img_path if img_path.startswith("http") else f"{base_server_url}{img_path}"
-                        print(f"[Facebook Messenger Sending Image on Page '{page_name}']: {full_img_url} to {sender_id}")
+                        print(f"[Facebook Messenger Sending Image on Workspace {workspace_id}]: {full_img_url} to {sender_id}")
                         send_fb_media_message(sender_id, "image", img_path, page_token=page_token, page_id=page_id)
-                        record_conversation_message("facebook", sender_id, customer_name, "bot", "", full_img_url, page_id=page_id)
+                        record_conversation_message("facebook", sender_id, customer_name, "bot", "", full_img_url, page_id=page_id, workspace_id=workspace_id)
                         await asyncio.sleep(0.15)
 
                     # Send video demo if requested
                     matched_video = ai_result.get("video_url", "")
                     if matched_video:
-                        print(f"[Facebook Messenger Sending Video on Page '{page_name}']: {matched_video} to {sender_id}")
+                        print(f"[Facebook Messenger Sending Video on Workspace {workspace_id}]: {matched_video} to {sender_id}")
                         send_fb_video_message(sender_id, matched_video, page_token=page_token, page_id=page_id)
-                        record_conversation_message("facebook", sender_id, customer_name, "bot", "[Video Demo]", matched_video, page_id=page_id)
+                        record_conversation_message("facebook", sender_id, customer_name, "bot", "[Video Demo]", matched_video, page_id=page_id, workspace_id=workspace_id)
 
                     # Send voice note if requested / generated
                     voice_url = ai_result.get("voice_url", "")
                     if voice_url:
-                        print(f"[Facebook Messenger Sending Audio on Page '{page_name}']: {voice_url} to {sender_id}")
+                        print(f"[Facebook Messenger Sending Audio on Workspace {workspace_id}]: {voice_url} to {sender_id}")
                         send_fb_audio_message(sender_id, voice_url, page_token=page_token, page_id=page_id)
-                        record_conversation_message("facebook", sender_id, customer_name, "bot", "[Voice Note]", voice_url, page_id=page_id)
+                        record_conversation_message("facebook", sender_id, customer_name, "bot", "[Voice Note]", voice_url, page_id=page_id, workspace_id=workspace_id)
 
             # 2. Handle Feed Comments (Auto Comment Reply & Private Inbox Message)
             if "changes" in entry:
                 page_id = str(entry.get("id", "")) # Page ID owning the feed
                 page_conn = get_connected_page(page_id)
-                page_token = page_conn.get("page_access_token") if page_conn else get_fb_token(page_id)
-                page_name = page_conn.get("page_name") if page_conn else "Facebook Page"
+                if not page_conn:
+                    print(f"[Facebook Routing Error]: Unknown page_id {page_id} for comment. Event dropped without fallback.")
+                    continue
+
+                workspace_id = page_conn.get("workspace_id", 1)
+                page_token = page_conn.get("page_access_token")
+                page_name = page_conn.get("page_name", "Facebook Page")
 
                 for change in entry["changes"]:
                     field = change.get("field")
@@ -326,7 +338,7 @@ async def handle_facebook_webhook_event(data: dict):
                             continue
 
                         # Check settings
-                        ai_enabled = get_setting("ai_enabled", "true").lower() == "true"
+                        ai_enabled = bool(page_conn.get("ai_enabled", 1))
                         if not ai_enabled:
                             continue
 
@@ -343,25 +355,28 @@ async def handle_facebook_webhook_event(data: dict):
                         # Private inbox reply
                         private_reply_text = ""
                         if send_private and comment_id:
-                            # Generate tailored inbox message
-                            inbox_prompt = f"কাস্টমার '{user_name}' ফেসবুক পেজ '{page_name}' এর পোস্টে কমেন্ট করেছেন: '{comment_text}'। তাকে ইনবক্সে প্রডাক্টের বিস্তারিত দাম ও অর্ডার করার নিয়ম জানিয়ে একটি সুন্দর প্রাইভেট মেসেজ দাও।"
+                            # Generate tailored inbox message scoped to workspace
+                            inbox_prompt = f"কাস্টমার '{user_name}' পেজ '{page_name}' এর পোস্টে কমেন্ট করেছেন: '{comment_text}'। তাকে ইনবক্সে প্রডাক্টের বিস্তারিত দাম ও অর্ডার করার নিয়ম জানিয়ে একটি সুন্দর প্রাইভেট মেসেজ দাও।"
                             inbox_res = await process_customer_message(
                                 message_text=inbox_prompt,
                                 channel="facebook",
-                                sender_id=user_id or comment_id
+                                sender_id=user_id or comment_id,
+                                workspace_id=workspace_id,
+                                page_id=page_id
                             )
                             private_reply_text = inbox_res.get("reply_text", "")
                             if private_reply_text:
                                 send_fb_private_reply_to_comment(comment_id, private_reply_text, page_token=page_token, page_id=page_id)
 
-                        # Log to database scoped by page_id
+                        # Log to database scoped by workspace_id and page_id
                         conn = get_db_connection()
                         cursor = conn.cursor()
                         cursor.execute("""
                             INSERT OR IGNORE INTO comment_logs (
-                                post_id, comment_id, user_id, user_name, comment_text, public_reply, private_reply, page_id
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                workspace_id, post_id, comment_id, user_id, user_name, comment_text, public_reply, private_reply, page_id
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
+                            workspace_id,
                             post_id,
                             comment_id,
                             user_id,
@@ -373,6 +388,10 @@ async def handle_facebook_webhook_event(data: dict):
                         ))
                         conn.commit()
                         conn.close()
+
+    except Exception as e:
+        print(f"[Facebook Webhook Handler Error]: {e}")
+
 
     except Exception as e:
         print(f"[Facebook Webhook Handler Error]: {e}")

@@ -240,7 +240,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                 metadata = value.get("metadata", {})
                 meta_phone_id = metadata.get("phone_number_id")
 
-                # Resolve specific WhatsApp account and linked Page configuration
+                # Resolve specific WhatsApp account and linked Workspace configuration
                 wa_account = get_whatsapp_account_by_phone_id(meta_phone_id)
                 if wa_account:
                     effective_phone_id = wa_account.get("phone_number_id")
@@ -250,11 +250,21 @@ async def handle_whatsapp_webhook_event(data: dict):
                         or get_setting("fb_page_access_token")
                     )
                     page_id = wa_account.get("page_id") or ""
-                    page_name = wa_account.get("shop_name") or wa_account.get("page_name") or "RS Graphics"
+                    page_name = wa_account.get("shop_name") or wa_account.get("page_name") or "WhatsApp Business"
+                    workspace_id = wa_account.get("workspace_id") or wa_account.get("ws_id") or 1
                 else:
-                    effective_phone_id, effective_token = get_whatsapp_credentials(meta_phone_id)
-                    page_id = get_setting("fb_page_id", settings.FB_PAGE_ID)
-                    page_name = get_setting("shop_name", settings.SHOP_NAME)
+                    # Check if this matches primary Workspace 1 phone number
+                    primary_phone_id = get_setting("whatsapp_phone_number_id", settings.WHATSAPP_PHONE_NUMBER_ID)
+                    if meta_phone_id and (meta_phone_id == primary_phone_id or str(meta_phone_id).strip() == str(primary_phone_id).strip()):
+                        effective_phone_id, effective_token = get_whatsapp_credentials(meta_phone_id)
+                        page_id = get_setting("fb_page_id", settings.FB_PAGE_ID)
+                        page_name = get_setting("shop_name", settings.SHOP_NAME)
+                        workspace_id = 1
+                    else:
+                        # Strict rule: Unknown Phone ID cannot be resolved to any registered workspace.
+                        # Log the routing error and DO NOT send an AI reply (never fall back to Workspace 1).
+                        print(f"[WhatsApp Routing Error]: Unknown phone_number_id {meta_phone_id}. No matching whatsapp_account found. Event dropped without fallback.")
+                        continue
 
                 messages = value.get("messages", [])
                 contacts = value.get("contacts", [])
@@ -280,7 +290,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                     audio_bytes = None
                     audio_mime = "audio/mp4"
 
-                    print(f"[WhatsApp Webhook (Account: {effective_phone_id})] received from={sender_phone} type={msg_type} msg_id={msg_id}")
+                    print(f"[WhatsApp Webhook (Workspace: {workspace_id}, Account: {effective_phone_id})] received from={sender_phone} type={msg_type} msg_id={msg_id}")
 
                     if msg_type == "text":
                         msg_text = msg.get("text", {}).get("body", "")
@@ -313,19 +323,19 @@ async def handle_whatsapp_webhook_event(data: dict):
                                 print(f"[WhatsApp Audio DL Error]: {dl_err}")
 
                     if msg_text or image_bytes or audio_bytes:
-                        # Record incoming customer message scoped to this Page
+                        # Record incoming customer message scoped strictly to Workspace
                         customer_name = raw_customer_name or f"WhatsApp User ({sender_phone})"
-                        record_conversation_message("whatsapp", sender_phone, customer_name, "user", msg_text, page_id=page_id)
+                        record_conversation_message("whatsapp", sender_phone, customer_name, "user", msg_text, page_id=page_id, workspace_id=workspace_id)
 
                         # Check if AI Master Switch or Per-Customer Takeover is active
                         if not is_conversation_ai_active(sender_id=sender_phone):
                             print(f"[WhatsApp]: AI is PAUSED for customer {sender_phone} on account {effective_phone_id} (Human Takeover). AI will stay silent.")
                             continue
 
-                        # Fetch conversation history scoped to this Page
-                        history = get_conversation_history("whatsapp", sender_phone, limit=8, page_id=page_id)
+                        # Fetch conversation history scoped strictly to Workspace
+                        history = get_conversation_history("whatsapp", sender_phone, limit=8, page_id=page_id, workspace_id=workspace_id)
 
-                        # Process with Gemini AI Brain
+                        # Process with Gemini AI Brain with Workspace isolation
                         ai_result = await process_customer_message(
                             message_text=msg_text,
                             image_bytes=image_bytes,
@@ -336,11 +346,13 @@ async def handle_whatsapp_webhook_event(data: dict):
                             channel="whatsapp",
                             sender_id=sender_phone,
                             customer_name=customer_name,
-                            generate_voice_reply=bool(audio_bytes)
+                            generate_voice_reply=bool(audio_bytes),
+                            workspace_id=workspace_id,
+                            page_id=page_id
                         )
 
                         reply_text = ai_result.get("reply_text", "")
-                        print(f"[AI Reply on WA {effective_phone_id}] generated for={sender_phone}: {reply_text[:60] if reply_text else 'None'}...")
+                        print(f"[AI Reply on Workspace {workspace_id} WA {effective_phone_id}] generated for={sender_phone}: {reply_text[:60] if reply_text else 'None'}...")
 
                         if reply_text and sender_phone:
                             send_ok = send_whatsapp_message(
@@ -348,14 +360,14 @@ async def handle_whatsapp_webhook_event(data: dict):
                                 phone_id=effective_phone_id, token=effective_token, page_id=page_id
                             )
                             if send_ok:
-                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", reply_text, page_id=page_id)
+                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", reply_text, page_id=page_id, workspace_id=workspace_id)
                             else:
                                 print(f"[WhatsApp Send] Delivery FAILED for {sender_phone}. AI message was NOT recorded as sent.")
 
                         # Batch send sample images if requested
                         matched_images = ai_result.get("matched_images", [])
                         if matched_images:
-                            print(f"[WhatsApp Batch Images on WA {effective_phone_id}] Sending {len(matched_images)} images to {sender_phone}...")
+                            print(f"[WhatsApp Batch Images on Workspace {workspace_id}] Sending {len(matched_images)} images to {sender_phone}...")
                             for img_path in matched_images:
                                 if not img_path:
                                     continue
@@ -364,31 +376,32 @@ async def handle_whatsapp_webhook_event(data: dict):
                                     phone_id=effective_phone_id, token=effective_token, page_id=page_id
                                 )
                                 if img_ok:
-                                    record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "", img_path, page_id=page_id)
+                                    record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "", img_path, page_id=page_id, workspace_id=workspace_id)
                                 await asyncio.sleep(0.15)
 
                         # Send video demo if requested
                         matched_video = ai_result.get("video_url", "")
                         if matched_video:
-                            print(f"[WhatsApp Video on WA {effective_phone_id}] Sending video demo to {sender_phone}...")
+                            print(f"[WhatsApp Video on Workspace {workspace_id}] Sending video demo to {sender_phone}...")
                             v_ok = send_whatsapp_video(
                                 sender_phone, matched_video,
                                 phone_id=effective_phone_id, token=effective_token, page_id=page_id
                             )
                             if v_ok:
-                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "[Video Demo]", matched_video, page_id=page_id)
+                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "[Video Demo]", matched_video, page_id=page_id, workspace_id=workspace_id)
 
                         # Send voice note if requested / generated
                         voice_url = ai_result.get("voice_url", "")
                         if voice_url:
-                            print(f"[WhatsApp Voice on WA {effective_phone_id}] Sending voice note to {sender_phone}...")
+                            print(f"[WhatsApp Voice on Workspace {workspace_id}] Sending voice note to {sender_phone}...")
                             a_ok = send_whatsapp_audio(
                                 sender_phone, voice_url,
                                 phone_id=effective_phone_id, token=effective_token, page_id=page_id
                             )
                             if a_ok:
-                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "[Voice Note]", voice_url, page_id=page_id)
+                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "[Voice Note]", voice_url, page_id=page_id, workspace_id=workspace_id)
 
     except Exception as e:
         print(f"[WhatsApp Webhook Handler Error]: {e}")
+
 

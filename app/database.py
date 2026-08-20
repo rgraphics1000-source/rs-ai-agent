@@ -68,11 +68,14 @@ def init_db():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS conversations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER DEFAULT 1,
         channel TEXT NOT NULL, -- 'facebook', 'whatsapp', 'web_playground'
-        sender_id TEXT NOT NULL UNIQUE,
+        sender_id TEXT NOT NULL,
         customer_name TEXT,
         last_message TEXT,
         human_takeover INTEGER DEFAULT 0,
+        page_id TEXT DEFAULT '',
+        page_connection_id INTEGER,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -91,10 +94,11 @@ def init_db():
     );
     """)
 
-    # 5. Comment Logs Table (Facebook Posts)
+    # 5. Comment Automation Logs Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS comment_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER DEFAULT 1,
         post_id TEXT,
         comment_id TEXT UNIQUE NOT NULL,
         user_id TEXT,
@@ -102,6 +106,7 @@ def init_db():
         comment_text TEXT,
         public_reply TEXT,
         private_reply TEXT,
+        page_id TEXT DEFAULT '',
         replied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -152,10 +157,30 @@ def init_db():
     );
     """)
 
-    # 10. Connected Facebook Pages Table (Multi-Page Architecture)
+    # 10. Workspaces Table (First-Class Multi-Tenant Concept)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS workspaces (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        slug TEXT UNIQUE,
+        status TEXT DEFAULT 'active', -- 'active', 'inactive'
+        shop_name TEXT,
+        shop_phone TEXT,
+        shop_address TEXT DEFAULT 'ঢাকা, বাংলাদেশ',
+        delivery_inside_dhaka REAL DEFAULT 70.0,
+        delivery_outside_dhaka REAL DEFAULT 130.0,
+        ai_system_prompt TEXT,
+        ai_enabled INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # 11. Connected Facebook Pages Table (Multi-Page Architecture)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS connected_pages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER DEFAULT 1,
         page_id TEXT UNIQUE NOT NULL,
         page_name TEXT NOT NULL,
         page_access_token TEXT NOT NULL,
@@ -170,14 +195,16 @@ def init_db():
         delivery_inside_dhaka REAL DEFAULT 70.0,
         delivery_outside_dhaka REAL DEFAULT 130.0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL
     );
     """)
 
-    # 11. WhatsApp Accounts Table (Multi-WhatsApp Account Architecture)
+    # 12. WhatsApp Accounts Table (Multi-WhatsApp Account Architecture)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS whatsapp_accounts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER DEFAULT 1,
         connected_page_id INTEGER,
         waba_id TEXT,
         phone_number_id TEXT UNIQUE NOT NULL,
@@ -188,9 +215,21 @@ def init_db():
         coexistence_active INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL,
         FOREIGN KEY (connected_page_id) REFERENCES connected_pages(id) ON DELETE SET NULL
     );
     """)
+
+    # Multi-tenant scoping columns migration for all business tables
+    scoped_tables = [
+        "products", "orders", "conversations", "comment_logs", 
+        "faqs", "ai_training_rules", "saved_media", "connected_pages", "whatsapp_accounts"
+    ]
+    for tbl in scoped_tables:
+        try:
+            cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN workspace_id INTEGER DEFAULT 1")
+        except Exception:
+            pass
 
     # Auto-migration columns for conversations & comment_logs
     try:
@@ -205,6 +244,36 @@ def init_db():
         cursor.execute("ALTER TABLE comment_logs ADD COLUMN page_id TEXT DEFAULT ''")
     except Exception:
         pass
+
+    # Migrate conversations table if legacy single-column UNIQUE(sender_id) exists
+    try:
+        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='conversations'")
+        tbl_sql = cursor.fetchone()
+        if tbl_sql and "sender_id TEXT NOT NULL UNIQUE" in tbl_sql[0]:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversations_ws_tmp (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace_id INTEGER DEFAULT 1,
+                    channel TEXT NOT NULL,
+                    sender_id TEXT NOT NULL,
+                    customer_name TEXT,
+                    last_message TEXT,
+                    human_takeover INTEGER DEFAULT 0,
+                    page_id TEXT DEFAULT '',
+                    page_connection_id INTEGER,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO conversations_ws_tmp (id, workspace_id, channel, sender_id, customer_name, last_message, human_takeover, page_id, page_connection_id, updated_at)
+                SELECT id, COALESCE(workspace_id, 1), channel, sender_id, customer_name, last_message, COALESCE(human_takeover, 0), COALESCE(page_id, ''), page_connection_id, updated_at
+                FROM conversations
+            """)
+            cursor.execute("DROP TABLE conversations")
+            cursor.execute("ALTER TABLE conversations_ws_tmp RENAME TO conversations")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_ws_sender ON conversations(workspace_id, sender_id)")
+    except Exception as e:
+        print(f"[Conversations Schema Migration Error]: {e}")
 
     # Seed default settings if not exists
     default_settings = {
@@ -255,6 +324,41 @@ def init_db():
     # Migration: update sample photos training rule to send immediately without asking permission
     cursor.execute("UPDATE ai_training_rules SET response_or_rule = 'কাস্টমার ছবি বা স্যাম্পল দেখতে চাইলে কালবিলম্ব না করে সরাসরি অমায়িক ভাষায় বলবে জি ভাইয়া, অবশ্যই দেওয়া যাবে। নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো পাঠানো হলো। এবং সাথে সাথে সবগুলো স্যাম্পল ছবি পাঠাবে।' WHERE title LIKE '%স্যাম্পল%'")
 
+    # Safe Automatic Migration for Workspace 1 (RS Graphics)
+    cursor.execute("SELECT COUNT(*) FROM workspaces")
+    ws_count = cursor.fetchone()[0]
+    if ws_count == 0:
+        cursor.execute("SELECT value FROM settings WHERE key = 'shop_name'")
+        s_name_row = cursor.fetchone()
+        ws_name = s_name_row["value"] if (s_name_row and s_name_row["value"]) else "RS Graphics (আরএস গ্রাফিক্স)"
+
+        cursor.execute("SELECT value FROM settings WHERE key = 'shop_phone'")
+        s_phone_row = cursor.fetchone()
+        ws_phone = s_phone_row["value"] if (s_phone_row and s_phone_row["value"]) else "01816504097"
+
+        cursor.execute("SELECT value FROM settings WHERE key = 'ai_system_prompt'")
+        s_prompt_row = cursor.fetchone()
+        ws_prompt = s_prompt_row["value"] if (s_prompt_row and s_prompt_row["value"]) else ""
+
+        cursor.execute("""
+            INSERT OR IGNORE INTO workspaces (
+                id, name, slug, status, shop_name, shop_phone, shop_address,
+                delivery_inside_dhaka, delivery_outside_dhaka, ai_system_prompt, ai_enabled
+            ) VALUES (
+                1, ?, 'rs-graphics', 'active',
+                ?, ?, 'ঢাকা, বাংলাদেশ',
+                70.0, 130.0, ?, 1
+            )
+        """, (ws_name, ws_name, ws_phone, ws_prompt))
+        print(f"[Auto-Migration] Workspace 1 ('{ws_name}') initialized.")
+
+    # Multi-tenant scoping: ensure all existing records belong to Workspace 1 if unassigned
+    for tbl in ["products", "orders", "conversations", "comment_logs", "faqs", "ai_training_rules", "saved_media", "connected_pages", "whatsapp_accounts"]:
+        try:
+            cursor.execute(f"UPDATE {tbl} SET workspace_id = 1 WHERE workspace_id IS NULL OR workspace_id = 0")
+        except Exception:
+            pass
+
     # Safe Automatic Migration for Existing Page 1 into connected_pages
     cursor.execute("SELECT COUNT(*) FROM connected_pages")
     page_count = cursor.fetchone()[0]
@@ -282,10 +386,10 @@ def init_db():
 
         cursor.execute("""
             INSERT OR IGNORE INTO connected_pages (
-                page_id, page_name, page_access_token, page_status,
+                workspace_id, page_id, page_name, page_access_token, page_status,
                 messenger_enabled, comments_enabled, ai_enabled, ai_system_prompt,
                 shop_name, shop_phone, shop_address, delivery_inside_dhaka, delivery_outside_dhaka
-            ) VALUES (?, ?, ?, 'connected', 1, 1, 1, ?, ?, ?, 'ঢাকা, বাংলাদেশ', 70.0, 130.0)
+            ) VALUES (1, ?, ?, ?, 'connected', 1, 1, 1, ?, ?, ?, 'ঢাকা, বাংলাদেশ', 70.0, 130.0)
         """, (p1_id, p1_name, p1_token, p1_prompt, p1_name, p1_phone))
         print(f"[Auto-Migration] Existing Page 1 ('{p1_name}', Page ID: {p1_id}) initialized in connected_pages.")
 
@@ -320,9 +424,9 @@ def init_db():
 
         cursor.execute("""
             INSERT OR IGNORE INTO whatsapp_accounts (
-                connected_page_id, waba_id, phone_number_id, display_phone_number, access_token,
+                workspace_id, connected_page_id, waba_id, phone_number_id, display_phone_number, access_token,
                 connection_mode, connection_status, coexistence_active
-            ) VALUES (?, ?, ?, ?, ?, 'business_app_coexistence', 'connected', 1)
+            ) VALUES (1, ?, ?, ?, ?, ?, 'business_app_coexistence', 'connected', 1)
         """, (primary_cp_id, wa_waba_id, wa_phone_id, wa_display, wa_token))
         print(f"[Auto-Migration] Existing WhatsApp Account ({wa_display}, Phone ID: {wa_phone_id}) initialized in whatsapp_accounts.")
 
@@ -525,44 +629,54 @@ def get_all_settings(masked: bool = False) -> dict:
 # AI TRAINING & KNOWLEDGE BASE HELPERS
 # ============================================================
 
-def get_active_training_rules() -> list:
-    """Returns all active AI training rules, Q&A, and policy guidelines."""
+def get_active_training_rules(workspace_id: int = 1) -> list:
+    """Returns all active AI training rules, Q&A, and policy guidelines scoped to a workspace."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM ai_training_rules WHERE is_active = 1 ORDER BY category ASC, id ASC")
+    cursor.execute("SELECT * FROM ai_training_rules WHERE workspace_id = ? AND is_active = 1 ORDER BY category ASC, id ASC", (int(workspace_id or 1),))
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
-def get_all_training_rules() -> list:
-    """Returns all training rules for dashboard management."""
+def get_all_training_rules(workspace_id: Optional[int] = None) -> list:
+    """Returns all training rules for dashboard management, optionally scoped by workspace."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM ai_training_rules ORDER BY id DESC")
+    if workspace_id is not None:
+        cursor.execute("SELECT * FROM ai_training_rules WHERE workspace_id = ? ORDER BY id DESC", (int(workspace_id),))
+    else:
+        cursor.execute("SELECT * FROM ai_training_rules ORDER BY id DESC")
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
-def create_training_rule(title: str, response_or_rule: str, rule_type: str = "qa", question_or_trigger: str = "", category: str = "General", is_active: int = 1) -> int:
+def create_training_rule(title: str, response_or_rule: str, rule_type: str = "qa", question_or_trigger: str = "", category: str = "General", is_active: int = 1, workspace_id: int = 1) -> int:
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO ai_training_rules (title, rule_type, question_or_trigger, response_or_rule, category, is_active)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (title, rule_type, question_or_trigger, response_or_rule, category, is_active))
+        INSERT INTO ai_training_rules (title, rule_type, question_or_trigger, response_or_rule, category, is_active, workspace_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (title, rule_type, question_or_trigger, response_or_rule, category, is_active, int(workspace_id or 1)))
     conn.commit()
     rule_id = cursor.lastrowid
     conn.close()
     return rule_id
 
-def update_training_rule(rule_id: int, title: str, response_or_rule: str, rule_type: str = "qa", question_or_trigger: str = "", category: str = "General", is_active: int = 1) -> bool:
+def update_training_rule(rule_id: int, title: str, response_or_rule: str, rule_type: str = "qa", question_or_trigger: str = "", category: str = "General", is_active: int = 1, workspace_id: Optional[int] = None) -> bool:
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE ai_training_rules
-        SET title = ?, rule_type = ?, question_or_trigger = ?, response_or_rule = ?, category = ?, is_active = ?
-        WHERE id = ?
-    """, (title, rule_type, question_or_trigger, response_or_rule, category, is_active, rule_id))
+    if workspace_id is not None:
+        cursor.execute("""
+            UPDATE ai_training_rules
+            SET title = ?, rule_type = ?, question_or_trigger = ?, response_or_rule = ?, category = ?, is_active = ?, workspace_id = ?
+            WHERE id = ?
+        """, (title, rule_type, question_or_trigger, response_or_rule, category, is_active, int(workspace_id), rule_id))
+    else:
+        cursor.execute("""
+            UPDATE ai_training_rules
+            SET title = ?, rule_type = ?, question_or_trigger = ?, response_or_rule = ?, category = ?, is_active = ?
+            WHERE id = ?
+        """, (title, rule_type, question_or_trigger, response_or_rule, category, is_active, rule_id))
     conn.commit()
     conn.close()
     return True
@@ -584,27 +698,69 @@ def toggle_training_rule(rule_id: int) -> bool:
     return True
 
 # ============================================================
-# SAVED MEDIA LIBRARY HELPERS (VOICE NOTES & VIDEOS)
+# FAQ HELPERS (WORKSPACE-SCOPED)
 # ============================================================
 
-def get_saved_media(media_type: str = None) -> list:
+def get_faqs(workspace_id: Optional[int] = None) -> list:
+    """Returns FAQs scoped to a workspace or all if None."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    if media_type:
-        cursor.execute("SELECT * FROM saved_media WHERE media_type = ? ORDER BY id DESC", (media_type,))
+    if workspace_id is not None:
+        cursor.execute("SELECT * FROM faqs WHERE workspace_id = ? ORDER BY id DESC", (int(workspace_id),))
     else:
-        cursor.execute("SELECT * FROM saved_media ORDER BY id DESC")
+        cursor.execute("SELECT * FROM faqs ORDER BY id DESC")
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
-def create_saved_media(title: str, media_type: str, file_url: str, description: str = "", duration_seconds: int = 0) -> int:
+def create_faq(question: str, answer: str, category: str = "General", workspace_id: int = 1) -> int:
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO saved_media (title, media_type, file_url, description, duration_seconds)
-        VALUES (?, ?, ?, ?, ?)
-    """, (title, media_type, file_url, description, duration_seconds))
+        INSERT INTO faqs (question, answer, category, workspace_id)
+        VALUES (?, ?, ?, ?)
+    """, (question, answer, category, int(workspace_id or 1)))
+    conn.commit()
+    faq_id = cursor.lastrowid
+    conn.close()
+    return faq_id
+
+def delete_faq(faq_id: int) -> bool:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM faqs WHERE id = ?", (faq_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+# ============================================================
+# SAVED MEDIA LIBRARY HELPERS (VOICE NOTES & VIDEOS)
+# ============================================================
+
+def get_saved_media(media_type: str = None, workspace_id: Optional[int] = None) -> list:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    query = "SELECT * FROM saved_media WHERE 1=1"
+    params = []
+    if media_type:
+        query += " AND media_type = ?"
+        params.append(media_type)
+    if workspace_id is not None:
+        query += " AND workspace_id = ?"
+        params.append(int(workspace_id))
+    query += " ORDER BY id DESC"
+    cursor.execute(query, params)
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def create_saved_media(title: str, media_type: str, file_url: str, description: str = "", duration_seconds: int = 0, workspace_id: int = 1) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO saved_media (title, media_type, file_url, description, duration_seconds, workspace_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (title, media_type, file_url, description, duration_seconds, int(workspace_id or 1)))
     conn.commit()
     media_id = cursor.lastrowid
     conn.close()
@@ -819,12 +975,36 @@ def save_connected_page(data: dict) -> int:
     page_id = str(data.get("page_id", "")).strip()
     page_name = str(data.get("page_name", "")).strip() or "Facebook Page"
     page_token = str(data.get("page_access_token", "")).strip()
+    workspace_id = data.get("workspace_id")
     
     if not page_id or not page_token:
         raise ValueError("page_id and page_access_token are required")
 
     conn = get_db_connection()
     cursor = conn.cursor()
+
+    # If no workspace_id provided, look up or create workspace for this page
+    if not workspace_id:
+        cursor.execute("SELECT id FROM workspaces WHERE name = ? OR shop_name = ?", (page_name, page_name))
+        ws_row = cursor.fetchone()
+        if ws_row:
+            workspace_id = ws_row["id"]
+        else:
+            # Create a dedicated workspace for this new Page
+            cursor.execute("""
+                INSERT INTO workspaces (name, slug, status, shop_name, shop_phone, shop_address, delivery_inside_dhaka, delivery_outside_dhaka, ai_system_prompt, ai_enabled)
+                VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                page_name, page_name.lower().replace(" ", "-"),
+                data.get("shop_name", page_name),
+                data.get("shop_phone", ""),
+                data.get("shop_address", "ঢাকা, বাংলাদেশ"),
+                float(data.get("delivery_inside_dhaka", 70.0) or 70.0),
+                float(data.get("delivery_outside_dhaka", 130.0) or 130.0),
+                data.get("ai_system_prompt", ""),
+                int(data.get("ai_enabled", 1))
+            ))
+            workspace_id = cursor.lastrowid
     
     cursor.execute("SELECT id FROM connected_pages WHERE page_id = ?", (page_id,))
     existing = cursor.fetchone()
@@ -833,6 +1013,7 @@ def save_connected_page(data: dict) -> int:
         page_pk = existing["id"]
         cursor.execute("""
             UPDATE connected_pages SET
+                workspace_id = COALESCE(?, workspace_id),
                 page_name = COALESCE(?, page_name),
                 page_access_token = COALESCE(?, page_access_token),
                 page_status = COALESCE(?, page_status),
@@ -848,6 +1029,7 @@ def save_connected_page(data: dict) -> int:
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         """, (
+            workspace_id,
             page_name, page_token,
             data.get("page_status", "connected"),
             data.get("messenger_enabled", 1),
@@ -864,11 +1046,12 @@ def save_connected_page(data: dict) -> int:
     else:
         cursor.execute("""
             INSERT INTO connected_pages (
-                page_id, page_name, page_access_token, page_status,
+                workspace_id, page_id, page_name, page_access_token, page_status,
                 messenger_enabled, comments_enabled, ai_enabled, ai_system_prompt,
                 shop_name, shop_phone, shop_address, delivery_inside_dhaka, delivery_outside_dhaka
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
+            workspace_id,
             page_id, page_name, page_token,
             data.get("page_status", "connected"),
             data.get("messenger_enabled", 1),
@@ -914,9 +1097,10 @@ def get_all_whatsapp_accounts() -> list:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT wa.*, cp.page_id, cp.page_name, cp.shop_name
+            SELECT wa.*, cp.page_id, cp.page_name, cp.shop_name, w.name as workspace_name
             FROM whatsapp_accounts wa
             LEFT JOIN connected_pages cp ON wa.connected_page_id = cp.id
+            LEFT JOIN workspaces w ON wa.workspace_id = w.id
             ORDER BY wa.id ASC
         """)
         rows = cursor.fetchall()
@@ -935,9 +1119,11 @@ def get_whatsapp_account_by_phone_id(phone_number_id: str) -> Optional[dict]:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT wa.*, cp.page_id, cp.page_name, cp.shop_name, cp.ai_enabled as page_ai_enabled,
-                   cp.ai_system_prompt as page_ai_prompt, cp.delivery_inside_dhaka, cp.delivery_outside_dhaka
+                   cp.ai_system_prompt as page_ai_prompt, cp.delivery_inside_dhaka, cp.delivery_outside_dhaka,
+                   w.name as workspace_name, w.id as ws_id
             FROM whatsapp_accounts wa
             LEFT JOIN connected_pages cp ON wa.connected_page_id = cp.id
+            LEFT JOIN workspaces w ON wa.workspace_id = w.id
             WHERE wa.phone_number_id = ?
         """, (str(phone_number_id),))
         row = cursor.fetchone()
@@ -980,16 +1166,23 @@ def save_whatsapp_account(data: dict) -> int:
     existing = cursor.fetchone()
 
     connected_page_pk = data.get("connected_page_id")
+    workspace_id = data.get("workspace_id")
     if not connected_page_pk and data.get("page_id"):
-        cursor.execute("SELECT id FROM connected_pages WHERE page_id = ?", (str(data.get("page_id")),))
+        cursor.execute("SELECT id, workspace_id FROM connected_pages WHERE page_id = ?", (str(data.get("page_id")),))
         cp = cursor.fetchone()
         if cp:
             connected_page_pk = cp["id"]
+            if not workspace_id:
+                workspace_id = cp["workspace_id"]
+
+    if not workspace_id:
+        workspace_id = 1
 
     if existing:
         wa_pk = existing["id"]
         cursor.execute("""
             UPDATE whatsapp_accounts SET
+                workspace_id = COALESCE(?, workspace_id),
                 connected_page_id = COALESCE(?, connected_page_id),
                 waba_id = COALESCE(?, waba_id),
                 display_phone_number = COALESCE(?, display_phone_number),
@@ -1000,6 +1193,7 @@ def save_whatsapp_account(data: dict) -> int:
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         """, (
+            workspace_id,
             connected_page_pk,
             data.get("waba_id"),
             data.get("display_phone_number"),
@@ -1012,10 +1206,11 @@ def save_whatsapp_account(data: dict) -> int:
     else:
         cursor.execute("""
             INSERT INTO whatsapp_accounts (
-                connected_page_id, waba_id, phone_number_id, display_phone_number,
+                workspace_id, connected_page_id, waba_id, phone_number_id, display_phone_number,
                 access_token, connection_mode, connection_status, coexistence_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
+            workspace_id,
             connected_page_pk,
             data.get("waba_id", ""),
             phone_id,
@@ -1044,43 +1239,193 @@ def delete_whatsapp_account(phone_number_id: str) -> bool:
         print(f"[DB delete_whatsapp_account Error]: {e}")
         return False
 
-def get_page_ai_config(page_id: str = "") -> dict:
+# ============================================================
+# WORKSPACE & BUSINESS TENANT HELPERS
+# ============================================================
+
+def get_all_workspaces() -> list:
+    """Returns list of all registered business workspaces with page & account summaries."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT w.*,
+                   (SELECT COUNT(*) FROM connected_pages cp WHERE cp.workspace_id = w.id) as page_count,
+                   (SELECT COUNT(*) FROM whatsapp_accounts wa WHERE wa.workspace_id = w.id) as wa_count,
+                   (SELECT COUNT(*) FROM products p WHERE p.workspace_id = w.id AND p.is_active = 1) as product_count,
+                   (SELECT COUNT(*) FROM orders o WHERE o.workspace_id = w.id) as order_count
+            FROM workspaces w
+            ORDER BY w.id ASC
+        """)
+        rows = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+        return rows
+    except Exception as e:
+        print(f"[DB get_all_workspaces Error]: {e}")
+        return []
+
+def get_workspace(workspace_id: int) -> Optional[dict]:
+    """Retrieves a single business workspace by ID."""
+    if not workspace_id:
+        return None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM workspaces WHERE id = ?", (int(workspace_id),))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_workspace Error]: {e}")
+        return None
+
+def save_workspace(data: dict) -> int:
+    """Inserts or updates a business workspace record."""
+    ws_id = data.get("id")
+    name = str(data.get("name", "")).strip() or "New Business"
+    raw_slug = str(data.get("slug", "")).strip() or name.lower().replace(" ", "-")
+    status = data.get("status", "active")
+    shop_name = data.get("shop_name") or name
+    shop_phone = data.get("shop_phone", "")
+    shop_address = data.get("shop_address", "ঢাকা, বাংলাদেশ")
+    inside_fee = float(data.get("delivery_inside_dhaka", 70.0) or 70.0)
+    outside_fee = float(data.get("delivery_outside_dhaka", 130.0) or 130.0)
+    ai_prompt = data.get("ai_system_prompt", "")
+    ai_enabled = int(data.get("ai_enabled", 1))
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        if ws_id:
+            cursor.execute("""
+                UPDATE workspaces SET
+                    name = ?, slug = ?, status = ?, shop_name = ?, shop_phone = ?,
+                    shop_address = ?, delivery_inside_dhaka = ?, delivery_outside_dhaka = ?,
+                    ai_system_prompt = ?, ai_enabled = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (name, raw_slug, status, shop_name, shop_phone, shop_address, inside_fee, outside_fee, ai_prompt, ai_enabled, int(ws_id)))
+            pk = int(ws_id)
+        else:
+            # Ensure unique slug
+            slug = raw_slug
+            counter = 1
+            while True:
+                cursor.execute("SELECT id FROM workspaces WHERE slug = ?", (slug,))
+                if not cursor.fetchone():
+                    break
+                slug = f"{raw_slug}-{counter}"
+                counter += 1
+
+            cursor.execute("""
+                INSERT INTO workspaces (
+                    name, slug, status, shop_name, shop_phone, shop_address,
+                    delivery_inside_dhaka, delivery_outside_dhaka, ai_system_prompt, ai_enabled
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (name, slug, status, shop_name, shop_phone, shop_address, inside_fee, outside_fee, ai_prompt, ai_enabled))
+            pk = cursor.lastrowid
+
+        conn.commit()
+        return pk
+    finally:
+        if conn:
+            conn.close()
+
+def delete_workspace(workspace_id: int) -> bool:
+    """Deletes a secondary workspace safely (Workspace 1 cannot be deleted)."""
+    if int(workspace_id) == 1:
+        return False # Protected primary workspace
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM workspaces WHERE id = ?", (int(workspace_id),))
+        cursor.execute("DELETE FROM products WHERE workspace_id = ?", (int(workspace_id),))
+        cursor.execute("DELETE FROM orders WHERE workspace_id = ?", (int(workspace_id),))
+        cursor.execute("DELETE FROM conversations WHERE workspace_id = ?", (int(workspace_id),))
+        cursor.execute("DELETE FROM ai_training_rules WHERE workspace_id = ?", (int(workspace_id),))
+        cursor.execute("DELETE FROM faqs WHERE workspace_id = ?", (int(workspace_id),))
+        cursor.execute("DELETE FROM saved_media WHERE workspace_id = ?", (int(workspace_id),))
+        cursor.execute("DELETE FROM connected_pages WHERE workspace_id = ?", (int(workspace_id),))
+        cursor.execute("DELETE FROM whatsapp_accounts WHERE workspace_id = ?", (int(workspace_id),))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[DB delete_workspace Error]: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+def get_workspace_by_page_id(page_id: str) -> Optional[dict]:
+    """Finds the workspace associated with a specific Facebook Page."""
+    if not page_id:
+        return None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT w.*, cp.page_id, cp.page_name, cp.page_access_token, cp.messenger_enabled, cp.comments_enabled
+            FROM workspaces w
+            JOIN connected_pages cp ON cp.workspace_id = w.id
+            WHERE cp.page_id = ?
+            LIMIT 1
+        """, (str(page_id),))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_workspace_by_page_id Error]: {e}")
+        return None
+
+def get_workspace_by_phone_id(phone_number_id: str) -> Optional[dict]:
+    """Finds the workspace associated with a specific WhatsApp Business Phone Number ID."""
+    if not phone_number_id:
+        return None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT w.*, wa.phone_number_id, wa.display_phone_number, wa.access_token as wa_access_token,
+                   wa.connection_mode, wa.connection_status
+            FROM workspaces w
+            JOIN whatsapp_accounts wa ON wa.workspace_id = w.id
+            WHERE wa.phone_number_id = ?
+            LIMIT 1
+        """, (str(phone_number_id),))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_workspace_by_phone_id Error]: {e}")
+        return None
+
+def get_page_ai_config(page_id: str = "", workspace_id: int = None) -> dict:
     """
-    Resolves page-level AI and shop configuration.
-    Falls back seamlessly to global database settings and .env.
+    Resolves workspace-level AI and shop configuration.
+    Strictly uses the workspace's shop details, custom prompt, and delivery fees.
     """
-    global_settings = get_all_settings(masked=False)
+    ws = None
+    if workspace_id:
+        ws = get_workspace(workspace_id)
+    elif page_id:
+        ws = get_workspace_by_page_id(page_id)
     
-    config = {
-        "shop_name": global_settings.get("shop_name", "RS Graphics (আরএস গ্রাফিক্স)"),
-        "shop_phone": global_settings.get("shop_phone", "01816504097"),
-        "shop_address": global_settings.get("shop_address", "ঢাকা, বাংলাদেশ"),
-        "delivery_inside_dhaka": global_settings.get("delivery_inside_dhaka", "70"),
-        "delivery_outside_dhaka": global_settings.get("delivery_outside_dhaka", "130"),
-        "ai_system_prompt": global_settings.get("ai_system_prompt", ""),
-        "ai_enabled": global_settings.get("ai_enabled", "true").lower() == "true",
-        "page_name": "RS Graphics",
+    if not ws:
+        ws = get_workspace(1) or {}
+
+    global_settings = get_all_settings(masked=False)
+
+    return {
+        "workspace_id": ws.get("id", 1),
+        "workspace_name": ws.get("name", "RS Graphics (আরএস গ্রাফিক্স)"),
+        "shop_name": ws.get("shop_name") or ws.get("name") or global_settings.get("shop_name", "RS Graphics"),
+        "shop_phone": ws.get("shop_phone") or global_settings.get("shop_phone", "01816504097"),
+        "shop_address": ws.get("shop_address") or "ঢাকা, বাংলাদেশ",
+        "delivery_inside_dhaka": str(ws.get("delivery_inside_dhaka", 70.0)),
+        "delivery_outside_dhaka": str(ws.get("delivery_outside_dhaka", 130.0)),
+        "ai_system_prompt": ws.get("ai_system_prompt", ""),
+        "ai_enabled": bool(ws.get("ai_enabled", 1)),
         "page_id": page_id
     }
-    
-    if page_id:
-        page_conn = get_connected_page(page_id)
-        if page_conn:
-            if page_conn.get("shop_name"):
-                config["shop_name"] = page_conn["shop_name"]
-            if page_conn.get("page_name"):
-                config["page_name"] = page_conn["page_name"]
-            if page_conn.get("shop_phone"):
-                config["shop_phone"] = page_conn["shop_phone"]
-            if page_conn.get("shop_address"):
-                config["shop_address"] = page_conn["shop_address"]
-            if page_conn.get("delivery_inside_dhaka") is not None:
-                config["delivery_inside_dhaka"] = str(page_conn["delivery_inside_dhaka"])
-            if page_conn.get("delivery_outside_dhaka") is not None:
-                config["delivery_outside_dhaka"] = str(page_conn["delivery_outside_dhaka"])
-            if page_conn.get("ai_system_prompt"):
-                config["ai_system_prompt"] = page_conn["ai_system_prompt"]
-            if page_conn.get("ai_enabled") is not None:
-                config["ai_enabled"] = bool(page_conn["ai_enabled"])
-
-    return config

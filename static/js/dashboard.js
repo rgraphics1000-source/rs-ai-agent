@@ -2,8 +2,12 @@
    RS AI - Full Platform Interactive Logic (JavaScript)
    ========================================================= */
 
+let currentWorkspaceId = parseInt(localStorage.getItem("current_workspace_id") || "1");
+let allWorkspaces = [];
+
 document.addEventListener("DOMContentLoaded", () => {
     initNavigation();
+    loadWorkspacesList();
     loadOverview();
     loadOrders();
     loadProducts();
@@ -23,6 +27,94 @@ function initPWA() {
         navigator.serviceWorker.register('/static/sw.js')
             .then(() => console.log("[PWA] Service worker registered"))
             .catch(err => console.log("[PWA] SW register error:", err));
+    }
+}
+
+// ==========================================
+// WORKSPACE / BUSINESS MULTI-TENANCY LOGIC
+// ==========================================
+async function loadWorkspacesList() {
+    try {
+        const res = await fetch("/api/workspaces");
+        const data = await res.json();
+        if (data.success && data.workspaces) {
+            allWorkspaces = data.workspaces;
+            renderWorkspaceDropdown();
+        }
+    } catch (e) {
+        console.error("Load workspaces error:", e);
+    }
+}
+
+function renderWorkspaceDropdown() {
+    const selects = [
+        document.getElementById("global-workspace-select"),
+        document.getElementById("mobile-workspace-select")
+    ];
+    selects.forEach(sel => {
+        if (!sel) return;
+        sel.innerHTML = "";
+        allWorkspaces.forEach(ws => {
+            const opt = document.createElement("option");
+            opt.value = ws.id;
+            opt.textContent = `${ws.id === 1 ? '🏢 ' : '🏪 '}${ws.name} (${ws.shop_name || ws.name})`;
+            if (ws.id === currentWorkspaceId) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    });
+}
+
+function onWorkspaceChanged(wsId) {
+    currentWorkspaceId = parseInt(wsId) || 1;
+    localStorage.setItem("current_workspace_id", currentWorkspaceId);
+    showToast(`Switched to Business Workspace #${currentWorkspaceId}`, "success");
+    refreshCurrentTab();
+}
+
+function openCreateWorkspaceModal() {
+    openModal("modal-create-workspace");
+}
+
+async function handleCreateWorkspace(e) {
+    e.preventDefault();
+    const name = document.getElementById("new-ws-name").value.trim();
+    const shop_name = document.getElementById("new-ws-shop-name").value.trim();
+    const phone = document.getElementById("new-ws-phone").value.trim();
+    const address = document.getElementById("new-ws-address").value.trim();
+    const delDhaka = parseFloat(document.getElementById("new-ws-del-dhaka").value) || 70;
+    const delOut = parseFloat(document.getElementById("new-ws-del-out").value) || 130;
+
+    if (!name) {
+        showToast("Please enter workspace name", "warning");
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/workspaces", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: name,
+                shop_name: shop_name || name,
+                shop_phone: phone,
+                shop_address: address,
+                delivery_inside_dhaka: delDhaka,
+                delivery_outside_dhaka: delOut,
+                ai_enabled: 1
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`Workspace '${name}' created successfully!`, "success");
+            closeModal("modal-create-workspace");
+            document.getElementById("form-create-workspace").reset();
+            await loadWorkspacesList();
+            onWorkspaceChanged(data.id);
+        } else {
+            showToast(data.error || "Failed to create workspace", "danger");
+        }
+    } catch (err) {
+        showToast("Network error creating workspace", "danger");
     }
 }
 
@@ -116,7 +208,7 @@ function refreshCurrentTab(target) {
     if (target === "dashboard") loadOverview();
     if (target === "orders") loadOrders();
     if (target === "products") loadProducts();
-    if (target === "content") { loadFaqs(); loadCommentLogs(); }
+    if (target === "content") { loadTrainingRules(); loadSavedMediaList(); loadFaqs(); loadCommentLogs(); }
     if (target === "omnichat") { loadOmnichatConversations(); loadConnectedPages(); }
     if (target === "integrations") { loadConnectedPages(); loadSettings(); }
     if (target === "settings" || target === "test-arena") { loadSettings(); loadConnectedPages(); }
@@ -127,7 +219,7 @@ function refreshCurrentTab(target) {
 // ==========================================
 async function loadOverview() {
     try {
-        const res = await fetch("/api/overview");
+        const res = await fetch(`/api/overview?workspace_id=${currentWorkspaceId}`);
         const data = await res.json();
 
         // Dashboard Stats
@@ -183,11 +275,12 @@ async function loadOrders(searchQuery = "") {
     tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px;">Loading orders...</td></tr>`;
 
     try {
-        let url = `/api/orders?status=${currentOrderStatusFilter}`;
+        let url = `/api/orders?status=${currentOrderStatusFilter}&workspace_id=${currentWorkspaceId}`;
         if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
 
         const res = await fetch(url);
         const data = await res.json();
+
 
         tbody.innerHTML = "";
         if (!data.orders || data.orders.length === 0) {
@@ -534,30 +627,32 @@ async function loadProducts() {
     if (!grid) return;
 
     try {
-        const res = await fetch("/api/products");
+        const res = await fetch(`/api/products?workspace_id=${currentWorkspaceId}`);
         const data = await res.json();
         let products = data.products || [];
 
-        if (products.length > 0) {
-            localStorage.setItem("rs_cached_products", JSON.stringify(products));
-        } else {
-            // Check if we have backup in localStorage to auto-restore
-            const savedLocal = localStorage.getItem("rs_cached_products");
-            if (savedLocal) {
-                try {
-                    const parsed = JSON.parse(savedLocal);
-                    if (Array.isArray(parsed) && parsed.length > 0) {
-                        await fetch("/api/products/batch-restore", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ products: parsed })
-                        });
-                        const refreshRes = await fetch("/api/products");
-                        const refreshData = await refreshRes.json();
-                        products = refreshData.products || parsed;
+        if (currentWorkspaceId === 1) {
+            if (products.length > 0) {
+                localStorage.setItem("rs_cached_products", JSON.stringify(products));
+            } else {
+                // Check if we have backup in localStorage to auto-restore for Workspace 1
+                const savedLocal = localStorage.getItem("rs_cached_products");
+                if (savedLocal) {
+                    try {
+                        const parsed = JSON.parse(savedLocal);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            await fetch("/api/products/batch-restore", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ products: parsed })
+                            });
+                            const refreshRes = await fetch(`/api/products?workspace_id=${currentWorkspaceId}`);
+                            const refreshData = await refreshRes.json();
+                            products = refreshData.products || parsed;
+                        }
+                    } catch (e) {
+                        console.error("Auto-restore products error:", e);
                     }
-                } catch (e) {
-                    console.error("Auto-restore products error:", e);
                 }
             }
         }
@@ -565,11 +660,11 @@ async function loadProducts() {
         cachedProductsList = products;
         grid.innerHTML = "";
         if (products.length === 0) {
-            grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">No products added yet. Click '+ Add New Product' above.</div>`;
+            grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">No products added yet in this workspace. Click '+ Add New Product' above.</div>`;
             return;
         }
 
-        data.products.forEach(p => {
+        products.forEach(p => {
             const card = document.createElement("div");
             card.className = "product-card";
             const gallery = (p.gallery_images && p.gallery_images.length > 0) ? p.gallery_images : (p.image_url ? [p.image_url] : ["/static/uploads/sample_panjabi.jpg"]);
@@ -633,6 +728,7 @@ async function handleAddProduct(e) {
     addProductSelectedFiles.forEach(file => {
         formData.append("images", file);
     });
+    formData.append("workspace_id", currentWorkspaceId);
 
     try {
         const res = await fetch("/api/products", {
@@ -650,6 +746,7 @@ async function handleAddProduct(e) {
             loadOverview();
         }
     } catch (e) {
+
         showToast("Could not add product", "danger");
     }
 }
@@ -814,12 +911,12 @@ async function loadFaqs() {
     if (!container) return;
 
     try {
-        const res = await fetch("/api/faqs");
+        const res = await fetch(`/api/faqs?workspace_id=${currentWorkspaceId}`);
         const data = await res.json();
 
         container.innerHTML = "";
         if (!data.faqs || data.faqs.length === 0) {
-            container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 25px;">No custom Q&A pairs added yet.</div>`;
+            container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 25px;">No custom Q&A pairs added yet in this workspace.</div>`;
             return;
         }
 
@@ -853,7 +950,7 @@ async function handleAddFaq(e) {
         const res = await fetch("/api/faqs", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ question: q, answer: a })
+            body: JSON.stringify({ question: q, answer: a, workspace_id: currentWorkspaceId })
         });
         const data = await res.json();
         if (data.success) {
@@ -888,7 +985,7 @@ async function loadCommentLogs() {
     if (!tbody) return;
 
     try {
-        const res = await fetch("/api/comments/logs");
+        const res = await fetch(`/api/comments/logs?workspace_id=${currentWorkspaceId}`);
         const data = await res.json();
 
         tbody.innerHTML = "";
@@ -941,12 +1038,12 @@ async function loadTrainingRules() {
     if (!container) return;
 
     try {
-        const res = await fetch("/api/training/rules");
+        const res = await fetch(`/api/training/rules?workspace_id=${currentWorkspaceId}`);
         const data = await res.json();
         container.innerHTML = "";
 
         if (!data.rules || data.rules.length === 0) {
-            container.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted);"><i class="fas fa-brain" style="font-size: 32px; opacity: 0.4; margin-bottom: 8px; display: block;"></i>কোনো কাস্টম ট্রেইনিং রুল যুক্ত করা হয়নি। নতুন রুল যুক্ত করতে উপরের বাটনে ক্লিক করুন।</div>`;
+            container.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted);"><i class="fas fa-brain" style="font-size: 32px; opacity: 0.4; margin-bottom: 8px; display: block;"></i>কোনো কাস্টম ট্রেইনিং রুল যুক্ত করা হয়নি এই ওয়ার্কস্পেসে। নতুন রুল যুক্ত করতে উপরের বাটনে ক্লিক করুন।</div>`;
             return;
         }
 
@@ -1012,7 +1109,8 @@ async function handleCreateTrainingRule(e) {
                 rule_type: rule_type,
                 question_or_trigger: trigger,
                 response_or_rule: content,
-                is_active: 1
+                is_active: 1,
+                workspace_id: currentWorkspaceId
             })
         });
         const data = await res.json();
@@ -1056,7 +1154,7 @@ async function loadSavedMediaList() {
     if (!container) return;
 
     try {
-        const res = await fetch("/api/saved-media");
+        const res = await fetch(`/api/saved-media?workspace_id=${currentWorkspaceId}`);
         const data = await res.json();
         container.innerHTML = "";
 
@@ -1122,6 +1220,7 @@ async function handleUploadSavedMedia(e) {
     formData.append("media_type", media_type);
     formData.append("description", desc);
     formData.append("file", fileInput.files[0]);
+    formData.append("workspace_id", currentWorkspaceId);
 
     try {
         showToast("আপলোড হচ্ছে...", "info");
@@ -1173,7 +1272,7 @@ async function openQuickMediaModal(type) {
         container.innerHTML = `<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>`;
         openModal("modal-quick-media");
 
-        const res = await fetch(`/api/saved-media?type=${type}`);
+        const res = await fetch(`/api/saved-media?type=${type}&workspace_id=${currentWorkspaceId}`);
         const data = await res.json();
         container.innerHTML = "";
 
@@ -1260,12 +1359,14 @@ async function loadOmnichatConversations() {
 
         let url = "/api/omnichat/conversations";
         const params = new URLSearchParams();
+        params.append("workspace_id", currentWorkspaceId);
         if (pageFilter) params.append("page_id", pageFilter);
         if (channelFilter) params.append("channel", channelFilter);
         if (params.toString()) url += `?${params.toString()}`;
 
         const res = await fetch(url);
         const data = await res.json();
+
 
         container.innerHTML = "";
         if (!data.conversations || data.conversations.length === 0) {

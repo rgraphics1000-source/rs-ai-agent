@@ -34,16 +34,28 @@ def is_dhaka_address(address: str) -> bool:
     addr_lower = address.lower()
     return any(k in addr_lower for k in dhaka_keywords)
 
-def calculate_order_totals(items: list, address: str) -> tuple[float, float, float]:
-    """Calculates subtotal, delivery charge, and total amount."""
+def calculate_order_totals(items: list, address: str, workspace_id: int = 1) -> tuple[float, float, float]:
+    """Calculates subtotal, delivery charge, and total amount based on workspace delivery settings."""
     subtotal = 0.0
     for item in items:
         price = float(item.get("price", 0))
         qty = int(item.get("qty", 1))
         subtotal += price * qty
 
-    inside_fee = float(get_setting("delivery_inside_dhaka", "70"))
-    outside_fee = float(get_setting("delivery_outside_dhaka", "130"))
+    inside_fee = 70.0
+    outside_fee = 130.0
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT delivery_inside_dhaka, delivery_outside_dhaka FROM workspaces WHERE id = ?", (int(workspace_id or 1),))
+        ws = cursor.fetchone()
+        conn.close()
+        if ws:
+            inside_fee = float(ws["delivery_inside_dhaka"] or 70.0)
+            outside_fee = float(ws["delivery_outside_dhaka"] or 130.0)
+    except Exception:
+        inside_fee = float(get_setting("delivery_inside_dhaka", "70"))
+        outside_fee = float(get_setting("delivery_outside_dhaka", "130"))
 
     delivery_charge = inside_fee if is_dhaka_address(address) else outside_fee
     total_amount = subtotal + delivery_charge
@@ -56,10 +68,11 @@ def create_order(
     items: list,
     channel: str = "facebook",
     sender_id: str = "",
-    notes: str = ""
+    notes: str = "",
+    workspace_id: int = 1
 ) -> dict:
-    """Creates and saves a new customer order into SQLite database."""
-    subtotal, delivery_charge, total_amount = calculate_order_totals(items, customer_address)
+    """Creates and saves a new customer order into SQLite database scoped to a workspace."""
+    subtotal, delivery_charge, total_amount = calculate_order_totals(items, customer_address, workspace_id=workspace_id)
     
     # Generate Unique Order Code (e.g., PW-260819-4821)
     timestamp = datetime.now().strftime("%y%m%d")
@@ -77,45 +90,50 @@ def create_order(
     
     items_summary = ", ".join(items_summary_list) if items_summary_list else "1x Product"
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO orders (
-            order_code, customer_name, customer_phone, customer_address,
-            items_summary, items_json, subtotal, delivery_charge, total_amount,
-            channel, sender_id, status, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        order_code,
-        customer_name,
-        customer_phone,
-        customer_address,
-        items_summary,
-        json.dumps(items, ensure_ascii=False),
-        subtotal,
-        delivery_charge,
-        total_amount,
-        channel,
-        sender_id,
-        "Pending",
-        notes
-    ))
-    order_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO orders (
+                workspace_id, order_code, customer_name, customer_phone, customer_address,
+                items_summary, items_json, subtotal, delivery_charge, total_amount,
+                channel, sender_id, status, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            int(workspace_id or 1),
+            order_code,
+            customer_name,
+            customer_phone,
+            customer_address,
+            items_summary,
+            json.dumps(items, ensure_ascii=False),
+            subtotal,
+            delivery_charge,
+            total_amount,
+            channel,
+            sender_id,
+            "Pending",
+            notes
+        ))
+        order_id = cursor.lastrowid
+        conn.commit()
 
-    return {
-        "id": order_id,
-        "order_code": order_code,
-        "customer_name": customer_name,
-        "customer_phone": customer_phone,
-        "customer_address": customer_address,
-        "items_summary": items_summary,
-        "subtotal": subtotal,
-        "delivery_charge": delivery_charge,
-        "total_amount": total_amount,
-        "status": "Pending"
-    }
+        return {
+            "id": order_id,
+            "order_code": order_code,
+            "customer_name": customer_name,
+            "customer_phone": customer_phone,
+            "customer_address": customer_address,
+            "items_summary": items_summary,
+            "subtotal": subtotal,
+            "delivery_charge": delivery_charge,
+            "total_amount": total_amount,
+            "status": "Pending"
+        }
+    finally:
+        if conn:
+            conn.close()
 
 def update_order_status(order_id: int, new_status: str) -> bool:
     """Updates order status: Pending -> Confirmed -> Shipped -> Delivered -> Cancelled."""
@@ -123,31 +141,45 @@ def update_order_status(order_id: int, new_status: str) -> bool:
     if new_status not in valid_statuses:
         return False
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE orders SET status = ? WHERE id = ?", (new_status, order_id))
-    conn.commit()
-    conn.close()
-    return True
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE orders SET status = ? WHERE id = ?", (new_status, order_id))
+        conn.commit()
+        return True
+    finally:
+        if conn:
+            conn.close()
 
-def list_orders(status: str = None, search: str = None) -> list:
-    """Fetches orders with optional filtering."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    query = "SELECT * FROM orders WHERE 1=1"
-    params = []
+def list_orders(status: str = None, search: str = None, workspace_id: int = None) -> list:
+    """Fetches orders with optional filtering scoped to workspace."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        query = "SELECT * FROM orders WHERE 1=1"
+        params = []
 
-    if status and status != "All":
-        query += " AND status = ?"
-        params.append(status)
+        if workspace_id is not None:
+            query += " AND workspace_id = ?"
+            params.append(int(workspace_id))
 
-    if search:
-        query += " AND (order_code LIKE ? OR customer_name LIKE ? OR customer_phone LIKE ? OR customer_address LIKE ?)"
-        term = f"%{search}%"
-        params.extend([term, term, term, term])
+        if status and status != "All":
+            query += " AND status = ?"
+            params.append(status)
 
-    query += " ORDER BY id DESC"
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+        if search:
+            query += " AND (order_code LIKE ? OR customer_name LIKE ? OR customer_phone LIKE ? OR customer_address LIKE ?)"
+            term = f"%{search}%"
+            params.extend([term, term, term, term])
+
+        query += " ORDER BY id DESC"
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        if conn:
+            conn.close()
+
+

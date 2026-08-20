@@ -98,7 +98,9 @@
                     <i class="fas fa-bars"></i>
                 </button>
                 <img src="/static/img/logo.png" alt="RS AI Logo" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(59, 130, 246, 0.7); box-shadow: 0 0 12px rgba(59, 130, 246, 0.5); display: inline-block; vertical-align: middle;">
-                <div style="font-weight: 800; font-size: 17px; letter-spacing: -0.5px; color: #ffffff;">RS_AI</div>
+                <select id="mobile-workspace-select" class="form-control" style="font-size: 12px; font-weight: 700; background: rgba(30, 41, 59, 0.9); color: #fff; border: 1px solid rgba(59, 130, 246, 0.5); border-radius: 6px; padding: 4px 8px; max-width: 140px;" onchange="onWorkspaceChanged(this.value)">
+                    <option value="1">🏢 RS Graphics</option>
+                </select>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
                 <button class="btn btn-sm" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239,68,68,0.4); color: #fca5a5; font-size: 11px; padding: 5px 9px; border-radius: 16px; display: flex; align-items: center; gap: 4px;" onclick="openChatSelectorModal()">
@@ -116,7 +118,18 @@
                 <h1 id="page-title">⚡ AI Setup & Live Simulator</h1>
                 <p id="page-subtitle">Configure your sales assistant and test customer conversations live</p>
             </div>
-            <div class="header-actions">
+            <div class="header-actions" style="display: flex; align-items: center; gap: 8px;">
+                <!-- Workspace / Business Switcher -->
+                <div class="workspace-switcher-wrapper" style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 4px 8px; border-radius: 10px;">
+                    <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;"><i class="fas fa-building" style="color: #60a5fa;"></i> Business:</span>
+                    <select id="global-workspace-select" class="form-control" style="font-size: 12.5px; font-weight: 600; background: rgba(15, 23, 42, 0.9); color: #fff; border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 6px; padding: 4px 8px; min-width: 160px;" onchange="onWorkspaceChanged(this.value)">
+                        <option value="1">🏢 RS Graphics (Primary)</option>
+                    </select>
+                    <button class="btn btn-sm btn-secondary" onclick="openCreateWorkspaceModal()" title="Add New Business Workspace" style="padding: 4px 8px; font-size: 11px;">
+                        <i class="fas fa-plus"></i> New
+                    </button>
+                </div>
+
                 <a href="/download/RS_AI.apk" download="RS_AI.apk" class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; padding: 8px 14px; border-radius: 8px; font-size: 12px; box-shadow: 0 2px 10px rgba(16,185,129,0.35);">
                     <i class="fab fa-android" style="font-size: 15px;"></i> <span>Download App (.apk)</span>
                 </a>
@@ -1526,6 +1539,56 @@
             </div>
         </div>
     </div>
+
+    <!-- Modal: Create New Business Workspace -->
+    <div id="modal-create-workspace" class="modal-overlay">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-building" style="color: #60a5fa;"></i> নতুন বিজনেস ওয়ার্কস্পেস তৈরি করুন</h3>
+                <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-create-workspace')">&times;</button>
+            </div>
+            <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 14px;">
+                প্রতিটি ওয়ার্কস্পেস একটি সম্পূর্ণ স্বাধীন ব্যবসা হিসেবে কাজ করবে। এর প্রডাক্ট, এআই নলেজ, অর্ডার এবং ইনবক্স অন্য কোনো বিজনেস থেকে সম্পূর্ণ পৃথক ও সুরক্ষিত থাকবে।
+            </p>
+            <form id="form-create-workspace" onsubmit="handleCreateWorkspace(event)">
+                <div class="form-group">
+                    <label>বিজনেস / ওয়ার্কস্পেসের নাম <span style="color:#ef4444;">*</span>:</label>
+                    <input type="text" id="new-ws-name" class="form-control" placeholder="যেমন: Fashion Hub, Electronics BD..." required>
+                </div>
+                <div class="form-group">
+                    <label>দোকানের নাম (কাস্টমারের সামনে প্রদর্শিত হবে):</label>
+                    <input type="text" id="new-ws-shop-name" class="form-control" placeholder="যেমন: ফ্যাশন হাব (Fashion Hub)">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>বিজনেস ফোন:</label>
+                        <input type="text" id="new-ws-phone" class="form-control" placeholder="017XXXXXXXX">
+                    </div>
+                    <div class="form-group">
+                        <label>ঠিকানা:</label>
+                        <input type="text" id="new-ws-address" class="form-control" placeholder="ঢাকা, বাংলাদেশ">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>ডেলিভারি ফি (ঢাকা):</label>
+                        <input type="number" id="new-ws-del-dhaka" class="form-control" value="70">
+                    </div>
+                    <div class="form-group">
+                        <label>ডেলিভারি ফি (বাইরে):</label>
+                        <input type="number" id="new-ws-del-out" class="form-control" value="130">
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-workspace')">বাতিল</button>
+                    <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">
+                        <i class="fas fa-plus"></i> ওয়ার্কস্পেস তৈরি করুন
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
 
     <!-- Mobile App-Like Bottom Navigation -->
     <nav class="mobile-bottom-nav">

@@ -1,18 +1,24 @@
+from typing import Optional
 from app.database import get_db_connection
 
-def get_all_conversations(page_id: str = None, channel: str = None) -> list:
-    """Returns all active conversations sorted by updated_at with linked Page info."""
+def get_all_conversations(workspace_id: Optional[int] = None, page_id: str = None, channel: str = None) -> list:
+    """Returns all active conversations sorted by updated_at with linked Page & Workspace info."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         query = """
-            SELECT c.id, c.channel, c.sender_id, c.customer_name, c.last_message, c.human_takeover, c.updated_at, c.page_id,
-                   COALESCE(cp.page_name, cp.shop_name, 'RS Graphics') as page_name
+            SELECT c.id, c.channel, c.sender_id, c.customer_name, c.last_message, c.human_takeover, c.updated_at, c.page_id, c.workspace_id,
+                   COALESCE(cp.page_name, cp.shop_name, w.name, 'RS Graphics') as page_name,
+                   w.name as workspace_name
             FROM conversations c
             LEFT JOIN connected_pages cp ON c.page_id = cp.page_id
+            LEFT JOIN workspaces w ON c.workspace_id = w.id
             WHERE 1=1
         """
         params = []
+        if workspace_id:
+            query += " AND c.workspace_id = ?"
+            params.append(int(workspace_id))
         if page_id:
             query += " AND c.page_id = ?"
             params.append(str(page_id))
@@ -62,17 +68,30 @@ def send_whatsapp_video(to_number: str, video_url: str, phone_id: str = None, pa
     from app.channels.whatsapp import send_whatsapp_video as wa_send_video
     return wa_send_video(to_number, video_url, phone_id=phone_id, page_id=page_id)
 
-def record_conversation_message(channel: str, sender_id: str, customer_name: str, sender_type: str, content: str, media_url: str = "", page_id: str = ""):
-    """Saves incoming and outgoing messages to conversations & messages table scoped by page_id."""
+def record_conversation_message(
+    channel: str,
+    sender_id: str,
+    customer_name: str,
+    sender_type: str,
+    content: str = "",
+    media_url: str = "",
+    page_id: str = "",
+    workspace_id: int = 1
+):
+    """Saves incoming and outgoing messages to conversations & messages table scoped strictly to workspace."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        ws_id = int(workspace_id or 1)
         
-        # Check if conversation exists scoped to this page
-        if page_id:
-            cursor.execute("SELECT id, customer_name, page_id FROM conversations WHERE sender_id = ? AND (page_id = ? OR page_id = '' OR page_id IS NULL) ORDER BY id DESC LIMIT 1", (sender_id, str(page_id)))
-        else:
-            cursor.execute("SELECT id, customer_name, page_id FROM conversations WHERE sender_id = ? ORDER BY id DESC LIMIT 1", (sender_id,))
+        # Check if conversation exists scoped to this workspace
+        cursor.execute("""
+            SELECT id, customer_name, page_id, workspace_id
+            FROM conversations
+            WHERE sender_id = ? AND workspace_id = ?
+            ORDER BY id DESC LIMIT 1
+        """, (sender_id, ws_id))
         row = cursor.fetchone()
         
         preview_text = content if content else ("[Image]" if media_url else "")
@@ -87,9 +106,9 @@ def record_conversation_message(channel: str, sender_id: str, customer_name: str
             """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
         else:
             cursor.execute("""
-                INSERT INTO conversations (channel, sender_id, customer_name, last_message, page_id)
-                VALUES (?, ?, ?, ?, ?)
-            """, (channel, sender_id, customer_name, preview_text, str(page_id) if page_id else ""))
+                INSERT INTO conversations (workspace_id, channel, sender_id, customer_name, last_message, page_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (ws_id, channel, sender_id, customer_name, preview_text, str(page_id) if page_id else ""))
             conv_id = cursor.lastrowid
             
         # Insert message
@@ -100,40 +119,44 @@ def record_conversation_message(channel: str, sender_id: str, customer_name: str
         """, (conv_id, sender_type, msg_type, content, media_url))
         
         conn.commit()
-        conn.close()
         return conv_id
     except Exception as e:
         print(f"[Omnichat Record Error]: {e}")
         return None
+    finally:
+        if conn:
+            conn.close()
 
-def get_conversation_history(channel: str, sender_id: str, limit: int = 8, page_id: str = "") -> list:
-    """Fetches recent conversation messages for Gemini AI context scoped to page."""
+def get_conversation_history(channel: str = "all", sender_id: str = "", limit: int = 8, page_id: str = "", workspace_id: int = 1) -> list:
+    """Fetches recent conversation messages for Gemini AI context scoped strictly to workspace."""
+    # Handle single string positional argument as sender_id for convenience
+    if sender_id == "" and channel:
+        sender_id = channel
+        channel = "all"
+        
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        if page_id:
-            cursor.execute("""
-                SELECT m.sender_type, m.content, m.media_url, m.created_at
-                FROM messages m
-                JOIN conversations c ON m.conversation_id = c.id
-                WHERE c.sender_id = ? AND (c.page_id = ? OR c.page_id = '' OR c.page_id IS NULL)
-                ORDER BY m.id DESC LIMIT ?
-            """, (sender_id, str(page_id), limit))
-        else:
-            cursor.execute("""
-                SELECT m.sender_type, m.content, m.media_url, m.created_at
-                FROM messages m
-                JOIN conversations c ON m.conversation_id = c.id
-                WHERE c.sender_id = ?
-                ORDER BY m.id DESC LIMIT ?
-            """, (sender_id, limit))
+        ws_id = int(workspace_id or 1)
+        
+        cursor.execute("""
+            SELECT m.sender_type, m.content, m.media_url, m.created_at
+            FROM messages m
+            JOIN conversations c ON m.conversation_id = c.id
+            WHERE c.sender_id = ? AND c.workspace_id = ?
+            ORDER BY m.id DESC LIMIT ?
+        """, (sender_id, ws_id, limit))
             
         rows = cursor.fetchall()
-        conn.close()
         history = [dict(r) for r in reversed(rows)]
         return history
     except Exception as e:
         print(f"[Omnichat History Error]: {e}")
         return []
+    finally:
+        if conn:
+            conn.close()
+
 
 

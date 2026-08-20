@@ -21,7 +21,9 @@ from app.database import (
     get_muted_contacts_detailed, get_muted_numbers, add_muted_number, remove_muted_number,
     get_all_connected_pages, get_connected_page, save_connected_page, delete_connected_page,
     get_all_whatsapp_accounts, get_whatsapp_account_by_phone_id, get_whatsapp_account_by_page_id,
-    save_whatsapp_account, delete_whatsapp_account, get_page_ai_config
+    save_whatsapp_account, delete_whatsapp_account, get_page_ai_config,
+    get_all_workspaces, get_workspace, save_workspace, delete_workspace,
+    get_faqs, create_faq, delete_faq
 )
 from app.ai_agent.gemini_brain import process_customer_message
 from app.ai_agent.voice_engine import generate_bangla_voice, list_available_voices
@@ -121,31 +123,53 @@ async def dashboard_home(request: Request):
 # 2. OVERVIEW & ANALYTICS STATS API
 # ==========================================
 @app.get("/api/overview")
-async def get_overview_stats():
+async def get_overview_stats(workspace_id: Optional[int] = Query(None)):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute("SELECT COUNT(*) FROM orders")
-    total_orders = cursor.fetchone()[0]
+    if workspace_id is not None:
+        ws_id = int(workspace_id)
+        cursor.execute("SELECT COUNT(*) FROM orders WHERE workspace_id = ?", (ws_id,))
+        total_orders = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'Pending'")
-    pending_orders = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM orders WHERE workspace_id = ? AND status = 'Pending'", (ws_id,))
+        pending_orders = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM orders WHERE status IN ('Confirmed', 'Processing', 'Shipped', 'Delivered')")
-    confirmed_orders = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM orders WHERE workspace_id = ? AND status IN ('Confirmed', 'Processing', 'Shipped', 'Delivered')", (ws_id,))
+        confirmed_orders = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE status != 'Cancelled'")
-    total_revenue = cursor.fetchone()[0]
+        cursor.execute("SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE workspace_id = ? AND status != 'Cancelled'", (ws_id,))
+        total_revenue = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM products WHERE is_active = 1")
-    total_products = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM products WHERE workspace_id = ? AND is_active = 1", (ws_id,))
+        total_products = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM comment_logs")
-    total_comments = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM comment_logs WHERE workspace_id = ?", (ws_id,))
+        total_comments = cursor.fetchone()[0]
 
-    # Recent 5 Orders
-    cursor.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 5")
-    recent_orders = [dict(r) for r in cursor.fetchall()]
+        cursor.execute("SELECT * FROM orders WHERE workspace_id = ? ORDER BY id DESC LIMIT 5", (ws_id,))
+        recent_orders = [dict(r) for r in cursor.fetchall()]
+    else:
+        cursor.execute("SELECT COUNT(*) FROM orders")
+        total_orders = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'Pending'")
+        pending_orders = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM orders WHERE status IN ('Confirmed', 'Processing', 'Shipped', 'Delivered')")
+        confirmed_orders = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE status != 'Cancelled'")
+        total_revenue = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM products WHERE is_active = 1")
+        total_products = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM comment_logs")
+        total_comments = cursor.fetchone()[0]
+
+        cursor.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 5")
+        recent_orders = [dict(r) for r in cursor.fetchall()]
 
     conn.close()
 
@@ -163,8 +187,8 @@ async def get_overview_stats():
 # 3. ORDER MANAGEMENT APIS
 # ==========================================
 @app.get("/api/orders")
-async def api_list_orders(status: Optional[str] = None, search: Optional[str] = None):
-    orders = list_orders(status=status, search=search)
+async def api_list_orders(status: Optional[str] = None, search: Optional[str] = None, workspace_id: Optional[int] = Query(None)):
+    orders = list_orders(status=status, search=search, workspace_id=workspace_id)
     return {"orders": orders}
 
 @app.post("/api/orders")
@@ -176,7 +200,8 @@ async def api_create_order(
     total_amount: float = Form(...),
     delivery_charge: float = Form(70.0),
     channel: str = Form("manual"),
-    notes: Optional[str] = Form("")
+    notes: Optional[str] = Form(""),
+    workspace_id: int = Form(1)
 ):
     items = [{"name": items_summary, "qty": 1, "price": total_amount - delivery_charge}]
     order = create_order(
@@ -185,7 +210,8 @@ async def api_create_order(
         customer_address=customer_address,
         items=items,
         channel=channel,
-        notes=notes
+        notes=notes,
+        workspace_id=workspace_id
     )
     return {"success": True, "order": order}
 
@@ -211,8 +237,8 @@ async def api_delete_order(order_id: int):
     return {"success": True, "message": "Order deleted"}
 
 @app.get("/api/orders/export/csv")
-async def export_orders_csv():
-    orders = list_orders()
+async def export_orders_csv(workspace_id: Optional[int] = Query(None)):
+    orders = list_orders(workspace_id=workspace_id)
     output = io.StringIO()
     writer = csv.writer(output)
     
@@ -243,10 +269,13 @@ async def export_orders_csv():
 # 4. PRODUCT CATALOG APIS
 # ==========================================
 @app.get("/api/products")
-async def api_list_products():
+async def api_list_products(workspace_id: Optional[int] = Query(None)):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM products ORDER BY id DESC")
+    if workspace_id is not None:
+        cursor.execute("SELECT * FROM products WHERE workspace_id = ? ORDER BY id DESC", (int(workspace_id),))
+    else:
+        cursor.execute("SELECT * FROM products ORDER BY id DESC")
     products = []
     for r in cursor.fetchall():
         d = dict(r)
@@ -271,6 +300,7 @@ async def api_add_product(
     category: str = Form("General"),
     description: str = Form(""),
     tags: Optional[str] = Form(""),
+    workspace_id: int = Form(1),
     images: Optional[List[UploadFile]] = File(None),
     image: Optional[UploadFile] = File(None)
 ):
@@ -297,11 +327,12 @@ async def api_add_product(
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO products (name, code, price, discount_price, stock, category, description, tags, image_url, gallery_images)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (name, code, price, discount_price, stock, category, description, tags, primary_image_url, gallery_images_json))
+        INSERT INTO products (workspace_id, name, code, price, discount_price, stock, category, description, tags, image_url, gallery_images)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (int(workspace_id or 1), name, code, price, discount_price, stock, category, description, tags, primary_image_url, gallery_images_json))
     conn.commit()
     conn.close()
+    return {"success": True, "message": "Product added successfully", "image_urls": all_image_urls}
     return {"success": True, "message": "Product added successfully", "image_urls": all_image_urls}
 
 @app.post("/api/products/{product_id}/edit")
@@ -395,10 +426,13 @@ async def api_batch_restore_products(request: Request):
 # 5. COMMENT AUTOMATION & LOGS APIS
 # ==========================================
 @app.get("/api/comments/logs")
-async def api_comment_logs():
+async def api_comment_logs(workspace_id: Optional[int] = Query(None)):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM comment_logs ORDER BY id DESC LIMIT 50")
+    if workspace_id is not None:
+        cursor.execute("SELECT * FROM comment_logs WHERE workspace_id = ? ORDER BY id DESC LIMIT 50", (int(workspace_id),))
+    else:
+        cursor.execute("SELECT * FROM comment_logs ORDER BY id DESC LIMIT 50")
     logs = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return {"logs": logs}
@@ -407,12 +441,8 @@ async def api_comment_logs():
 # 5.1 TRAIN CONTENT (FAQS & KNOWLEDGE) APIS
 # ==========================================
 @app.get("/api/faqs")
-async def api_list_faqs():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM faqs ORDER BY id DESC")
-    faqs = [dict(r) for r in cursor.fetchall()]
-    conn.close()
+async def api_list_faqs(workspace_id: Optional[int] = Query(None)):
+    faqs = get_faqs(workspace_id=workspace_id)
     return {"faqs": faqs}
 
 @app.post("/api/faqs")
@@ -421,233 +451,25 @@ async def api_add_faq(request: Request):
     q = data.get("question")
     a = data.get("answer")
     cat = data.get("category", "General")
+    ws_id = int(data.get("workspace_id", 1) or 1)
     if not q or not a:
         raise HTTPException(status_code=400, detail="Question and answer required")
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO faqs (question, answer, category) VALUES (?, ?, ?)", (q, a, cat))
-    conn.commit()
-    conn.close()
-    return {"success": True, "message": "FAQ added"}
+    faq_id = create_faq(question=q, answer=a, category=cat, workspace_id=ws_id)
+    return {"success": True, "message": "FAQ added", "id": faq_id}
 
 @app.delete("/api/faqs/{faq_id}")
 async def api_delete_faq(faq_id: int):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM faqs WHERE id = ?", (faq_id,))
-    conn.commit()
-    conn.close()
+    delete_faq(faq_id)
     return {"success": True, "message": "FAQ deleted"}
 
 # ==========================================
 # 5.1.1 AI TRAINING RULES APIS
 # ==========================================
 @app.get("/api/training/rules")
-async def api_get_training_rules():
-    rules = get_all_training_rules()
+async def api_get_training_rules(workspace_id: Optional[int] = Query(None)):
+    rules = get_all_training_rules(workspace_id=workspace_id)
     return {"success": True, "rules": rules}
-
-@app.post("/api/training/rules")
-async def api_create_training_rule(request: Request):
-    data = await request.json()
-    title = data.get("title", "").strip()
-    rule_content = data.get("response_or_rule", "").strip()
-    rule_type = data.get("rule_type", "qa")
-    trigger = data.get("question_or_trigger", "").strip()
-    category = data.get("category", "General")
-    
-    if not title or not rule_content:
-        raise HTTPException(status_code=400, detail="Title and rule content are required")
-        
-    rule_id = create_training_rule(
-        title=title,
-        response_or_rule=rule_content,
-        rule_type=rule_type,
-        question_or_trigger=trigger,
-        category=category
-    )
-    return {"success": True, "id": rule_id}
-
-@app.post("/api/training/rules/{rule_id}/toggle")
-async def api_toggle_training_rule(rule_id: int):
-    toggle_training_rule(rule_id)
-    return {"success": True}
-
-@app.delete("/api/training/rules/{rule_id}")
-async def api_delete_training_rule(rule_id: int):
-    delete_training_rule(rule_id)
-    return {"success": True}
-
-# ==========================================
-# 5.1.2 SAVED MEDIA LIBRARY (VOICE & VIDEOS) APIS
-# ==========================================
-@app.get("/api/saved-media")
-async def api_get_saved_media(media_type: Optional[str] = None):
-    media = get_saved_media(media_type)
-    return {"success": True, "media": media}
-
-@app.post("/api/saved-media/upload")
-async def api_upload_saved_media(
-    title: str = Form(...),
-    media_type: str = Form(...),
-    description: str = Form(""),
-    file: UploadFile = File(...)
-):
-    media_dir = settings.STATIC_DIR / "uploads" / "media"
-    media_dir.mkdir(parents=True, exist_ok=True)
-    
-    ext = Path(file.filename).suffix.lower() if file.filename else ""
-    if not ext:
-        if media_type == "voice":
-            ext = ".mp3"
-        elif media_type == "video":
-            ext = ".mp4"
-        else:
-            ext = ".jpg"
-            
-    filename = f"{media_type}_{uuid.uuid4().hex[:10]}{ext}"
-    dest_path = media_dir / filename
-    
-    contents = await file.read()
-    with open(dest_path, "wb") as f:
-        f.write(contents)
-        
-    file_url = f"/static/uploads/media/{filename}"
-    media_id = create_saved_media(
-        title=title.strip(),
-        media_type=media_type.strip().lower(),
-        file_url=file_url,
-        description=description.strip()
-    )
-    return {"success": True, "id": media_id, "file_url": file_url}
-
-@app.delete("/api/saved-media/{media_id}")
-async def api_delete_saved_media(media_id: int):
-    delete_saved_media(media_id)
-    return {"success": True}
-
-# ==========================================
-# 5.2 OMNICHAT (INBOX) APIS
-# ==========================================
-@app.get("/api/omnichat/conversations")
-async def api_omnichat_conversations():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM conversations ORDER BY updated_at DESC")
-    convs = [dict(r) for r in cursor.fetchall()]
-    
-    # If no conversations in DB, provide demo customer thread
-    if not convs:
-        cursor.execute("""
-            INSERT INTO conversations (channel, sender_id, customer_name, last_message)
-            VALUES ('facebook', 'fb_user_101', 'রাহুল হাসান', 'পাঞ্জাবির দাম কত এবং কী কী সাইজ আছে?')
-        """)
-        cid = cursor.lastrowid
-        cursor.execute("""
-            INSERT INTO messages (conversation_id, sender_type, content)
-            VALUES (?, 'user', 'পাঞ্জাবির দাম কত এবং কী কী সাইজ আছে?')
-        """, (cid,))
-        cursor.execute("""
-            INSERT INTO messages (conversation_id, sender_type, content)
-            VALUES (?, 'bot', 'আসসালামু আলাইকুম ভাইয়া! 😊 আমাদের সুতি পাঞ্জাবিটির দাম ১২৫০ টাকা। সাইজ পাবেন ৪০, ৪২, ৪৪।')
-        """, (cid,))
-        conn.commit()
-        cursor.execute("SELECT * FROM conversations ORDER BY updated_at DESC")
-        convs = [dict(r) for r in cursor.fetchall()]
-
-    conn.close()
-    return {"conversations": convs}
-
-@app.get("/api/omnichat/messages/{conversation_id}")
-async def api_omnichat_messages(conversation_id: int):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM messages WHERE conversation_id = ? ORDER BY id ASC", (conversation_id,))
-    messages = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return {"messages": messages}
-
-@app.post("/api/omnichat/send")
-async def api_omnichat_send(request: Request):
-    data = await request.json()
-    cid = data.get("conversation_id")
-    content = data.get("content")
-    if not cid or not content:
-        raise HTTPException(status_code=400, detail="Missing conversation_id or content")
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM conversations WHERE id = ?", (cid,))
-    conv = cursor.fetchone()
-    
-    if not conv:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    channel = conv["channel"]
-    sender_id = conv["sender_id"]
-    
-    send_ok = False
-    error_detail = ""
-
-    # Dispatch to real channel first
-    if channel == "facebook":
-        send_ok = send_fb_text_message(sender_id, content)
-        if not send_ok:
-            error_detail = "Failed to send message via Facebook Messenger API. Check Facebook Page Access Token."
-    elif channel == "whatsapp":
-        send_ok = send_whatsapp_message(sender_id, content)
-        if not send_ok:
-            error_detail = "Failed to send message via WhatsApp Cloud API. Check WhatsApp Phone Number ID and Access Token."
-    else:
-        send_ok = True
-
-    if not send_ok:
-        conn.close()
-        return JSONResponse(
-            status_code=500, 
-            content={
-                "success": False, 
-                "error": error_detail or "Failed to deliver message to recipient"
-            }
-        )
-
-    # Only record message in database after confirmed Meta delivery
-    cursor.execute("""
-        INSERT INTO messages (conversation_id, sender_type, content)
-        VALUES (?, 'admin', ?)
-    """, (cid, content))
-    cursor.execute("UPDATE conversations SET last_message = ?, human_takeover = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (content, cid))
-    conn.commit()
-    conn.close()
-
-    return {"success": True}
-
-@app.post("/api/omnichat/toggle-ai")
-async def api_omnichat_toggle_ai(request: Request):
-    """Toggles AI auto-reply on/off for a specific customer conversation."""
-    data = await request.json()
-    cid = data.get("conversation_id")
-    status = data.get("status") # None, 0, or 1
-    if not cid:
-        raise HTTPException(status_code=400, detail="Missing conversation_id")
-
-    toggle_conversation_ai(cid, status)
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, human_takeover FROM conversations WHERE id = ?", (cid,))
-    row = cursor.fetchone()
-    conn.close()
-    return {"success": True, "human_takeover": row["human_takeover"] if row else 0}
-
-# ==========================================
-# 5.5 AI TRAINING & KNOWLEDGE BASE APIS
-# ==========================================
-@app.get("/api/training/rules")
-async def api_get_training_rules():
-    rules = get_all_training_rules()
-    return {"rules": rules}
 
 @app.post("/api/training/synthesize")
 async def api_synthesize_training(request: Request):
@@ -658,36 +480,49 @@ async def api_synthesize_training(request: Request):
     from app.ai_agent.synthesizer import synthesize_training_text_to_rules
     data = await request.json()
     raw_text = data.get("raw_text", "").strip()
+    ws_id = int(data.get("workspace_id", 1) or 1)
     if not raw_text:
         raise HTTPException(status_code=400, detail="Raw training text is required")
     
     rules = synthesize_training_text_to_rules(raw_text)
+    # Save extracted rules with workspace_id
+    for r in rules:
+        create_training_rule(
+            title=r.get("title", "AI Guideline"),
+            response_or_rule=r.get("rule", ""),
+            rule_type=r.get("rule_type", "rule"),
+            question_or_trigger=r.get("trigger", ""),
+            category=r.get("category", "General"),
+            workspace_id=ws_id
+        )
     return {"success": True, "count": len(rules), "rules": rules}
 
 @app.post("/api/training/rules")
 async def api_create_training_rule(request: Request):
     data = await request.json()
     title = data.get("title", "").strip()
-    rule = data.get("response_or_rule", "").strip()
+    rule = (data.get("response_or_rule") or data.get("rule") or "").strip()
     rule_type = data.get("rule_type", "qa")
-    trigger = data.get("question_or_trigger", "").strip()
+    trigger = (data.get("question_or_trigger") or data.get("trigger") or "").strip()
     category = data.get("category", "General").strip()
     is_active = int(data.get("is_active", 1))
+    ws_id = int(data.get("workspace_id", 1) or 1)
     if not title or not rule:
         raise HTTPException(status_code=400, detail="Title and Rule text are required")
-    rule_id = create_training_rule(title, rule, rule_type, trigger, category, is_active)
+    rule_id = create_training_rule(title, rule, rule_type, trigger, category, is_active, workspace_id=ws_id)
     return {"success": True, "id": rule_id}
 
 @app.put("/api/training/rules/{rule_id}")
 async def api_update_training_rule(rule_id: int, request: Request):
     data = await request.json()
     title = data.get("title", "").strip()
-    rule = data.get("response_or_rule", "").strip()
+    rule = (data.get("response_or_rule") or data.get("rule") or "").strip()
     rule_type = data.get("rule_type", "qa")
-    trigger = data.get("question_or_trigger", "").strip()
+    trigger = (data.get("question_or_trigger") or data.get("trigger") or "").strip()
     category = data.get("category", "General").strip()
     is_active = int(data.get("is_active", 1))
-    update_training_rule(rule_id, title, rule, rule_type, trigger, category, is_active)
+    ws_id = data.get("workspace_id")
+    update_training_rule(rule_id, title, rule, rule_type, trigger, category, is_active, workspace_id=ws_id)
     return {"success": True}
 
 @app.delete("/api/training/rules/{rule_id}")
@@ -701,12 +536,13 @@ async def api_toggle_training_rule(rule_id: int):
     return {"success": True}
 
 # ==========================================
-# 5.6 SAVED MEDIA LIBRARY APIS (VOICE & VIDEO)
+# 5.1.2 SAVED MEDIA LIBRARY (VOICE & VIDEOS) APIS
 # ==========================================
 @app.get("/api/saved-media")
-async def api_get_saved_media(type: str = None):
-    media = get_saved_media(type)
-    return {"media": media}
+async def api_get_saved_media(type: str = None, media_type: str = None, workspace_id: Optional[int] = Query(None)):
+    m_type = media_type or type
+    media = get_saved_media(media_type=m_type, workspace_id=workspace_id)
+    return {"success": True, "media": media}
 
 @app.post("/api/saved-media/upload")
 async def api_upload_saved_media(
@@ -714,7 +550,8 @@ async def api_upload_saved_media(
     title: str = Form(""),
     media_type: str = Form("voice"),
     description: str = Form(""),
-    file_url: str = Form("")
+    file_url: str = Form(""),
+    workspace_id: int = Form(1)
 ):
     target_url = file_url
     if file and file.filename:
@@ -734,7 +571,8 @@ async def api_upload_saved_media(
         title=title or "Saved Media",
         media_type=media_type,
         file_url=target_url,
-        description=description
+        description=description,
+        workspace_id=workspace_id
     )
     return {"success": True, "id": media_id, "file_url": target_url}
 
@@ -784,7 +622,6 @@ async def api_send_saved_media(request: Request):
             send_ok = send_fb_video_message(sender_id, m_url, page_id=page_id)
         else:
             send_ok = send_fb_media_message(sender_id, "image", m_url, page_id=page_id)
-            send_ok = True
     else:
         send_ok = True
         
@@ -802,12 +639,16 @@ async def api_send_saved_media(request: Request):
     return {"success": True}
 
 # ==========================================
-# OMNICHAT & CONVERSATIONS APIS (MULTI-PAGE AWARE)
+# 5.2 OMNICHAT (INBOX) APIS (MULTI-PAGE & WORKSPACE AWARE)
 # ==========================================
 @app.get("/api/conversations")
 @app.get("/api/omnichat/conversations")
-async def api_get_all_conversations(page_id: Optional[str] = Query(None), channel: Optional[str] = Query(None)):
-    convs = get_all_conversations(page_id=page_id, channel=channel)
+async def api_get_all_conversations(
+    workspace_id: Optional[int] = Query(None),
+    page_id: Optional[str] = Query(None),
+    channel: Optional[str] = Query(None)
+):
+    convs = get_all_conversations(workspace_id=workspace_id, page_id=page_id, channel=channel)
     return {"success": True, "conversations": convs}
 
 @app.get("/api/omnichat/messages/{conversation_id}")
@@ -870,8 +711,75 @@ async def api_toggle_chat_ai(request: Request):
     return {"success": True}
 
 # ==========================================
+# WORKSPACE / BUSINESS MANAGEMENT APIS
+# ==========================================
+@app.get("/api/workspaces")
+async def api_get_workspaces():
+    """Lists all registered business workspaces."""
+    workspaces = get_all_workspaces()
+    return {"success": True, "workspaces": workspaces}
+
+@app.get("/api/workspaces/{workspace_id}")
+async def api_get_workspace(workspace_id: int):
+    """Fetches details for a specific business workspace."""
+    ws = get_workspace(workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return {"success": True, "workspace": ws}
+
+@app.post("/api/workspaces")
+async def api_create_workspace(request: Request):
+    """Creates a new business workspace."""
+    data = await request.json()
+    name = data.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Workspace name is required")
+    ws_id = save_workspace(data)
+    return {"success": True, "id": ws_id, "message": "Workspace created successfully"}
+
+@app.put("/api/workspaces/{workspace_id}")
+async def api_update_workspace(workspace_id: int, request: Request):
+    """Updates an existing business workspace."""
+    data = await request.json()
+    data["id"] = workspace_id
+    save_workspace(data)
+    return {"success": True, "message": "Workspace updated successfully"}
+
+@app.delete("/api/workspaces/{workspace_id}")
+async def api_delete_workspace(workspace_id: int):
+    """Deletes a business workspace (Protected: Workspace 1 cannot be deleted)."""
+    if int(workspace_id) == 1:
+        raise HTTPException(status_code=400, detail="Cannot delete protected primary Workspace (RS Graphics)")
+    ok = delete_workspace(workspace_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Failed to delete workspace")
+    return {"success": True, "message": "Workspace deleted successfully"}
+
+@app.get("/api/workspaces/{workspace_id}/ai-config")
+async def api_get_workspace_ai_config(workspace_id: int):
+    """Gets AI instructions and personality config for a specific workspace."""
+    config = get_page_ai_config(workspace_id=workspace_id)
+    return {"success": True, "config": config}
+
+@app.post("/api/workspaces/{workspace_id}/ai-config")
+async def api_update_workspace_ai_config(workspace_id: int, request: Request):
+    """Updates AI instructions and personality config for a specific workspace."""
+    data = await request.json()
+    ws = get_workspace(workspace_id) or {"id": workspace_id}
+    ws["shop_name"] = data.get("shop_name", ws.get("shop_name", ""))
+    ws["shop_phone"] = data.get("shop_phone", ws.get("shop_phone", ""))
+    ws["shop_address"] = data.get("shop_address", ws.get("shop_address", ""))
+    ws["delivery_inside_dhaka"] = data.get("delivery_inside_dhaka", ws.get("delivery_inside_dhaka", 70.0))
+    ws["delivery_outside_dhaka"] = data.get("delivery_outside_dhaka", ws.get("delivery_outside_dhaka", 130.0))
+    ws["ai_system_prompt"] = data.get("ai_system_prompt", ws.get("ai_system_prompt", ""))
+    ws["ai_enabled"] = int(data.get("ai_enabled", ws.get("ai_enabled", 1)))
+    save_workspace(ws)
+    return {"success": True, "message": "Workspace AI settings updated successfully"}
+
+# ==========================================
 # MULTI-PAGE MANAGEMENT APIS
 # ==========================================
+
 @app.get("/api/pages")
 async def api_get_connected_pages():
     """Lists all connected Facebook Pages with their linked WhatsApp status (tokens masked)."""
