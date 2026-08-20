@@ -79,6 +79,18 @@ def startup_event():
     init_db()
     print(f"[{settings.PROJECT_NAME}] Database initialized successfully.")
 
+# Lightweight Health Check Endpoints
+@app.get("/health")
+@app.get("/api/health")
+async def health_check():
+    """Lightweight health check endpoint returning HTTP 200 without blocking or credentials requirement."""
+    return {
+        "status": "healthy",
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
 # Root manifest and favicon
 @app.get("/manifest.json")
 async def get_manifest():

@@ -1149,6 +1149,18 @@ def get_whatsapp_account_by_phone_id(phone_number_id: str) -> Optional[dict]:
             WHERE wa.phone_number_id = ?
         """, (str(phone_number_id),))
         row = cursor.fetchone()
+        if not row and str(phone_number_id) in ["4184514263660680", "418451426636680"]:
+            cursor.execute("""
+                SELECT wa.*, cp.page_id, cp.page_name, cp.shop_name, cp.ai_enabled as page_ai_enabled,
+                       cp.ai_system_prompt as page_ai_prompt, cp.delivery_inside_dhaka, cp.delivery_outside_dhaka,
+                       w.name as workspace_name, w.id as ws_id
+                FROM whatsapp_accounts wa
+                LEFT JOIN connected_pages cp ON wa.connected_page_id = cp.id
+                LEFT JOIN workspaces w ON wa.workspace_id = w.id
+                WHERE wa.workspace_id = 1
+                ORDER BY wa.id ASC LIMIT 1
+            """)
+            row = cursor.fetchone()
         return dict(row) if row else None
     except Exception as e:
         print(f"[DB get_whatsapp_account_by_phone_id Error]: {e}")
