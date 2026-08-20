@@ -116,7 +116,34 @@ def init_db():
     );
     """)
 
-    # 7. Shop & Automation Settings Table
+    # 7. AI Training & Knowledge Base Rules Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS ai_training_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        rule_type TEXT DEFAULT 'qa', -- 'qa', 'instruction', 'price_policy', 'objection_handling'
+        question_or_trigger TEXT,
+        response_or_rule TEXT NOT NULL,
+        category TEXT DEFAULT 'General',
+        is_active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # 8. Saved Media Library (Voice Notes & Product Videos)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS saved_media (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        media_type TEXT NOT NULL, -- 'voice', 'video', 'image', 'document'
+        file_url TEXT NOT NULL,
+        description TEXT,
+        duration_seconds INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # 9. Shop & Automation Settings Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
@@ -166,16 +193,21 @@ def init_db():
     # Migration: clear unrelated phone number ID 1265595526643418 so only verified target ID is stored
     cursor.execute("UPDATE settings SET value = '' WHERE key = 'whatsapp_phone_number_id' AND value = '1265595526643418'")
 
-    # Seed FAQs if none exist
-    cursor.execute("DELETE FROM faqs")
-    sample_faqs = [
-        ("ন্যূনতম কত পিস অর্ডার নেওয়া হয়?", "আমাদের ন্যূনতম অর্ডার পরিমাণ (MOQ) ২০ পিস। ২০ পিসের কম অর্ডার নেওয়া হচ্ছে না।", "Order MOQ"),
-        ("আইডি কার্ডের কোয়ালিটি কেমন?", "আমরা জাপানি মেশিনের অরজিনাল UV কালার প্রিন্ট করি, যা ১০০% ওয়াটারপ্রুফ, প্রিমিয়াম ফিনিশিং এবং দীর্ঘস্থায়ী।", "Quality"),
-        ("ডেলিভারি চার্জ কত?", "ঢাকার ভেতরে ডেলিভারি চার্জ ৭০ টাকা এবং ঢাকার বাইরে ১৩০ টাকা।", "Delivery"),
-        ("ডেলিভারি হতে কত দিন সময় লাগে?", "ডিজাইন ফাইনাল হওয়ার পর ২-৩ কার্যদিবসের মধ্যে সারা বাংলাদেশে কুরিয়ারে ডেলিভারি সম্পন্ন হয়।", "Delivery"),
-        ("ক্যাশ অন ডেলিভারি দেওয়া যাবে?", "জি অবশ্যই! সারা বাংলাদেশে ক্যাশ অন ডেলিভারি (Cash on Delivery) সুবিধা রয়েছে।", "Payment")
-    ]
-    cursor.executemany("INSERT INTO faqs (question, answer, category) VALUES (?, ?, ?)", sample_faqs)
+    # Seed initial AI Training Rules if none exist
+    cursor.execute("SELECT COUNT(*) FROM ai_training_rules")
+    if cursor.fetchone()[0] == 0:
+        initial_rules = [
+            ("ন্যূনতম অর্ডার পরিমাণ (MOQ)", "আমাদের ন্যূনতম অর্ডার পরিমাণ ২০ পিস। ২০ পিসের কম কোনো অর্ডার নেওয়া হচ্ছে না।", "instruction", "কত পিস অর্ডার নেওয়া হয়?", "Pricing & MOQ", 1),
+            ("ক্যাশ অন ডেলিভারি ও ডেলিভারি চার্জ", "ঢাকার ভেতরে ডেলিভারি চার্জ ৭০ টাকা এবং ঢাকার বাইরে ১৩০ টাকা। সারা বাংলাদেশে ক্যাশ অন ডেলিভারি সুবিধা রয়েছে।", "qa", "ডেলিভারি চার্জ কত?", "Delivery & Payment", 1),
+            ("ইউভি প্রিন্ট কোয়ালিটি", "আমরা জাপানি মেশিনের অরজিনাল UV কালার প্রিন্ট করি, যা ১০০% ওয়াটারপ্রুফ, প্রিমিয়াম ফিনিশিং এবং দীর্ঘস্থায়ী।", "qa", "কোয়ালিটি কেমন?", "Product Quality", 1),
+            ("ডিসকাউন্ট পলিসি", "প্রথমে নিয়মিত বিক্রয়মূল্য বলবে। কাস্টমার ৫০ বা ১০০+ পিস চাইলে বা দাম বেশি বললে স্পেশাল হোলসেল রেট অফার করবে।", "price_policy", "ডিসকাউন্ট বা কম রাখা যাবে?", "Price Policy", 1),
+            ("ক্রয়মূল্য গোপন রাখা", "কাস্টমারকে কখনো আমাদের নিজস্ব উৎপাদন বা ক্রয়মূল্য বলা যাবে না। সর্বদা সেল প্রাইস বলতে হবে।", "instruction", "", "Business Policy", 1),
+            ("স্যাম্পল ছবি পাঠানোর নিয়ম", "কাস্টমার ছবি বা স্যাম্পল দেখতে চাইলে সরাসরি ছবি না দিয়ে আগে অনুমতি চাইবে 'আমি কি আমাদের কিছু স্যাম্পল ছবি পাঠাবো?' কাস্টমার সম্মতি দিলে সম্পূর্ণ স্যাম্পল পাঠাবে।", "instruction", "", "Sales Rule", 1)
+        ]
+        cursor.executemany("""
+            INSERT INTO ai_training_rules (title, response_or_rule, rule_type, question_or_trigger, category, is_active)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, initial_rules)
 
     # Seed Real Products if none exist
     cursor.execute("SELECT COUNT(*) FROM products")
@@ -310,3 +342,137 @@ def get_all_settings(masked: bool = False) -> dict:
             result["gemini_api_key"] = f"{raw[:6]}...{raw[-4:]}" if len(raw) > 12 else "********"
 
     return result
+
+# ============================================================
+# AI TRAINING & KNOWLEDGE BASE HELPERS
+# ============================================================
+
+def get_active_training_rules() -> list:
+    """Returns all active AI training rules, Q&A, and policy guidelines."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM ai_training_rules WHERE is_active = 1 ORDER BY category ASC, id ASC")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def get_all_training_rules() -> list:
+    """Returns all training rules for dashboard management."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM ai_training_rules ORDER BY id DESC")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def create_training_rule(title: str, response_or_rule: str, rule_type: str = "qa", question_or_trigger: str = "", category: str = "General", is_active: int = 1) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO ai_training_rules (title, rule_type, question_or_trigger, response_or_rule, category, is_active)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (title, rule_type, question_or_trigger, response_or_rule, category, is_active))
+    conn.commit()
+    rule_id = cursor.lastrowid
+    conn.close()
+    return rule_id
+
+def update_training_rule(rule_id: int, title: str, response_or_rule: str, rule_type: str = "qa", question_or_trigger: str = "", category: str = "General", is_active: int = 1) -> bool:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE ai_training_rules
+        SET title = ?, rule_type = ?, question_or_trigger = ?, response_or_rule = ?, category = ?, is_active = ?
+        WHERE id = ?
+    """, (title, rule_type, question_or_trigger, response_or_rule, category, is_active, rule_id))
+    conn.commit()
+    conn.close()
+    return True
+
+def delete_training_rule(rule_id: int) -> bool:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM ai_training_rules WHERE id = ?", (rule_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+def toggle_training_rule(rule_id: int) -> bool:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE ai_training_rules SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE id = ?", (rule_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+# ============================================================
+# SAVED MEDIA LIBRARY HELPERS (VOICE NOTES & VIDEOS)
+# ============================================================
+
+def get_saved_media(media_type: str = None) -> list:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if media_type:
+        cursor.execute("SELECT * FROM saved_media WHERE media_type = ? ORDER BY id DESC", (media_type,))
+    else:
+        cursor.execute("SELECT * FROM saved_media ORDER BY id DESC")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def create_saved_media(title: str, media_type: str, file_url: str, description: str = "", duration_seconds: int = 0) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO saved_media (title, media_type, file_url, description, duration_seconds)
+        VALUES (?, ?, ?, ?, ?)
+    """, (title, media_type, file_url, description, duration_seconds))
+    conn.commit()
+    media_id = cursor.lastrowid
+    conn.close()
+    return media_id
+
+def delete_saved_media(media_id: int) -> bool:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM saved_media WHERE id = ?", (media_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+# ============================================================
+# PER-CUSTOMER AI PAUSE / HUMAN TAKEOVER HELPERS
+# ============================================================
+
+def toggle_conversation_ai(conversation_id: int, status: int = None) -> bool:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if status is not None:
+        cursor.execute("UPDATE conversations SET human_takeover = ? WHERE id = ?", (status, conversation_id))
+    else:
+        cursor.execute("UPDATE conversations SET human_takeover = CASE WHEN human_takeover = 1 THEN 0 ELSE 1 END WHERE id = ?", (conversation_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+def is_conversation_ai_active(sender_id: str = None, conversation_id: int = None) -> bool:
+    """Returns True if AI is allowed to auto-reply to this customer."""
+    # Check Master Switch first
+    if get_setting("ai_enabled", "true").lower() == "false":
+        return False
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if conversation_id:
+        cursor.execute("SELECT human_takeover FROM conversations WHERE id = ?", (conversation_id,))
+    elif sender_id:
+        cursor.execute("SELECT human_takeover FROM conversations WHERE sender_id = ?", (sender_id,))
+    else:
+        conn.close()
+        return True
+
+    row = cursor.fetchone()
+    conn.close()
+    if row and row["human_takeover"] == 1:
+        return False
+    return True

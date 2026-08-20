@@ -4,7 +4,8 @@ import requests
 import asyncio
 from pathlib import Path
 from app.config import settings
-from app.database import get_db_connection, get_setting
+from app.database import get_db_connection, get_setting, is_conversation_ai_active
+from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.ai_agent.gemini_brain import process_customer_message
 
 GRAPH_API_URL = "https://graph.facebook.com/v19.0"
@@ -27,41 +28,6 @@ def get_fb_user_profile(sender_id: str) -> str:
     except Exception:
         pass
     return "Facebook User"
-
-def record_conversation_message(channel: str, sender_id: str, customer_name: str, sender_type: str, content: str, media_url: str = ""):
-    """Saves incoming and outgoing messages to conversations & messages table."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Check if conversation exists
-        cursor.execute("SELECT id, customer_name FROM conversations WHERE sender_id = ?", (sender_id,))
-        row = cursor.fetchone()
-        
-        if row:
-            conv_id = row["id"]
-            cust_name = row["customer_name"] if row["customer_name"] and row["customer_name"] != "Facebook User" else customer_name
-            cursor.execute("""
-                UPDATE conversations 
-                SET last_message = ?, customer_name = ?, updated_at = CURRENT_TIMESTAMP 
-                WHERE id = ?
-            """, (content or (f"[Image Attachment]" if media_url else ""), cust_name, conv_id))
-        else:
-            cursor.execute("""
-                INSERT INTO conversations (channel, sender_id, customer_name, last_message, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (channel, sender_id, customer_name, content or (f"[Image Attachment]" if media_url else "")))
-            conv_id = cursor.lastrowid
-            
-        cursor.execute("""
-            INSERT INTO messages (conversation_id, sender_type, content, media_url)
-            VALUES (?, ?, ?, ?)
-        """, (conv_id, sender_type, content, media_url))
-        
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"[Record Conversation Error]: {e}")
 
 def send_fb_text_message(recipient_id: str, text: str) -> bool:
     """Sends a text message to a Facebook Messenger user."""
@@ -152,6 +118,14 @@ def send_fb_media_message(recipient_id: str, media_type: str, media_url: str) ->
         print(f"[Facebook Media Send Error]: {e}")
         return False
 
+def send_fb_audio_message(recipient_id: str, audio_url: str) -> bool:
+    """Sends an audio / voice message via Facebook Messenger."""
+    return send_fb_media_message(recipient_id, "audio", audio_url)
+
+def send_fb_video_message(recipient_id: str, video_url: str) -> bool:
+    """Sends a video attachment via Facebook Messenger."""
+    return send_fb_media_message(recipient_id, "video", video_url)
+
 def reply_to_fb_comment(comment_id: str, message: str) -> bool:
     """Replies publicly to a Facebook post comment."""
     token = get_fb_token()
@@ -188,64 +162,63 @@ def send_fb_private_reply_to_comment(comment_id: str, message: str) -> bool:
         return False
 
 async def handle_facebook_webhook_event(data: dict):
-    """Processes incoming Messenger messages and Facebook post comments."""
+    """Processes incoming Facebook Messenger messages and post comments."""
     try:
-        object_type = data.get("object")
-        if object_type != "page":
-            return
-
         entries = data.get("entry", [])
         for entry in entries:
-            page_id = entry.get("id")
-            
             # 1. Handle Messenger Messages
             if "messaging" in entry:
                 for event in entry["messaging"]:
                     sender_id = event.get("sender", {}).get("id")
-                    if not sender_id or "message" not in event:
-                        continue
-
-                    message_obj = event["message"]
+                    recipient_id = event.get("recipient", {}).get("id")
                     
-                    # Ignore echoes (messages sent by page itself)
-                    if message_obj.get("is_echo") or sender_id == page_id:
+                    # Prevent replying to messages sent by our own page
+                    page_id = get_setting("fb_page_id", settings.FB_PAGE_ID)
+                    if sender_id == page_id:
                         continue
 
-                    msg_text = message_obj.get("text", "")
-                    attachments = message_obj.get("attachments", [])
-                    print(f"[Facebook Messenger Incoming]: From {sender_id}, Text: '{msg_text}', Attachments: {len(attachments)}")
+                    msg = event.get("message", {})
+                    if not msg:
+                        continue
 
+                    msg_text = msg.get("text", "")
+                    attachments = msg.get("attachments", [])
+                    
                     image_bytes = None
-                    audio_bytes = None
                     image_mime = "image/jpeg"
+                    audio_bytes = None
                     audio_mime = "audio/mp3"
 
-                    # Check for image or audio attachments
+                    # Process attachments (Voice Note or Photo)
                     for att in attachments:
                         att_type = att.get("type")
                         att_url = att.get("payload", {}).get("url")
-                        if att_url:
-                            try:
-                                resp = requests.get(att_url, timeout=10)
-                                if resp.status_code == 200:
-                                    if att_type == "image":
-                                        image_bytes = resp.content
-                                        image_mime = resp.headers.get("content-type", "image/jpeg")
-                                    elif att_type in ["audio", "voice"]:
-                                        audio_bytes = resp.content
-                                        audio_mime = resp.headers.get("content-type", "audio/mp4")
-                            except Exception as dl_err:
-                                print(f"[Attachment Download Error]: {dl_err}")
+                        if not att_url:
+                            continue
+                        
+                        try:
+                            if att_type == "image":
+                                r = requests.get(att_url, timeout=10)
+                                if r.status_code == 200:
+                                    image_bytes = r.content
+                            elif att_type in ["audio", "voice"]:
+                                r = requests.get(att_url, timeout=10)
+                                if r.status_code == 200:
+                                    audio_bytes = r.content
+                        except Exception as e:
+                            print(f"[Facebook Media DL Error]: {e}")
 
                     # Fetch customer name and record customer message
                     customer_name = get_fb_user_profile(sender_id)
                     record_conversation_message("facebook", sender_id, customer_name, "user", msg_text)
 
-                    # Check if AI Master Switch is enabled
-                    ai_enabled = get_setting("ai_enabled", "true").lower() == "true"
-                    if not ai_enabled:
-                        print("[Facebook Messenger]: AI Agent is currently PAUSED by Admin.")
+                    # Check if AI Master Switch or Per-Customer Takeover is active
+                    if not is_conversation_ai_active(sender_id=sender_id):
+                        print(f"[Facebook Messenger]: AI is PAUSED for customer {sender_id} (Human Takeover). AI will stay silent.")
                         continue
+
+                    # Fetch conversation history
+                    history = get_conversation_history("facebook", sender_id, limit=8)
 
                     # Process with Gemini AI Brain
                     ai_result = await process_customer_message(
@@ -254,8 +227,10 @@ async def handle_facebook_webhook_event(data: dict):
                         image_mime=image_mime,
                         audio_bytes=audio_bytes,
                         audio_mime=audio_mime,
+                        conversation_history=history,
                         channel="facebook",
                         sender_id=sender_id,
+                        customer_name=customer_name,
                         generate_voice_reply=bool(audio_bytes)
                     )
 
@@ -276,6 +251,7 @@ async def handle_facebook_webhook_event(data: dict):
                         print(f"[Facebook Messenger Sending Image]: {full_img_url} to {sender_id}")
                         send_fb_media_message(sender_id, "image", img_path)
                         record_conversation_message("facebook", sender_id, customer_name, "bot", "", full_img_url)
+                        time.sleep(0.3)
 
             # 2. Handle Feed Comments (Auto Comment Reply & Private Inbox Message)
             if "changes" in entry:

@@ -7,9 +7,51 @@ from google import genai
 from google.genai import types
 
 from app.config import settings
-from app.database import get_db_connection, get_setting, set_setting, get_all_settings
+from app.database import (
+    get_db_connection, get_setting, set_setting, get_all_settings, get_active_training_rules
+)
 from app.ai_agent.voice_engine import generate_bangla_voice
 from app.ai_agent.order_engine import extract_phone_number, create_order
+
+def detect_customer_gender_title(customer_name: str) -> str:
+    """
+    Intelligently recognizes if customer is male/female from their name.
+    Returns 'ভাইয়া', 'আপু', or 'স্যার/ম্যাম'.
+    """
+    if not customer_name:
+        return "স্যার/ম্যাম"
+    
+    name_lower = customer_name.lower().strip()
+    
+    # Female indicators
+    female_patterns = [
+        "mst", "mosammat", "most", "mowsumi", "akter", "akteri", "begum", "khatun", "sultana",
+        "jahan", "nahar", "farzana", "sumaiya", "ruma", "shampa", "sadia", "nusrat", "mim",
+        "tania", "afrin", "tasnim", "nargis", "salma", "parvin", "fatema", "marufa", "mousumi",
+        "monira", "sharmin", "afsana", "morium", "khadiza", "ayesha", "khaleda", "tamanna",
+        "sonia", "sabina", "swapna", "shirin", "lima", "shila", "nazma", "papia", "shahnaz",
+        "আক্তার", "বেগম", "খাতুন", "সুলতানা", "জাহান", "নাহার", "ফারজানা", "সুমাইয়া", "রুমা",
+        "সাদিয়া", "নুসরাত", "মিম", "তানিয়া", "মোসাম্মৎ", "মমতাজ", "সালমা", "পারভীন", "ফাতেমা",
+        "সোনিয়া", "সাবিনা", "স্বপ্না", "শিরিন", "লিমা", "শীলা", "নাজমা", "পাপিয়া", "শাহনাজ"
+    ]
+    if any(fp in name_lower for fp in female_patterns):
+        return "আপু"
+        
+    # Male indicators
+    male_patterns = [
+        "md", "mohammad", "muhammad", "ahmed", "ahmad", "khan", "hasan", "hossain", "islam",
+        "rahman", "chowdhury", "tanvir", "sakib", "rakib", "rony", "alamin", "faruk", "rasel",
+        "shuvo", "sabbir", "tareq", "mahmud", "arafat", "ashik", "arif", "habib", "nazmul",
+        "jewel", "sohel", "saiful", "kawsar", "mizan", "kamrul", "rashed", "shahadat",
+        "ripon", "kabir", "jamal", "kamal", "babul", "monir", "farid", "rubel", "jahid",
+        "মোঃ", "মোহাম্মদ", "আহমেদ", "খান", "হাসান", "হোসেন", "ইসলাম", "রহমান", "চৌধুরী",
+        "তানভীর", "সাকিব", "রাকিব", "রনি", "আলআমিন", "ফারুক", "রাসেল", "শুভ", "সাব্বির",
+        "রিপন", "কবির", "জামাল", "কামাল", "বাবুল", "মনির", "ফরিদ", "রুবেল", "জাহিদ"
+    ]
+    if any(mp in name_lower for mp in male_patterns):
+        return "ভাইয়া"
+        
+    return "স্যার/ম্যাম"
 
 def get_product_catalog_context() -> str:
     """Fetches active products from DB to feed into Gemini prompt."""
@@ -44,74 +86,73 @@ def get_product_catalog_context() -> str:
         )
     return "\n".join(lines)
 
-def build_system_instruction() -> str:
+def build_system_instruction(customer_name: str = "") -> str:
     """Builds the natural, human-like system prompt for RS Graphics sales agent."""
     all_settings = get_all_settings()
     shop_name = all_settings.get("shop_name", "RS Graphics")
     inside_fee = all_settings.get("delivery_inside_dhaka", str(settings.DELIVERY_FEE_INSIDE_DHAKA))
     outside_fee = all_settings.get("delivery_outside_dhaka", str(settings.DELIVERY_FEE_OUTSIDE_DHAKA))
     catalog = get_product_catalog_context()
+    
+    honorific = detect_customer_gender_title(customer_name)
+
+    # Load in-app custom training rules from database
+    training_rules = get_active_training_rules()
+    training_text = ""
+    if training_rules:
+        training_text = "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🧠 অ্যাডমিন কর্তৃক নির্ধারিত স্পেশাল ট্রেইনিং রুলস (Custom Training Rules):\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        for r in training_rules:
+            trigger = f" (যদি কাস্টমার বলে: '{r['question_or_trigger']}')" if r.get('question_or_trigger') else ""
+            training_text += f"• [{r.get('category', 'Rule')}] {r['title']}{trigger}: {r['response_or_rule']}\n"
 
     prompt = f"""
-তুমি হচ্ছো '{shop_name}' (আরএস গ্রাফিক্স) পেজের একজন অত্যন্ত অভিজ্ঞ, প্রফেশনাল ও চৌকস সেলস কনসালট্যান্ট ও বিজনেস ম্যানেজার।
+তুমি হচ্ছো '{shop_name}' (আরএস গ্রাফিক্স) পেজের একজন অত্যন্ত অভিজ্ঞ, প্রফেশনাল, অমায়িক ও চৌকস সেলস কনসালট্যান্ট ও বিজনেস ম্যানেজার।
 আমাদের হটলাইন ও হোয়াটসঅ্যাপ নম্বর: 01816-504097, 01511504097
 
-আমাদের মূল কাজ হলো প্রিমিয়াম কোয়ালিটি আইডি কার্ড (Japanese UV Print PVC), ডিজিটাল সাবলিমেশন ফিতা (Lanyards / Ribbons), আইডি কার্ড কভার (Card Holders), এবং পকেট ব্যাজ (Pocket Badges) প্রিন্ট ও ডেলিভারি করা।
+আমাদের মূল কাজ হলো প্রিমিয়াম কোয়ালিটি আইডি কার্ড (Japanese UV Print PVC), ডিজিটাল সাবলিমেশন ফিতা (Lanyards / Ribbons), আইডি কার্ড কভার (Card Holders), এবং কম্বো প্যাকেজ প্রিন্ট ও ডেলিভারি করা।
 
-কাস্টমার যেন কোনোভাবেই বুঝতে না পারে যে তুমি রোবট বা এআই। তোমাকে কথা বলতে হবে একজন বাস্তব অভিজ্ঞ ব্যবসায়ীর মতো।
+⚠️ STRICT HUMAN PERSONA RULE:
+কাস্টমার যেন কোনোভাবেই বুঝতে না পারে যে তুমি রোবট বা এআই। তোমাকে কথা বলতে হবে একজন বাস্তব অভিজ্ঞ ও অমায়িক ব্যবসায়ীর মতো। কোনো রোবোটিক ঘোষণা বা এআই পরিচয় দেবে না।
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔴 অত্যন্ত গুরুত্বপূর্ণ ব্যবসায়িক নিয়মাবলী (Strict Rules):
+🔴 অত্যন্ত গুরুত্বপূর্ণ সেলস ও বিহেভিয়ার রুলস (Strict Rules):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-১. অভিবাদন ও কথা বলার নিয়ম (Greeting & Tone Rule):
-   - কাস্টমারের সাথে কথা হবে অত্যন্ত সংক্ষিপ্ত, টু-দ্য-পয়েন্ট ও প্রফেশনাল।
-   - ⚠️ STRICT RULE: কাস্টমারের প্রতি মেসেজ বা প্রশ্নের পর বারবার "আসসালামু আলাইকুম", "ভাইয়া", "আপু" বলা সম্পূর্ণ নিষিদ্ধ! চ্যাটের শুরুতে শুধু একবার সালাম বা সাধারণ সম্ভাষণ হতে পারে। এর পর থেকে সরাসরি টু-দ্য-পয়েন্ট উত্তর দেবে (যেমন: "জি স্যার", "জি ম্যাম", "অবশ্যই", "জি, কত পিস বানাবেন জানাবেন প্লিজ?")।
-   - ⚠️ STRICT RULE: কোনো রোবোটিক কোড (যেমন: [AIP-PRO], SKU ইত্যাদি) বা কোনো মার্কডাউন ইমেজ ট্যাগ (যেমন: ![alt](/static/...)) টেক্সটে লিখবে না। তুমি কেবল স্বাভাবিক ভাষায় কথা বলবে (যেমন: "জি অবশ্যই, আমাদের করা আইডি কার্ডের কিছু স্যাম্পল নিচে দেওয়া হলো:")। আসল ছবিগুলো সিস্টেম থেকে আলাদাভাবে পাঠানো হবে।
+১. সংক্ষিপ্ত ও টু-দ্য-পয়েন্ট উত্তর (Strict Conciseness Rule):
+   - কাস্টমার যতটুকু প্রশ্ন করবে শুধু ততটুকুরই উত্তর দেবে। কোনো অপ্রয়োজনীয় বড় রচনা বা দীর্ঘ প্যারাগ্রাফ লিখবে না।
+   - কাস্টমারের নাম ও সম্মান অনুযায়ী সম্বোধন করবে: {honorific}।
+   - ⚠️ কখনোই রূঢ় বা কর্কশ ভাষা ব্যবহার করবে না। সবসময় বিনম্র, আন্তরিক ও প্রফেশনাল থাকবে।
+   - প্রতি মেসেজে বারবার "আসসালামু আলাইকুম" বা অযথা ভূমিকা টানবে না। চ্যাটের শুরুতে শুধু একবার সালাম বা সাধারণ সম্ভাষণ হতে পারে।
 
-২. দাম জানার প্রাথমিক নিয়ম (Quantity First Rule):
-   - কাস্টমার যখনই জিজ্ঞাসা করবে "আইডি কার্ডের দাম কত?", "প্রাইস কত?", "আইডি কার্ড বানাতে কত লাগবে?" ইত্যাদি:
-   - সরাসরি কোনো একক দাম বলে ফেলবে না! প্রথমে অবশ্যই বিনয়ের সাথে জিজ্ঞাসা করবে:
-     👉 "জি, কত পিস বানাবেন জানাবেন প্লিজ?"
+২. গোপনীয়তা ও মূল্য নির্ধারণ নীতি (Pricing & Cost Protection):
+   - ⚠️ কখনোই আমাদের কেনা দাম / নিজস্ব উৎপাদন খরচ বলবে না। সর্বদা বিক্রয়মূল্য (সেল প্রাইস) বলবে।
+   - শুরুতেই আগ বাড়িয়ে ডিসকাউন্ট বা অফারের কথা বলবে না। প্রথমে মূল নিয়মিত দাম বলবে।
+   - যদি কাস্টমার ৫০ বা ১০০+ পিস বানাতে চায় অথবা সরাসরি ডিসকাউন্ট চায় ("কিছু কম রাখা যাবে কি?"), তখন স্পেশাল হোলসেল রেট অফার করবে।
 
-৩. কোয়ান্টিটি ও প্রাইসিং পলিসি (MOQ & Quantity Tier Pricing):
-   - ⛔ নিয়ম ১ (ন্যূনতম অর্ডার ২০ পিস): 
-     আমাদের ন্যূনতম অর্ডার পরিমাণ (MOQ) হলো ২০ পিস। ২০ পিসের কম কোনো অর্ডার নেওয়া হচ্ছে না।
-     যদি কাস্টমার ২০ পিসের কম বলে (যেমন: ৫, ১০, ১৫ পিস), তবে বিনয়ের সাথে বলবে:
-     "দুঃখিত স্যার/ম্যাম, আমাদের ন্যূনতম অর্ডার পরিমাণ ২০ পিস। ২০ পিসের কম অর্ডার নেওয়া সম্ভব হচ্ছে না।"
-   
-   - 📦 নিয়ম ২ (২০ থেকে ৫০ পিস - রেগুলার প্যাকেজ প্রাইস):
-     যদি কাস্টমার ২০ থেকে ৫০ পিস চায়, তবে আমাদের রেগুলার প্রাইস এবং আইডি কার্ড + ফিতা + কভারের বিভিন্ন প্যাকেজ অপশনগুলোর দাম জানাবে:
+৩. কোয়ান্টিটি ও প্যাকেজ রুল (MOQ & Quantity Tier):
+   - কাস্টমার দাম জিজ্ঞাসা করলে সরাসরি একক দাম না বলে প্রথমে জিজ্ঞাসা করবে:
+     👉 "জি {honorific}, কত পিস বানাবেন জানাবেন প্লিজ?"
+   - আমাদের ন্যূনতম অর্ডার পরিমাণ (MOQ) হলো ২০ পিস। ২০ পিসের কম অর্ডার নেওয়া হয় না।
+   - ২০-৫০ পিসের জন্য আমাদের প্যাকেজ রেট:
      • সিঙ্গেল আইডি কার্ড (শুধু কার্ড): ৩৫ টাকা / পিস (অফার মূল্য ৩০ টাকা)
      • প্যাকেজ ০১: জাপানি মেশিনের UV প্রিন্ট কার্ড + ডিজিটাল ফিতা (১.৫ সেমি) + প্লাস্টিক কভার (স্বচ্ছ)
      • প্যাকেজ ০২: জাপানি মেশিনের UV প্রিন্ট কার্ড + ডিজিটাল ফিতা (১.৫ সেমি) + কালারফুল প্লাস্টিক কভার
      • প্যাকেজ ০৩: জাপানি মেশিনের UV প্রিন্ট কার্ড + ডিজিটাল ফিতা (২ সেমি) + হার্ড প্লাস্টিক কভার
      • প্যাকেজ ০৭: জাপানি মেশিনের UV প্রিন্ট কার্ড + ডিজিটাল ফিতা (২ সেমি) + প্রিমিয়াম মেটাল লক কভার
 
-   - 💎 নিয়ম ৩ (৫০ পিস বা ১০০+ পিস - বাল্ক প্রাইস ও ডিসকাউন্ট নেগোসিয়েশন):
-     যদি কাস্টমার ৫০ বা ১০০+ পিসের কথা বলে:
-     • প্রথমে স্ট্যান্ডার্ড প্যাকেজ রেট অফার করবে।
-     • কাস্টমার যদি বলে "দাম বেশি", "কিছু কম রাখা যাবে কি?", "ডিসকাউন্ট দিন":
-       তখন বলবে: "যেহেতু আপনার কোয়ান্টিটি বেশি (৫০/১০০+ পিস), আমরা আপনাকে স্পেশাল হোলসেল ডিসকাউন্ট রেটে দিতে পারব।" এবং সর্বশেষ ফিক্সড ডিসকাউন্ট রেট জানাবে।
-
-৪. ধাপে ধাপে ছবি ও প্রেজেন্টেশন (Step-by-Step Showcase Funnel):
-   - যখন কাস্টমার ৫০, ১০০, ৩৫০ বা যেকোনো বড় কোয়ান্টিটি বানানোর আগ্রহ দেখাবে, তখন ধাপে ধাপে কাস্টমারকে তথ্য ও প্রেজেন্টেশন উপস্থাপন করবে:
-     • ধাপ ১ (আইডি কার্ডের ছবি): "আমাদের করা আইডি কার্ডের কিছু পিকচার"
-     • ধাপ ২ (ফিতার ছবি): "ডিজিটাল প্রিন্ট ফিতা / লেইনিয়ার্ড স্যাম্পল"
-     • ধাপ ৩ (হোল্ডারের ছবি): "আইডি কার্ড হোল্ডার / কভার"
-     • ধাপ ৪ (রিভিউ লিংক): 
-       "আমাদের পেইজের কাস্টমার রিভিউ গুলো দেখে আসতে পারেন 👇👇👇
-https://www.facebook.com/share/p/12D346QH2xr/"
-     • ধাপ ৫ (প্যাকেজ সমূহের ছবি ও রেট): "আমাদের প্যাকেজ সমূহ"
+৪. স্যাম্পল ছবি পাঠানোর নিয়ম (Permission-First Image Protocol):
+   - ⚠️ কাস্টমার কোনো প্রডাক্টের তথ্য চাইলে সাথে সাথে সরাসরি ছবি পাঠাবে না!
+   - আগে সংক্ষেপে প্রডাক্ট ও দামের তথ্য দিয়ে বিনয়ের সাথে অনুমতি চেয়ে বলবে:
+     👉 "আমি কি আমাদের করা আইডি কার্ডের/ফিতার কিছু স্যাম্পল ছবি পাঠাবো?"
+   - ⚠️ কোনো মার্কডাউন ইমেজ ট্যাগ যেমন `![Alt](/static/...)` টেক্সটে লিখবে না। আসল ছবিগুলো সিস্টেম স্বয়ংক্রিয়ভাবে পাঠাবে।
 
 ৫. শপের ইনফরমেশন:
-   - হটলাইন ও হোয়াটসঅ্যাপ: 01816-504097, 01511504097
    - ডেলিভারি চার্জ: ঢাকার ভেতরে {int(float(inside_fee))} টাকা এবং ঢাকার বাইরে {int(float(outside_fee))} টাকা।
-   - ক্যাশ অন ডেলিভারি সুবিধা রয়েছে। সারা বাংলাদেশে কুরিয়ারে ডেলিভারি করা হয়।
-   - কাজ শুরুর নিয়ম: ডিজাইন ফাইনাল হলে প্রিন্টিং শুরু হয় এবং ২-৩ কার্যদিবসের মধ্যে ডেলিভারি সম্পন্ন হয়।
+   - ক্যাশ অন ডেলিভারি সুবিধা রয়েছে। সারা বাংলাদেশে কুরিয়ারে ২-৩ কার্যদিবসে ডেলিভারি সম্পন্ন হয়।
 
 ৬. প্রডাক্ট ক্যাটালগ:
 {catalog}
+{training_text}
 
 ৭. অর্ডার কনফার্মেশন:
    - কাস্টমার অর্ডার ফাইনাল করতে চাইলে বলবে:
@@ -132,6 +173,29 @@ https://www.facebook.com/share/p/12D346QH2xr/"
 """
     return prompt
 
+def get_category_batch_images(category_or_code: str) -> list:
+    """Returns all gallery images for a specific product category to send as a batch."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT code, name, image_url, gallery_images FROM products WHERE is_active = 1")
+    products = cursor.fetchall()
+    conn.close()
+
+    images = []
+    for p in products:
+        p_code = p["code"]
+        if category_or_code and (category_or_code.lower() in p_code.lower() or category_or_code.lower() in p["name"].lower()):
+            if p["image_url"] and p["image_url"] not in images:
+                images.append(p["image_url"])
+            try:
+                g_imgs = json.loads(p["gallery_images"] or "[]")
+                for gu in g_imgs:
+                    if gu and gu not in images:
+                        images.append(gu)
+            except Exception:
+                pass
+    return images
+
 async def process_customer_message(
     message_text: str = "",
     image_bytes: bytes = None,
@@ -141,11 +205,12 @@ async def process_customer_message(
     conversation_history: list = None,
     channel: str = "facebook",
     sender_id: str = "web_user",
+    customer_name: str = "Customer",
     generate_voice_reply: bool = False
 ) -> dict:
     """
-    Multimodal message processing via Google GenAI (Gemini 2.0 Flash / 1.5 Flash).
-    Handles text, images, and audio voice notes.
+    Multimodal message processing via Google GenAI.
+    Handles text, images, voice notes, gender recognition, and batch sample delivery.
     """
     api_key = get_setting("gemini_api_key", settings.GEMINI_API_KEY)
     
@@ -156,25 +221,23 @@ async def process_customer_message(
             "আপনার অর্ডার ও প্রশ্নের উত্তর দেওয়ার জন্য এআই এজেন্ট প্রস্তুত। "
             "(দয়া করে অ্যাডমিন ড্যাশবোর্ডের Settings থেকে আপনার ফ্রি Gemini API Key-টি সেট করুন)।"
         )
-        voice_url = await generate_bangla_voice(fallback_reply) if generate_voice_reply else ""
         return {
             "reply_text": fallback_reply,
-            "voice_url": voice_url,
+            "voice_url": "",
             "order_created": None,
             "matched_images": []
         }
 
     try:
         client = genai.Client(api_key=api_key)
-        model_name = get_setting("gemini_model", settings.GEMINI_MODEL)
         
         contents = []
         
-        # Add conversation history
+        # Add conversation history (up to last 8 turns)
         if conversation_history:
             history_text = "[পূর্ববর্তী চ্যাট হিস্ট্রি]:\n"
-            for msg in conversation_history[-6:]:
-                role = "কাস্টমার" if msg.get("sender_type") == "user" else "এআই এজেন্ট"
+            for msg in conversation_history[-8:]:
+                role = "কাস্টমার" if msg.get("sender_type") == "user" else "সেলস ম্যানেজার"
                 history_text += f"{role}: {msg.get('content', '')}\n"
             contents.append(history_text)
 
@@ -191,15 +254,14 @@ async def process_customer_message(
                 message_text = "আমি একটি ভয়েস মেসেজ পাঠিয়েছি। দয়া করে শুনুন এবং উত্তর দিন।"
 
         if message_text:
-            contents.append(f"কাস্টমারের মেসেজ: {message_text}")
+            contents.append(f"কাস্টমারের মেসেজ ({customer_name}): {message_text}")
 
         saved_model = get_setting("gemini_model", settings.GEMINI_MODEL)
         candidate_models = [saved_model, "gemini-2.5-flash", "gemini-3.6-flash", "gemini-2.5-pro", "gemini-flash-latest"]
-        # Remove duplicates while preserving order
         candidate_models = list(dict.fromkeys([m for m in candidate_models if m]))
 
         response = None
-        system_instruction = build_system_instruction()
+        system_instruction = build_system_instruction(customer_name=customer_name)
 
         for m_name in candidate_models:
             try:
@@ -208,18 +270,17 @@ async def process_customer_message(
                     contents=contents,
                     config=types.GenerateContentConfig(
                         system_instruction=system_instruction,
-                        temperature=0.7
+                        temperature=0.65
                     )
                 )
                 if response and response.text:
-                    # Update saved model to the working one
                     set_setting("gemini_model", m_name)
                     break
             except Exception as model_err:
                 print(f"[Gemini Model {m_name} failed]: {model_err}")
                 continue
 
-        raw_text = response.text if response and response.text else "দুঃখিত, আমি আপনার বার্তাটি বুঝতে পারিনি। আবার বলুন প্লিজ।"
+        raw_text = response.text if response and response.text else "জি বলুন, কীভাবে সাহায্য করতে পারি?"
 
         # Parse order json block if present
         order_created = None
@@ -236,7 +297,7 @@ async def process_customer_message(
                     phone = order_data.get("customer_phone") or extract_phone_number(message_text)
                     if phone:
                         order_created = create_order(
-                            customer_name=order_data.get("customer_name", "Customer"),
+                            customer_name=order_data.get("customer_name", customer_name or "Customer"),
                             customer_phone=phone,
                             customer_address=order_data.get("customer_address", "Dhaka"),
                             items=order_data.get("items", []),
@@ -247,74 +308,47 @@ async def process_customer_message(
             except Exception as e:
                 print(f"[Order Parse Error]: {e}")
 
-        # Extract any markdown images e.g. ![Alt](/static/uploads/...) or [Image: /static/uploads/...]
+        # Clean markdown image tags & bracket tags from text
         matched_images = []
-
-        # 1. Match Markdown image syntax: ![Alt](url)
         md_img_matches = re.findall(r'!\[([^\]]*)\]\(([^)]+)\)', clean_reply)
         for alt, url in md_img_matches:
             u = url.strip()
             if u and u not in matched_images:
                 matched_images.append(u)
-        # Strip all markdown image tags from clean_reply
         clean_reply = re.sub(r'!\[[^\]]*\]\([^)]+\)', '', clean_reply)
-
-        # 2. Match bracket tags: [Image: ...] or [Images: ...]
-        found_tags = re.findall(r'\[Image[s]?:\s*([^\]]+)\]', clean_reply, flags=re.IGNORECASE)
-        for tag in found_tags:
-            urls = [u.strip() for u in tag.split(",") if u.strip()]
-            for u in urls:
-                if u and u not in matched_images:
-                    matched_images.append(u)
-        # Strip [Image: ...] tags
         clean_reply = re.sub(r'\[Image[s]?:\s*[^\]]+\]', '', clean_reply, flags=re.IGNORECASE)
-
-        # Clean up excess consecutive blank lines
         clean_reply = re.sub(r'\n{3,}', '\n\n', clean_reply).strip()
 
-        # Smart Product Category Matching for Image Samples
-        combined_text = ((message_text or "") + " " + clean_reply).lower()
-        is_asking_photo = any(w in combined_text for w in [
-            "ছবি", "পিক", "photo", "image", "pic", "কালার", "দেখাও", "কার্ডের ছবি", "ছবি দাও", "ছবি দিন", "স্যাম্পল", "sample"
-        ])
+        # Check if customer is confirming / agreeing to see sample photos
+        user_msg = (message_text or "").strip().lower()
+        agreement_words = ["হ্যাঁ", "পাঠান", "দেখান", "জি", "পাঠাও", "দেখাও", "দিলে ভালো", "yes", "sure", "ok", "send", "show", "ha", "ji", "achha", "send picture", "sample"]
+        is_confirming_sample = any(re.search(r'\b' + re.escape(w) + r'\b', user_msg) for w in agreement_words) or user_msg in ["হ্যাঁ", "পাঠান", "দেখান", "জি", "ok", "yes", "ha", "ji"]
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT code, name, category, image_url, gallery_images FROM products WHERE is_active = 1")
-        all_prods = cursor.fetchall()
-        conn.close()
+        # Check chat history context to see what product was discussed
+        history_str = ""
+        if conversation_history:
+            history_str = " ".join([m.get("content", "") for m in conversation_history[-4:]]).lower()
+        full_context = (history_str + " " + user_msg + " " + clean_reply).lower()
 
-        # Product category keywords mapping
-        keywords = {
-            "FITA-02": ["ফিতা", "ফিতার", "ল্যানিয়ার্ড", "লেইনিয়ার্ড", "lanyard", "ribbon", "fita", "digital print"],
-            "IDC-01": ["আইডি কার্ড", "কার্ড", "card", "id card", "uv print", "পিভিসি", "pvc"],
-            "COV-03": ["কভার", "হোল্ডার", "holder", "cover", "কার্ড হোল্ডার"],
-            "PKG-COMBO": ["প্যাকেজ", "কম্বো", "package", "combo", "প্যাকেজ ০১", "প্যাকেজ ০২", "প্যাকেজ ০৩", "প্যাকেজ ০৭"]
-        }
-
-        matched_codes = []
-        for code, kw_list in keywords.items():
-            if any(kw in combined_text for kw in kw_list):
-                matched_codes.append(code)
-
-        for p in all_prods:
-            if p["code"] in matched_codes or (not matched_codes and is_asking_photo):
-                if p["image_url"] and p["image_url"] not in matched_images:
-                    matched_images.append(p["image_url"])
-                try:
-                    g_imgs = json.loads(p["gallery_images"] or "[]")
-                    for gu in g_imgs:
-                        if gu and gu not in matched_images:
-                            matched_images.append(gu)
-                            if len(matched_images) >= 3:
-                                break
-                except Exception:
-                    pass
-                if len(matched_images) >= 3:
-                    break
-
-        # AI always replies in pure text
-        voice_url = ""
+        # Permission-First Rule: If customer explicitly confirmed, send the complete batch for that category
+        if is_confirming_sample or any(w in user_msg for w in ["সবগুলো ছবি", "সব ছবি", "সকল ছবি", "সকল স্যাম্পল", "সব স্যাম্পল"]):
+            if any(k in full_context for k in ["ফিতা", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]):
+                batch = get_category_batch_images("FITA-02")
+                if batch:
+                    matched_images = batch
+            elif any(k in full_context for k in ["কভার", "হোল্ডার", "holder", "cover"]):
+                batch = get_category_batch_images("COV-03")
+                if batch:
+                    matched_images = batch
+            elif any(k in full_context for k in ["প্যাকেজ", "কম্বো", "package", "combo"]):
+                batch = get_category_batch_images("PKG-COMBO")
+                if batch:
+                    matched_images = batch
+            else:
+                # Default to ID card batch
+                batch = get_category_batch_images("IDC-01")
+                if batch:
+                    matched_images = batch
 
         return {
             "reply_text": clean_reply,
@@ -325,7 +359,7 @@ async def process_customer_message(
 
     except Exception as e:
         print(f"[GeminiBrain Error]: {e}")
-        err_msg = f"ধন্যবাদ আপনার বার্তার জন্য! আমাদের একজন প্রতিনিধি খুব শীঘ্রই আপনার সাথে যোগাযোগ করবেন।"
+        err_msg = "ধন্যবাদ আপনার বার্তার জন্য! আমাদের একজন প্রতিনিধি খুব শীঘ্রই আপনার সাথে যোগাযোগ করবেন।"
         return {
             "reply_text": err_msg,
             "voice_url": "",

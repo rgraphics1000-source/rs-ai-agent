@@ -7,13 +7,24 @@ document.addEventListener("DOMContentLoaded", () => {
     loadOverview();
     loadOrders();
     loadProducts();
+    loadTrainingRules();
+    loadSavedMediaList();
     loadFaqs();
     loadCommentLogs();
     loadSettings();
     loadOmnichatConversations();
     initSmartphoneSimulator();
     initModals();
+    initPWA();
 });
+
+function initPWA() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/static/sw.js')
+            .then(() => console.log("[PWA] Service worker registered"))
+            .catch(err => console.log("[PWA] SW register error:", err));
+    }
+}
 
 // ==========================================
 // 1. NAVIGATION & TAB SWITCHING (DESKTOP & MOBILE)
@@ -859,9 +870,341 @@ async function loadCommentLogs() {
 }
 
 // ==========================================
+// 6. CONTENT & AI BRAIN TRAINING SUBTABS
+// ==========================================
+function switchContentSubtab(subtab, btn) {
+    document.querySelectorAll(".content-subtab-btn").forEach(b => {
+        b.className = "btn btn-secondary content-subtab-btn";
+    });
+    if (btn) btn.className = "btn btn-primary content-subtab-btn";
+
+    document.getElementById("content-subtab-rules").style.display = subtab === 'rules' ? 'block' : 'none';
+    document.getElementById("content-subtab-media").style.display = subtab === 'media' ? 'block' : 'none';
+    document.getElementById("content-subtab-faqs").style.display = subtab === 'faqs' ? 'block' : 'none';
+    document.getElementById("content-subtab-comments").style.display = subtab === 'comments' ? 'block' : 'none';
+
+    if (subtab === 'rules') loadTrainingRules();
+    else if (subtab === 'media') loadSavedMediaList();
+    else if (subtab === 'faqs') loadFaqs();
+    else if (subtab === 'comments') loadCommentLogs();
+}
+
+// ------------------------------------------
+// AI BRAIN TRAINING RULES MANAGER
+// ------------------------------------------
+async function loadTrainingRules() {
+    const container = document.getElementById("training-rules-list-container");
+    if (!container) return;
+
+    try {
+        const res = await fetch("/api/training/rules");
+        const data = await res.json();
+        container.innerHTML = "";
+
+        if (!data.rules || data.rules.length === 0) {
+            container.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted);"><i class="fas fa-brain" style="font-size: 32px; opacity: 0.4; margin-bottom: 8px; display: block;"></i>কোনো কাস্টম ট্রেইনিং রুল যুক্ত করা হয়নি। নতুন রুল যুক্ত করতে উপরের বাটনে ক্লিক করুন।</div>`;
+            return;
+        }
+
+        const grid = document.createElement("div");
+        grid.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
+
+        data.rules.forEach(r => {
+            const card = document.createElement("div");
+            card.className = "glass-card";
+            card.style.cssText = "padding: 14px 18px; margin: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border: 1px solid rgba(255,255,255,0.08);";
+            
+            const isActive = r.is_active === 1;
+            const categoryBadge = `<span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; font-size: 11px;">${r.category || 'General'}</span>`;
+            const typeBadge = `<span class="badge" style="background: rgba(236, 72, 153, 0.15); color: #f472b6; font-size: 10px; text-transform: uppercase;">${r.rule_type || 'Rule'}</span>`;
+
+            card.innerHTML = `
+                <div style="flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                        <strong style="color: #fff; font-size: 14px;">${r.title}</strong>
+                        ${categoryBadge}
+                        ${typeBadge}
+                    </div>
+                    ${r.question_or_trigger ? `<div style="font-size: 12px; color: #fbbf24; margin-bottom: 4px;"><i class="fas fa-bolt"></i> <strong>Trigger:</strong> "${r.question_or_trigger}"</div>` : ''}
+                    <div style="font-size: 13px; color: var(--text-main); line-height: 1.5; background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 6px; border-left: 3px solid ${isActive ? '#10b981' : '#6b7280'};">
+                        ${r.response_or_rule}
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; padding-top: 4px;">
+                    <button class="btn" style="padding: 4px 10px; font-size: 11px; border-radius: 20px; ${isActive ? 'background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981;' : 'background: rgba(107, 114, 128, 0.2); color: #9ca3af; border: 1px solid #6b7280;'}" onclick="toggleTrainingRuleActive(${r.id})">
+                        <i class="fas ${isActive ? 'fa-check-circle' : 'fa-circle-xmark'}"></i> ${isActive ? 'Active' : 'Disabled'}
+                    </button>
+                    <button class="btn btn-secondary" style="padding: 5px 8px; color: #ef4444;" onclick="deleteTrainingRuleById(${r.id})" title="Delete Rule">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+
+        container.appendChild(grid);
+    } catch (e) {
+        console.error("Load training rules error:", e);
+    }
+}
+
+async function handleCreateTrainingRule(e) {
+    e.preventDefault();
+    const title = document.getElementById("rule-title").value.trim();
+    const category = document.getElementById("rule-category").value;
+    const rule_type = document.getElementById("rule-type").value;
+    const trigger = document.getElementById("rule-trigger").value.trim();
+    const content = document.getElementById("rule-content").value.trim();
+
+    if (!title || !content) return;
+
+    try {
+        const res = await fetch("/api/training/rules", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                title: title,
+                category: category,
+                rule_type: rule_type,
+                question_or_trigger: trigger,
+                response_or_rule: content,
+                is_active: 1
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("এআই ট্রেইনিং রুল সফলভাবে যুক্ত হয়েছে!", "success");
+            closeModal("modal-add-training-rule");
+            document.getElementById("form-add-training-rule").reset();
+            loadTrainingRules();
+        }
+    } catch (e) {
+        showToast("রুল যুক্ত করা সম্ভব হয়নি", "danger");
+    }
+}
+
+async function toggleTrainingRuleActive(ruleId) {
+    try {
+        await fetch(`/api/training/rules/${ruleId}/toggle`, { method: "POST" });
+        loadTrainingRules();
+        showToast("রুল স্ট্যাটাস আপডেট করা হয়েছে", "success");
+    } catch (e) {
+        showToast("Error updating status", "danger");
+    }
+}
+
+async function deleteTrainingRuleById(ruleId) {
+    if (!confirm("আপনি কি নিশ্চিত এই ট্রেইনিং রুলটি মুছে ফেলতে চান?")) return;
+    try {
+        await fetch(`/api/training/rules/${ruleId}`, { method: "DELETE" });
+        loadTrainingRules();
+        showToast("রুল ডিলিট সম্পন্ন হয়েছে", "success");
+    } catch (e) {
+        showToast("Delete failed", "danger");
+    }
+}
+
+// ------------------------------------------
+// SAVED MEDIA LIBRARY (VOICE & VIDEO)
+// ------------------------------------------
+async function loadSavedMediaList() {
+    const container = document.getElementById("saved-media-grid");
+    if (!container) return;
+
+    try {
+        const res = await fetch("/api/saved-media");
+        const data = await res.json();
+        container.innerHTML = "";
+
+        if (!data.media || data.media.length === 0) {
+            container.innerHTML = `<div style="grid-column: 1/-1; padding: 24px; text-align: center; color: var(--text-muted);"><i class="fas fa-photo-video" style="font-size: 32px; opacity: 0.4; margin-bottom: 8px; display: block;"></i>কোনো সেভ করা ভয়েস বা ভিডিও নেই। "Upload Voice / Video" বাটনে ক্লিক করে যুক্ত করুন।</div>`;
+            return;
+        }
+
+        data.media.forEach(m => {
+            const card = document.createElement("div");
+            card.className = "glass-card";
+            card.style.cssText = "padding: 14px; margin: 0; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid rgba(255,255,255,0.08);";
+
+            const isVoice = m.media_type === 'voice';
+            const isVideo = m.media_type === 'video';
+
+            let previewHtml = "";
+            if (isVoice) {
+                previewHtml = `<audio controls style="width: 100%; margin: 8px 0; height: 36px;"><source src="${m.file_url}" type="audio/mpeg"></audio>`;
+            } else if (isVideo) {
+                previewHtml = `<video controls style="width: 100%; max-height: 140px; border-radius: 6px; margin: 8px 0; background: #000;"><source src="${m.file_url}" type="video/mp4"></video>`;
+            } else {
+                previewHtml = `<img src="${m.file_url}" style="width: 100%; height: 120px; object-fit: cover; border-radius: 6px; margin: 8px 0;">`;
+            }
+
+            card.innerHTML = `
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="color: #fff; font-size: 13px;">${m.title}</strong>
+                        <span class="badge" style="font-size: 10px;">${isVoice ? '🎙️ Voice' : (isVideo ? '🎬 Video' : '🖼️ Photo')}</span>
+                    </div>
+                    ${m.description ? `<small style="color: var(--text-muted); display: block; margin-top: 4px;">${m.description}</small>` : ''}
+                    ${previewHtml}
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);">
+                    <small style="color: var(--text-dim); font-size: 10px;">${m.created_at || ''}</small>
+                    <button class="btn btn-secondary" style="padding: 4px 8px; color: #ef4444; font-size: 11px;" onclick="deleteSavedMediaById(${m.id})">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    } catch (e) {
+        console.error("Load saved media error:", e);
+    }
+}
+
+async function handleUploadSavedMedia(e) {
+    e.preventDefault();
+    const title = document.getElementById("media-title").value.trim();
+    const media_type = document.getElementById("media-type").value;
+    const desc = document.getElementById("media-desc").value.trim();
+    const fileInput = document.getElementById("media-file");
+
+    if (!fileInput.files || fileInput.files.length === 0) {
+        showToast("দয়া করে ফাইল সিলেক্ট করুন", "danger");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("title", title);
+    formData.append("media_type", media_type);
+    formData.append("description", desc);
+    formData.append("file", fileInput.files[0]);
+
+    try {
+        showToast("আপলোড হচ্ছে...", "info");
+        const res = await fetch("/api/saved-media/upload", {
+            method: "POST",
+            body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("মিডিয়া সফলভাবে আপলোড হয়েছে!", "success");
+            closeModal("modal-upload-media");
+            document.getElementById("form-upload-media").reset();
+            loadSavedMediaList();
+        }
+    } catch (e) {
+        showToast("Upload failed", "danger");
+    }
+}
+
+async function deleteSavedMediaById(mediaId) {
+    if (!confirm("আপনি কি নিশ্চিত এই মিডিয়া ফাইলটি ডিলিট করতে চান?")) return;
+    try {
+        await fetch(`/api/saved-media/${mediaId}`, { method: "DELETE" });
+        loadSavedMediaList();
+        showToast("মিডিয়া ডিলিট সম্পন্ন হয়েছে", "success");
+    } catch (e) {
+        showToast("Delete failed", "danger");
+    }
+}
+
+// ------------------------------------------
+// QUICK MEDIA SEND IN OMNICHAT
+// ------------------------------------------
+let activeQuickMediaType = 'voice';
+
+async function openQuickMediaModal(type) {
+    activeQuickMediaType = type;
+    const titleElem = document.getElementById("quick-media-modal-title");
+    if (titleElem) {
+        titleElem.innerHTML = type === 'voice' 
+            ? '<i class="fas fa-microphone-lines" style="color:#ec4899;"></i> Send Saved Voice Note'
+            : '<i class="fas fa-video" style="color:#3b82f6;"></i> Send Saved Product Demo Video';
+    }
+
+    const container = document.getElementById("quick-media-list-container");
+    if (!container) return;
+
+    try {
+        container.innerHTML = `<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>`;
+        openModal("modal-quick-media");
+
+        const res = await fetch(`/api/saved-media?type=${type}`);
+        const data = await res.json();
+        container.innerHTML = "";
+
+        if (!data.media || data.media.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 25px; color: var(--text-muted);">
+                    কোনো ${type === 'voice' ? 'ভয়েস নোট' : 'ভিডিও'} পাওয়া যায়নি।<br>
+                    <button class="btn btn-primary" style="margin-top: 10px; font-size: 11px;" onclick="closeModal('modal-quick-media'); openModal('modal-upload-media');">
+                        <i class="fas fa-upload"></i> Upload Now
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        data.media.forEach(m => {
+            const row = document.createElement("div");
+            row.style.cssText = "padding: 10px 14px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; gap: 12px;";
+
+            const preview = type === 'voice' 
+                ? `<audio controls style="height: 32px; width: 180px;"><source src="${m.file_url}"></audio>`
+                : `<video style="height: 40px; width: 60px; object-fit: cover; border-radius: 4px;" src="${m.file_url}"></video>`;
+
+            row.innerHTML = `
+                <div style="flex: 1;">
+                    <strong style="color: #fff; font-size: 13px;">${m.title}</strong>
+                    ${m.description ? `<small style="color: var(--text-muted); display: block;">${m.description}</small>` : ''}
+                </div>
+                <div>${preview}</div>
+                <button class="btn btn-primary" style="padding: 6px 14px; font-size: 11px; white-space: nowrap;" onclick="sendSavedMediaToActiveChat(${m.id})">
+                    <i class="fas fa-paper-plane"></i> Send
+                </button>
+            `;
+            container.appendChild(row);
+        });
+    } catch (e) {
+        console.error("Open quick media modal error:", e);
+    }
+}
+
+async function sendSavedMediaToActiveChat(mediaId) {
+    if (!activeConversationId) {
+        showToast("Please select a conversation first", "warning");
+        return;
+    }
+
+    try {
+        showToast("Sending media to customer...", "info");
+        const res = await fetch("/api/saved-media/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                conversation_id: activeConversationId,
+                media_id: mediaId
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("মিডিয়া সফলভাবে কাস্টমারকে পাঠানো হয়েছে!", "success");
+            closeModal("modal-quick-media");
+            loadOmnichatMessages(activeConversationId);
+            loadOmnichatConversations();
+        } else {
+            showToast(data.error || "Failed to send media", "danger");
+        }
+    } catch (e) {
+        showToast("Send error", "danger");
+    }
+}
+
+// ==========================================
 // 7. OMNICHAT (INBOX)
 // ==========================================
 let activeConversationId = null;
+let activeConversationsList = [];
 
 async function loadOmnichatConversations() {
     const container = document.getElementById("omnichat-threads-list");
@@ -877,32 +1220,40 @@ async function loadOmnichatConversations() {
             return;
         }
 
+        activeConversationsList = data.conversations;
+
         data.conversations.forEach((c, idx) => {
             const item = document.createElement("div");
             item.style.cssText = "padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: var(--transition);";
-            if (idx === 0 && !activeConversationId) {
+            if (activeConversationId === c.id || (idx === 0 && !activeConversationId)) {
                 activeConversationId = c.id;
                 item.style.background = "var(--primary-soft)";
+                updateOmnichatHeader(c);
             }
             const isWhatsApp = (c.channel || '').toLowerCase() === 'whatsapp';
             const channelBadge = isWhatsApp
                 ? `<span class="badge" style="background: rgba(37, 211, 102, 0.2); color: #25d366; font-size: 10px; font-weight: 600;"><i class="fab fa-whatsapp"></i> WhatsApp</span>`
                 : `<span class="badge" style="background: rgba(24, 119, 242, 0.2); color: #60a5fa; font-size: 10px; font-weight: 600;"><i class="fab fa-facebook-messenger"></i> Messenger</span>`;
 
+            const aiStatusIcon = c.human_takeover === 1 
+                ? `<span title="AI Paused for this customer" style="color: #f59e0b; font-size: 10px; margin-left: 6px;"><i class="fas fa-pause-circle"></i> Owner Mode</span>` 
+                : `<span title="AI Auto-Reply Active" style="color: #10b981; font-size: 10px; margin-left: 6px;"><i class="fas fa-robot"></i> AI Active</span>`;
+
             item.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <strong style="color: #fff; font-size: 13.5px;">${c.customer_name || 'Customer'}</strong>
-                    ${channelBadge}
+                    <div>${channelBadge}</div>
                 </div>
-                <div style="font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                    ${c.last_message || ''}
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-muted);">
+                    <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px;">${c.last_message || ''}</span>
+                    ${aiStatusIcon}
                 </div>
             `;
             item.addEventListener("click", () => {
                 activeConversationId = c.id;
                 document.querySelectorAll("#omnichat-threads-list > div").forEach(d => d.style.background = "transparent");
                 item.style.background = "var(--primary-soft)";
-                document.getElementById("omnichat-active-customer-name").innerText = c.customer_name || 'Customer';
+                updateOmnichatHeader(c);
                 loadOmnichatMessages(c.id);
             });
             container.appendChild(item);
@@ -911,6 +1262,56 @@ async function loadOmnichatConversations() {
         if (activeConversationId) loadOmnichatMessages(activeConversationId);
     } catch (e) {
         console.error("Load Omnichat conversations error:", e);
+    }
+}
+
+function updateOmnichatHeader(c) {
+    if (!c) return;
+    const nameElem = document.getElementById("omnichat-active-customer-name");
+    const badgeElem = document.getElementById("omnichat-active-channel-badge");
+    const aiBtn = document.getElementById("omnichat-ai-toggle-btn");
+    const aiText = document.getElementById("omnichat-ai-toggle-text");
+
+    if (nameElem) nameElem.innerText = c.customer_name || 'Customer';
+    if (badgeElem) {
+        badgeElem.innerText = (c.channel || 'whatsapp').toUpperCase();
+        badgeElem.className = (c.channel === 'whatsapp') ? 'badge badge-confirmed' : 'badge badge-shipped';
+    }
+
+    if (aiBtn && aiText) {
+        if (c.human_takeover === 1) {
+            aiBtn.style.background = "rgba(245, 158, 11, 0.2)";
+            aiBtn.style.border = "1px solid #f59e0b";
+            aiBtn.style.color = "#fbbf24";
+            aiText.innerText = "AI Paused (Owner Mode)";
+            aiBtn.title = "Click to resume AI auto-reply for this customer";
+        } else {
+            aiBtn.style.background = "rgba(16, 185, 129, 0.15)";
+            aiBtn.style.border = "1px solid #10b981";
+            aiBtn.style.color = "#34d399";
+            aiText.innerText = "AI Active";
+            aiBtn.title = "Click to pause AI (take over conversation manually)";
+        }
+    }
+}
+
+async function toggleActiveChatAI() {
+    if (!activeConversationId) return;
+
+    try {
+        const res = await fetch("/api/omnichat/toggle-ai", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ conversation_id: activeConversationId })
+        });
+        const data = await res.json();
+        if (data.success) {
+            const isPaused = data.human_takeover === 1;
+            showToast(isPaused ? "এই কাস্টমারের জন্য এআই সাময়িকভাবে বন্ধ করা হয়েছে (Owner Mode)" : "এই কাস্টমারের জন্য এআই স্বয়ংক্রিয় উত্তর পুনরায় চালু করা হয়েছে (AI Active)", "info");
+            loadOmnichatConversations();
+        }
+    } catch (e) {
+        showToast("Failed to toggle AI status", "danger");
     }
 }
 
@@ -937,7 +1338,13 @@ async function loadOmnichatMessages(cid) {
                 html += `<div>${formatted.replace(/\n/g, "<br>")}</div>`;
             }
             if (m.media_url) {
-                html += `<div style="margin-top: 6px;"><img src="${m.media_url}" style="max-width: 220px; max-height: 180px; object-fit: contain; border-radius: 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); display: block;"></div>`;
+                if (m.message_type === 'voice' || m.message_type === 'audio') {
+                    html += `<div style="margin-top: 6px;"><audio controls style="height: 32px; max-width: 240px;"><source src="${m.media_url}"></audio></div>`;
+                } else if (m.message_type === 'video') {
+                    html += `<div style="margin-top: 6px;"><video controls style="max-width: 240px; max-height: 180px; border-radius: 8px;"><source src="${m.media_url}"></video></div>`;
+                } else {
+                    html += `<div style="margin-top: 6px;"><img src="${m.media_url}" style="max-width: 220px; max-height: 180px; object-fit: contain; border-radius: 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);"></div>`;
+                }
             }
             div.innerHTML = html;
             container.appendChild(div);
@@ -948,13 +1355,13 @@ async function loadOmnichatMessages(cid) {
     }
 }
 
-// Auto-poll Omnichat every 3 seconds for real-time live chat updates
+// Auto-poll Omnichat every 4 seconds for real-time live chat updates
 setInterval(() => {
     const omnichatTab = document.getElementById("tab-omnichat");
     if (omnichatTab && omnichatTab.classList.contains("active")) {
         loadOmnichatConversations();
     }
-}, 3000);
+}, 4000);
 
 async function handleOmnichatSend(e) {
     e.preventDefault();

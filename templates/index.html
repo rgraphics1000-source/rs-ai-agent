@@ -2,8 +2,13 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>RS_AI - Autonomous Sales & Order Platform</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -401,8 +406,14 @@
                  ========================================== -->
             <section id="tab-content" class="tab-pane">
                 <!-- Sub-tab switcher -->
-                <div style="display: flex; gap: 12px; margin-bottom: 20px;">
-                    <button class="btn btn-primary content-subtab-btn" onclick="switchContentSubtab('faqs', this)">
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <button class="btn btn-primary content-subtab-btn" onclick="switchContentSubtab('rules', this)">
+                        <i class="fas fa-brain"></i> AI Brain Training & Rules
+                    </button>
+                    <button class="btn btn-secondary content-subtab-btn" onclick="switchContentSubtab('media', this)">
+                        <i class="fas fa-photo-video"></i> Saved Voice & Video Library
+                    </button>
+                    <button class="btn btn-secondary content-subtab-btn" onclick="switchContentSubtab('faqs', this)">
                         <i class="fas fa-circle-question"></i> FAQs & Q&A Pairs
                     </button>
                     <button class="btn btn-secondary content-subtab-btn" onclick="switchContentSubtab('comments', this)">
@@ -410,8 +421,52 @@
                     </button>
                 </div>
 
-                <!-- Sub-tab: FAQs -->
-                <div id="content-subtab-faqs">
+                <!-- Sub-tab 1: AI Brain Training & Custom Rules -->
+                <div id="content-subtab-rules">
+                    <div class="glass-card">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div class="card-title">
+                                <i class="fas fa-wand-magic-sparkles" style="color:var(--accent);"></i>
+                                ইন-অ্যাপ এআই ট্রেইনিং সেন্টার (Custom Brain Rules & Policies)
+                            </div>
+                            <button class="btn btn-primary" onclick="openModal('modal-add-training-rule')">
+                                <i class="fas fa-plus"></i> Add New Training Rule
+                            </button>
+                        </div>
+                        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+                            এখানে আপনি সরাসরি আপনার শপের বিশেষ পলিসি, দাম নির্ধারণের নিয়ম, কাস্টমারের আপত্তি মোকাবিলার কৌশল এবং প্রশ্নোত্তর যুক্ত করতে পারেন। এআই স্বয়ংক্রিয়ভাবে এই নিয়মগুলো চ্যাটে কাস্টমারের সাথে কথা বলার সময় প্রয়োগ করবে।
+                        </p>
+                        
+                        <div id="training-rules-list-container">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub-tab 2: Saved Voice Notes & Videos Library -->
+                <div id="content-subtab-media" style="display: none;">
+                    <div class="glass-card">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div class="card-title">
+                                <i class="fas fa-microphone-lines" style="color:#ec4899;"></i>
+                                সেভ করা ভয়েস নোট ও প্রোডাক্ট ডেমো ভিডিও লাইব্রেরি
+                            </div>
+                            <button class="btn btn-primary" onclick="openModal('modal-upload-media')">
+                                <i class="fas fa-upload"></i> Upload Voice / Video
+                            </button>
+                        </div>
+                        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+                            আপনার প্রি-রেকর্ড করা ভয়েস ক্লিপ বা আইডি কার্ড প্রিন্টিং ডেমো ভিডিও আপলোড করে রাখুন। ইনবক্সে কাস্টমারের সাথে চ্যাট করার সময় মাত্র ১-ক্লিকে তা সেন্ড করতে পারবেন।
+                        </p>
+
+                        <div id="saved-media-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub-tab 3: FAQs -->
+                <div id="content-subtab-faqs" style="display: none;">
                     <div class="glass-card">
                         <div class="card-header">
                             <div class="card-title">
@@ -531,23 +586,34 @@
 
                     <!-- Right: Active Chat Conversation -->
                     <div style="display: flex; flex-direction: column;">
-                        <div style="padding: 14px 20px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02);">
+                        <div style="padding: 12px 18px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02);">
                             <div>
-                                <strong id="omnichat-active-customer-name">রাহুল হাসান</strong>
-                                <span class="badge badge-confirmed" style="margin-left: 8px;">Facebook</span>
+                                <strong id="omnichat-active-customer-name">Select Conversation</strong>
+                                <span id="omnichat-active-channel-badge" class="badge badge-confirmed" style="margin-left: 8px;">WhatsApp</span>
                             </div>
-                            <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="openModal('modal-add-order')">
-                                <i class="fas fa-cart-plus"></i> Create Order for Customer
-                            </button>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <button id="omnichat-ai-toggle-btn" class="btn" style="padding: 5px 12px; font-size: 11px; border-radius: 20px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399;" onclick="toggleActiveChatAI()">
+                                    <i class="fas fa-robot"></i> <span id="omnichat-ai-toggle-text">AI Active</span>
+                                </button>
+                                <button class="btn btn-secondary" style="padding: 5px 10px; font-size: 11px;" onclick="openModal('modal-add-order')">
+                                    <i class="fas fa-cart-plus"></i> Create Order
+                                </button>
+                            </div>
                         </div>
 
                         <div id="omnichat-messages-container" style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;">
                             <!-- Populated dynamically -->
                         </div>
 
-                        <form id="omnichat-send-form" onsubmit="handleOmnichatSend(event)" style="padding: 12px 16px; border-top: 1px solid var(--border-color); display: flex; gap: 10px; background: rgba(0,0,0,0.3);">
-                            <input type="text" id="omnichat-reply-input" class="form-control" placeholder="Type message to reply directly as admin..." autocomplete="off">
-                            <button type="submit" class="btn btn-primary">
+                        <form id="omnichat-send-form" onsubmit="handleOmnichatSend(event)" style="padding: 10px 14px; border-top: 1px solid var(--border-color); display: flex; gap: 8px; background: rgba(0,0,0,0.3); align-items: center;">
+                            <button type="button" class="btn btn-secondary" style="padding: 8px 12px; font-size: 13px;" onclick="openQuickMediaModal('voice')" title="Send Pre-recorded Voice Note">
+                                <i class="fas fa-microphone-lines" style="color: #ec4899;"></i>
+                            </button>
+                            <button type="button" class="btn btn-secondary" style="padding: 8px 12px; font-size: 13px;" onclick="openQuickMediaModal('video')" title="Send Saved Demo Video">
+                                <i class="fas fa-video" style="color: #3b82f6;"></i>
+                            </button>
+                            <input type="text" id="omnichat-reply-input" class="form-control" placeholder="Type message as owner (AI will auto-pause for this customer)..." autocomplete="off" style="flex: 1;">
+                            <button type="submit" class="btn btn-primary" style="padding: 8px 16px;">
                                 <i class="fas fa-paper-plane"></i> Send
                             </button>
                         </form>
@@ -1018,6 +1084,113 @@
                 <h3><i class="fas fa-file-invoice" style="color:var(--primary-light);"></i> Order Summary & Invoice</h3>
                 <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-order-details')">&times;</button>
             </div>
+            <div id="order-details-body" style="padding: 10px 0;">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Add AI Training Rule Modal -->
+    <div id="modal-add-training-rule" class="modal-overlay">
+        <div class="modal-content" style="max-width: 540px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-brain" style="color:var(--primary-light);"></i> Add AI Training Rule</h3>
+                <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-add-training-rule')">&times;</button>
+            </div>
+            <form id="form-add-training-rule" onsubmit="handleCreateTrainingRule(event)">
+                <div class="form-group">
+                    <label>Rule Title / Name: *</label>
+                    <input type="text" id="rule-title" class="form-control" required placeholder="যেমন: ১০০+ পিসে বিশেষ ছাড় বা ডেলিভারি পলিসি">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Category:</label>
+                        <select id="rule-category" class="form-control">
+                            <option value="Pricing & MOQ">Pricing & MOQ (দাম ও সর্বনিম্ন পরিমাণ)</option>
+                            <option value="Product Quality">Product Quality (কোয়ালিটি ও মেটেরিয়াল)</option>
+                            <option value="Delivery & Payment">Delivery & Payment (ডেলিভারি ও ক্যাশ অন ডেলিভারি)</option>
+                            <option value="Price Policy">Price Policy (ডিসকাউন্ট ও হোলসেল রেট)</option>
+                            <option value="Sales Rule">Sales Rule (সেলস কৌশল ও উপস্থাপনা)</option>
+                            <option value="Business Policy">Business Policy (শপ নিয়মাবলী)</option>
+                            <option value="General">General (সাধারণ)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Rule Type:</label>
+                        <select id="rule-type" class="form-control">
+                            <option value="instruction">Instruction (এআই-এর জন্য নির্দেশিকা)</option>
+                            <option value="qa">Q&A Pair (কাস্টমারের নির্দিষ্ট প্রশ্নের উত্তর)</option>
+                            <option value="price_policy">Price Policy (মূল্য নির্ধারণ পলিসি)</option>
+                            <option value="objection_handling">Objection (আপত্তি মোকাবিলার নিয়ম)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Trigger Question / Keyword (ঐচ্ছিক - কাস্টমার যা বললে এই নিয়ম কার্যকর হবে):</label>
+                    <input type="text" id="rule-trigger" class="form-control" placeholder="যেমন: ১০০ পিস বানালে কত রাখা যাবে?">
+                </div>
+                <div class="form-group">
+                    <label>AI Rule / Response Text (এআই যেভাবে উত্তর দেবে বা নির্দেশ মেনে চলবে): *</label>
+                    <textarea id="rule-content" class="form-control" rows="4" required placeholder="এআই-এর জন্য স্পষ্ট নিয়ম বা উত্তর লিখুন..."></textarea>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-training-rule')">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Rule</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Upload Saved Media Modal -->
+    <div id="modal-upload-media" class="modal-overlay">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-upload" style="color:var(--primary-light);"></i> Upload Saved Media</h3>
+                <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-upload-media')">&times;</button>
+            </div>
+            <form id="form-upload-media" onsubmit="handleUploadSavedMedia(event)">
+                <div class="form-group">
+                    <label>Media Title: *</label>
+                    <input type="text" id="media-title" class="form-control" required placeholder="যেমন: কম্বো প্যাকেজ বর্ণনা অডিও অথবা UV প্রিন্টিং ডেমো ভিডিও">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Media Type: *</label>
+                        <select id="media-type" class="form-control" required>
+                            <option value="voice">🎙️ Voice Note / Audio (.mp3, .m4a)</option>
+                            <option value="video">🎬 Demo Video (.mp4)</option>
+                            <option value="image">🖼️ Product Photo (.jpg, .png)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Choose File from Device: *</label>
+                    <input type="file" id="media-file" class="form-control" required accept="audio/*,video/*,image/*">
+                </div>
+                <div class="form-group">
+                    <label>Description / Caption (ঐচ্ছিক):</label>
+                    <input type="text" id="media-desc" class="form-control" placeholder="ভিডিও বা অডিওর সংক্ষিপ্ত বিবরণ">
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-upload-media')">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-cloud-arrow-up"></i> Upload Media</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Quick Send Media Modal (Omnichat) -->
+    <div id="modal-quick-media" class="modal-overlay">
+        <div class="modal-content" style="max-width: 540px;">
+            <div class="modal-header">
+                <h3 id="quick-media-modal-title"><i class="fas fa-paper-plane" style="color:var(--primary-light);"></i> Quick Send Media</h3>
+                <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-quick-media')">&times;</button>
+            </div>
+            <div id="quick-media-list-container" style="max-height: 380px; overflow-y: auto; padding: 10px 0; display: flex; flex-direction: column; gap: 10px;">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+    </div>
     <!-- Mobile App-Like Bottom Navigation -->
     <nav class="mobile-bottom-nav">
         <a href="javascript:void(0)" class="mobile-nav-link active" data-tab="test-arena">
@@ -1047,6 +1220,6 @@
     </nav>
 
     <div id="fb-root"></div>
-    <script src="/static/js/dashboard.js?v=20260820imagefix"></script>
+    <script src="/static/js/dashboard.js?v=20260820trainingfix"></script>
 </body>
 </html>

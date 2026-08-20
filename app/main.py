@@ -14,18 +14,30 @@ from pathlib import Path
 
 from app.config import settings
 from app.database import (
-    init_db, get_db_connection, get_setting, set_setting, get_all_settings
+    init_db, get_db_connection, get_setting, set_setting, get_all_settings,
+    get_all_training_rules, create_training_rule, update_training_rule,
+    delete_training_rule, toggle_training_rule, get_saved_media,
+    create_saved_media, delete_saved_media, toggle_conversation_ai
 )
 from app.ai_agent.gemini_brain import process_customer_message
 from app.ai_agent.voice_engine import generate_bangla_voice, list_available_voices
 from app.ai_agent.order_engine import list_orders, update_order_status, create_order
 from datetime import datetime
-from app.channels.facebook import handle_facebook_webhook_event, send_fb_text_message
+import time
+from app.channels.facebook import (
+    handle_facebook_webhook_event, 
+    send_fb_text_message,
+    send_fb_media_message,
+    send_fb_audio_message,
+    send_fb_video_message
+)
 from app.channels.whatsapp import (
     handle_whatsapp_webhook_event, 
     normalize_whatsapp_phone_number,
     send_whatsapp_message,
-    send_whatsapp_image
+    send_whatsapp_image,
+    send_whatsapp_audio,
+    send_whatsapp_video
 )
 
 # Initialize FastAPI app
@@ -475,11 +487,197 @@ async def api_omnichat_send(request: Request):
         INSERT INTO messages (conversation_id, sender_type, content)
         VALUES (?, 'admin', ?)
     """, (cid, content))
-    cursor.execute("UPDATE conversations SET last_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (content, cid))
+    cursor.execute("UPDATE conversations SET last_message = ?, human_takeover = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (content, cid))
     conn.commit()
     conn.close()
 
     return {"success": True}
+
+@app.post("/api/omnichat/toggle-ai")
+async def api_omnichat_toggle_ai(request: Request):
+    """Toggles AI auto-reply on/off for a specific customer conversation."""
+    data = await request.json()
+    cid = data.get("conversation_id")
+    status = data.get("status") # None, 0, or 1
+    if not cid:
+        raise HTTPException(status_code=400, detail="Missing conversation_id")
+
+    toggle_conversation_ai(cid, status)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, human_takeover FROM conversations WHERE id = ?", (cid,))
+    row = cursor.fetchone()
+    conn.close()
+    return {"success": True, "human_takeover": row["human_takeover"] if row else 0}
+
+# ==========================================
+# 5.5 AI TRAINING & KNOWLEDGE BASE APIS
+# ==========================================
+@app.get("/api/training/rules")
+async def api_get_training_rules():
+    rules = get_all_training_rules()
+    return {"rules": rules}
+
+@app.post("/api/training/rules")
+async def api_create_training_rule(request: Request):
+    data = await request.json()
+    title = data.get("title", "").strip()
+    rule = data.get("response_or_rule", "").strip()
+    rule_type = data.get("rule_type", "qa")
+    trigger = data.get("question_or_trigger", "").strip()
+    category = data.get("category", "General").strip()
+    is_active = int(data.get("is_active", 1))
+    if not title or not rule:
+        raise HTTPException(status_code=400, detail="Title and Rule text are required")
+    rule_id = create_training_rule(title, rule, rule_type, trigger, category, is_active)
+    return {"success": True, "id": rule_id}
+
+@app.put("/api/training/rules/{rule_id}")
+async def api_update_training_rule(rule_id: int, request: Request):
+    data = await request.json()
+    title = data.get("title", "").strip()
+    rule = data.get("response_or_rule", "").strip()
+    rule_type = data.get("rule_type", "qa")
+    trigger = data.get("question_or_trigger", "").strip()
+    category = data.get("category", "General").strip()
+    is_active = int(data.get("is_active", 1))
+    update_training_rule(rule_id, title, rule, rule_type, trigger, category, is_active)
+    return {"success": True}
+
+@app.delete("/api/training/rules/{rule_id}")
+async def api_delete_training_rule(rule_id: int):
+    delete_training_rule(rule_id)
+    return {"success": True}
+
+@app.post("/api/training/rules/{rule_id}/toggle")
+async def api_toggle_training_rule(rule_id: int):
+    toggle_training_rule(rule_id)
+    return {"success": True}
+
+# ==========================================
+# 5.6 SAVED MEDIA LIBRARY APIS (VOICE & VIDEO)
+# ==========================================
+@app.get("/api/saved-media")
+async def api_get_saved_media(type: str = None):
+    media = get_saved_media(type)
+    return {"media": media}
+
+@app.post("/api/saved-media/upload")
+async def api_upload_saved_media(
+    file: UploadFile = File(None),
+    title: str = Form(""),
+    media_type: str = Form("voice"),
+    description: str = Form(""),
+    file_url: str = Form("")
+):
+    target_url = file_url
+    if file and file.filename:
+        media_dir = settings.UPLOADS_DIR / "media"
+        media_dir.mkdir(parents=True, exist_ok=True)
+        clean_fname = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
+        save_path = media_dir / clean_fname
+        contents = await file.read()
+        with open(save_path, "wb") as f:
+            f.write(contents)
+        target_url = f"/static/uploads/media/{clean_fname}"
+
+    if not target_url:
+        raise HTTPException(status_code=400, detail="File or file_url is required")
+    
+    media_id = create_saved_media(
+        title=title or "Saved Media",
+        media_type=media_type,
+        file_url=target_url,
+        description=description
+    )
+    return {"success": True, "id": media_id, "file_url": target_url}
+
+@app.delete("/api/saved-media/{media_id}")
+async def api_delete_saved_media(media_id: int):
+    delete_saved_media(media_id)
+    return {"success": True}
+
+@app.post("/api/saved-media/send")
+async def api_send_saved_media(request: Request):
+    data = await request.json()
+    cid = data.get("conversation_id")
+    media_id = data.get("media_id")
+    if not cid or not media_id:
+        raise HTTPException(status_code=400, detail="Missing conversation_id or media_id")
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM conversations WHERE id = ?", (cid,))
+    conv = cursor.fetchone()
+    cursor.execute("SELECT * FROM saved_media WHERE id = ?", (media_id,))
+    med = cursor.fetchone()
+    
+    if not conv or not med:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Conversation or Media not found")
+    
+    channel = conv["channel"]
+    sender_id = conv["sender_id"]
+    m_type = med["media_type"]
+    m_url = med["file_url"]
+    m_title = med["title"]
+    
+    send_ok = False
+    if channel == "whatsapp":
+        if m_type in ["voice", "audio"]:
+            send_ok = send_whatsapp_audio(sender_id, m_url)
+        elif m_type == "video":
+            send_ok = send_whatsapp_video(sender_id, m_url, caption=m_title)
+        else:
+            send_ok = send_whatsapp_image(sender_id, m_url, caption=m_title)
+    elif channel == "facebook":
+        if m_type in ["voice", "audio"]:
+            send_ok = send_fb_audio_message(sender_id, m_url)
+        elif m_type == "video":
+            send_ok = send_fb_video_message(sender_id, m_url)
+        else:
+            send_fb_media_message(sender_id, "image", m_url)
+            send_ok = True
+    else:
+        send_ok = True
+        
+    if not send_ok:
+        conn.close()
+        return JSONResponse(status_code=500, content={"success": False, "error": "Failed to deliver media to recipient via API"})
+        
+    cursor.execute("""
+        INSERT INTO messages (conversation_id, sender_type, message_type, content, media_url)
+        VALUES (?, 'admin', ?, ?, ?)
+    """, (cid, m_type, f"[{m_type.upper()}] {m_title}", m_url))
+    cursor.execute("UPDATE conversations SET last_message = ?, human_takeover = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (f"[{m_type.upper()}] {m_title}", cid))
+    conn.commit()
+    conn.close()
+    return {"success": True}
+
+# PWA Web App Manifest Endpoint
+@app.get("/manifest.json")
+async def get_pwa_manifest():
+    return JSONResponse(content={
+        "name": "RS AI Autonomous Sales Platform",
+        "short_name": "RS AI Agent",
+        "description": "Autonomous AI Sales Agent & Multi-Channel Order Platform",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#0b0f19",
+        "theme_color": "#4f46e5",
+        "icons": [
+            {
+                "src": "/static/uploads/id_card/IMG-20241009-WA0005.jpg",
+                "sizes": "192x192",
+                "type": "image/jpeg"
+            },
+            {
+                "src": "/static/uploads/id_card/IMG-20241009-WA0005.jpg",
+                "sizes": "512x512",
+                "type": "image/jpeg"
+            }
+        ]
+    })
 
 # ==========================================
 # 6. SETTINGS & AI CONFIG APIS
