@@ -140,10 +140,11 @@ def build_system_instruction(customer_name: str = "") -> str:
      • প্যাকেজ ০৩: জাপানি মেশিনের UV প্রিন্ট কার্ড + ডিজিটাল ফিতা (২ সেমি) + হার্ড প্লাস্টিক কভার
      • প্যাকেজ ০৭: জাপানি মেশিনের UV প্রিন্ট কার্ড + ডিজিটাল ফিতা (২ সেমি) + প্রিমিয়াম মেটাল লক কভার
 
-৪. স্যাম্পল ছবি পাঠানোর নিয়ম (Permission-First Image Protocol):
-   - ⚠️ কাস্টমার কোনো প্রডাক্টের তথ্য চাইলে সাথে সাথে সরাসরি ছবি পাঠাবে না!
-   - আগে সংক্ষেপে প্রডাক্ট ও দামের তথ্য দিয়ে বিনয়ের সাথে অনুমতি চেয়ে বলবে:
-     👉 "আমি কি আমাদের করা আইডি কার্ডের/ফিতার কিছু স্যাম্পল ছবি পাঠাবো?"
+৪. স্যাম্পল ছবি পাঠানোর নিয়ম (Sample Image Protocol):
+   - কাস্টমার যদি সরাসরি ছবি বা স্যাম্পল দেখতে চায় (যেমন: "আইডি কার্ডের কিছু ছবি দিন", "ছবি দেখতে চাই", "স্যাম্পল দেন", "ফিতার ছবি পাঠান"), তখন সরাসরি সংক্ষিপ্ত উত্তর দিয়ে জানাবে যে নিচে ছবিগুলো পাঠানো হলো। যেমন:
+     👉 "জি {honorific}, নিচে আমাদের জাপানি UV প্রিন্ট আইডি কার্ডের স্যাম্পল ছবিগুলো দেওয়া হলো। দয়া করে দেখুন।"
+   - যদি কাস্টমার শুধু সাধারণ মূল্য বা বিবরণ জানতে চায় (ছবি চায়নি), তবে প্রথমে তথ্য জানিয়ে বিনয়ের সাথে অনুমতি চেয়ে বলবে:
+     👉 "আমি কি আমাদের কিছু স্যাম্পল ছবি পাঠাবো?"
    - ⚠️ কোনো মার্কডাউন ইমেজ ট্যাগ যেমন `![Alt](/static/...)` টেক্সটে লিখবে না। আসল ছবিগুলো সিস্টেম স্বয়ংক্রিয়ভাবে পাঠাবে।
 
 ৫. শপের ইনফরমেশন:
@@ -170,6 +171,11 @@ def build_system_instruction(customer_name: str = "") -> str:
   "notes": ""
 }}
 ```
+
+৮. কাস্টমারের ভয়েস মেসেজ প্রসেসিং রুল (Voice Notes Processing):
+   - কাস্টমার অডিও বা ভয়েস মেসেজ পাঠালে তা স্বয়ংক্রিয়ভাবে শুনে ও বুঝে কাস্টমারের বক্তব্যের সরাসরি সঠিক উত্তর দেবে।
+   - ⚠️ কখনোই কাস্টমারকে বলবে না "ভয়েস মেসেজ পেয়েছি, টাইপ করে জানান" বা "আমি কি আপনার ভয়েসটি শুনে উত্তর দেবো?"।
+   - কাস্টমার ভয়েসে যা বলেছে তার সরাসরি স্বাভাবিক ও প্রফেশনাল উত্তর দেবে।
 """
     return prompt
 
@@ -195,6 +201,53 @@ def get_category_batch_images(category_or_code: str) -> list:
             except Exception:
                 pass
     return images
+
+def detect_sample_photos_to_send(user_msg: str, conversation_history: list = None, bot_reply: str = "") -> list:
+    """
+    Robust detection for sending category sample photos.
+    Triggers if user directly asks for photos, confirms previous bot offer, or bot reply states photos are sent.
+    """
+    msg = (user_msg or "").strip().lower()
+    reply = (bot_reply or "").strip().lower()
+
+    # 1. Direct photo request keywords
+    is_asking_photo = any(k in msg for k in [
+        "ছবি", "স্যাম্পল", "ফটো", "পিক", "পিকচার", "ফটোগ্রাফ", "দেখতে চাই", "দেখবো",
+        "photo", "photos", "picture", "pictures", "sample", "samples", "pic", "pics", "image", "images"
+    ])
+
+    # 2. Agreement / confirmation keywords
+    agreement_keywords = [
+        "হ্যাঁ", "পাঠান", "দেখান", "জি", "হুম", "পাঠাও", "দেখাও", "দিলে ভালো", "দিলে ভালো হয়",
+        "yes", "sure", "ok", "okay", "send", "show", "ha", "ji", "achha", "yep", "yeah", "সেন্ড করুন"
+    ]
+    is_agreeing = any(k in msg for k in agreement_keywords)
+
+    # 3. Check if bot reply explicitly mentions sending photos
+    bot_claims_photos = any(k in reply for k in [
+        "পাঠিয়ে দেওয়া হলো", "পাঠানো হলো", "ছবি দেওয়া হলো", "স্যাম্পল ছবি", "নিচে দেখুন", "পাঠিয়েছি", "ছবি পাঠাচ্ছি"
+    ])
+
+    should_send = is_asking_photo or is_agreeing or bot_claims_photos
+    if not should_send:
+        return []
+
+    # Combined context for category detection
+    hist_text = " ".join([m.get("content", "") for m in (conversation_history or [])[-4:]]).lower()
+    context = (hist_text + " " + msg + " " + reply).lower()
+
+    if any(k in context for k in ["ফিতা", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]):
+        batch = get_category_batch_images("FITA-02")
+        return batch if batch else get_category_batch_images("IDC-01")
+    elif any(k in context for k in ["কভার", "হোল্ডার", "holder", "cover"]):
+        batch = get_category_batch_images("COV-03")
+        return batch if batch else get_category_batch_images("IDC-01")
+    elif any(k in context for k in ["প্যাকেজ", "কম্বো", "package", "combo"]):
+        batch = get_category_batch_images("PKG-COMBO")
+        return batch if batch else get_category_batch_images("IDC-01")
+    else:
+        # Default category: ID Card sample batch
+        return get_category_batch_images("IDC-01")
 
 async def process_customer_message(
     message_text: str = "",
@@ -230,7 +283,6 @@ async def process_customer_message(
 
     try:
         client = genai.Client(api_key=api_key)
-        
         contents = []
         
         # Add conversation history (up to last 8 turns)
@@ -245,20 +297,33 @@ async def process_customer_message(
         if image_bytes:
             contents.append(types.Part.from_bytes(data=image_bytes, mime_type=image_mime))
             if not message_text:
-                message_text = "আমি এই ছবিটি পাঠিয়েছি। এই প্রডাক্ট বা ছবিটি দেখে আমাকে বিস্তারিত জানান।"
+                message_text = "আমি এই ছবিটি পাঠিয়েছি। এই প্রডাক্ট বা ছবি দেখে বিস্তারিত জানান।"
 
-        # Add audio attachment
+        # Add audio attachment (Voice Note)
         if audio_bytes:
-            contents.append(types.Part.from_bytes(data=audio_bytes, mime_type=audio_mime))
+            detected_audio_mime = audio_mime or "audio/mp4"
+            if audio_bytes.startswith(b"RIFF"):
+                detected_audio_mime = "audio/wav"
+            elif audio_bytes.startswith(b"OggS"):
+                detected_audio_mime = "audio/ogg"
+            elif audio_bytes.startswith(b"\xff\xfb") or audio_bytes.startswith(b"\xff\xf3") or audio_bytes.startswith(b"ID3"):
+                detected_audio_mime = "audio/mp3"
+            elif b"ftyp" in audio_bytes[:20] or b"M4A" in audio_bytes[:20]:
+                detected_audio_mime = "audio/mp4"
+
+            contents.append(types.Part.from_bytes(data=audio_bytes, mime_type=detected_audio_mime))
             if not message_text:
-                message_text = "আমি একটি ভয়েস মেসেজ পাঠিয়েছি। দয়া করে শুনুন এবং উত্তর দিন।"
+                message_text = "কাস্টমার একটি অডিও/ভয়েস মেসেজ পাঠিয়েছেন। অডিওটি শুনুন এবং কাস্টমার যা বলেছেন তার সরাসরি সঠিক ও সংক্ষিপ্ত উত্তর দিন।"
 
         if message_text:
             contents.append(f"কাস্টমারের মেসেজ ({customer_name}): {message_text}")
 
-        saved_model = get_setting("gemini_model", settings.GEMINI_MODEL)
-        candidate_models = [saved_model, "gemini-2.5-flash", "gemini-3.6-flash", "gemini-2.5-pro", "gemini-flash-latest"]
-        candidate_models = list(dict.fromkeys([m for m in candidate_models if m]))
+        saved_model = get_setting("gemini_model", "")
+        valid_models = ["gemini-2.5-flash", "gemini-3.6-flash", "gemini-2.5-pro", "gemini-flash-latest"]
+        candidate_models = [saved_model] if saved_model in valid_models else []
+        for vm in valid_models:
+            if vm not in candidate_models:
+                candidate_models.append(vm)
 
         response = None
         system_instruction = build_system_instruction(customer_name=customer_name)
@@ -270,7 +335,7 @@ async def process_customer_message(
                     contents=contents,
                     config=types.GenerateContentConfig(
                         system_instruction=system_instruction,
-                        temperature=0.65
+                        temperature=0.6
                     )
                 )
                 if response and response.text:
@@ -319,36 +384,14 @@ async def process_customer_message(
         clean_reply = re.sub(r'\[Image[s]?:\s*[^\]]+\]', '', clean_reply, flags=re.IGNORECASE)
         clean_reply = re.sub(r'\n{3,}', '\n\n', clean_reply).strip()
 
-        # Check if customer is confirming / agreeing to see sample photos
-        user_msg = (message_text or "").strip().lower()
-        agreement_words = ["হ্যাঁ", "পাঠান", "দেখান", "জি", "পাঠাও", "দেখাও", "দিলে ভালো", "yes", "sure", "ok", "send", "show", "ha", "ji", "achha", "send picture", "sample"]
-        is_confirming_sample = any(re.search(r'\b' + re.escape(w) + r'\b', user_msg) for w in agreement_words) or user_msg in ["হ্যাঁ", "পাঠান", "দেখান", "জি", "ok", "yes", "ha", "ji"]
-
-        # Check chat history context to see what product was discussed
-        history_str = ""
-        if conversation_history:
-            history_str = " ".join([m.get("content", "") for m in conversation_history[-4:]]).lower()
-        full_context = (history_str + " " + user_msg + " " + clean_reply).lower()
-
-        # Permission-First Rule: If customer explicitly confirmed, send the complete batch for that category
-        if is_confirming_sample or any(w in user_msg for w in ["সবগুলো ছবি", "সব ছবি", "সকল ছবি", "সকল স্যাম্পল", "সব স্যাম্পল"]):
-            if any(k in full_context for k in ["ফিতা", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]):
-                batch = get_category_batch_images("FITA-02")
-                if batch:
-                    matched_images = batch
-            elif any(k in full_context for k in ["কভার", "হোল্ডার", "holder", "cover"]):
-                batch = get_category_batch_images("COV-03")
-                if batch:
-                    matched_images = batch
-            elif any(k in full_context for k in ["প্যাকেজ", "কম্বো", "package", "combo"]):
-                batch = get_category_batch_images("PKG-COMBO")
-                if batch:
-                    matched_images = batch
-            else:
-                # Default to ID card batch
-                batch = get_category_batch_images("IDC-01")
-                if batch:
-                    matched_images = batch
+        # Detect sample photos to send
+        sample_batch = detect_sample_photos_to_send(
+            user_msg=message_text,
+            conversation_history=conversation_history,
+            bot_reply=clean_reply
+        )
+        if sample_batch:
+            matched_images = sample_batch
 
         return {
             "reply_text": clean_reply,

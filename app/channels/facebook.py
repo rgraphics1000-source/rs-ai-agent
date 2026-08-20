@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import requests
 import asyncio
 from pathlib import Path
@@ -55,20 +56,43 @@ def send_fb_text_message(recipient_id: str, text: str) -> bool:
         return False
 
 def send_fb_media_message(recipient_id: str, media_type: str, media_url: str) -> bool:
-    """Sends an image or audio attachment to a Facebook Messenger user (via binary upload or URL)."""
+    """Sends an image, video, or audio attachment to a Facebook Messenger user."""
     token = get_fb_token()
     if not token or not recipient_id or not media_url:
         return False
 
     url = f"{GRAPH_API_URL}/me/messages"
     params = {"access_token": token}
+    base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
+    full_url = media_url if media_url.startswith("http") else f"{base_server_url}{media_url}"
 
-    # 1. Try local file binary upload if file exists on server disk (100% reliable)
+    # 1. URL attachment payload method (Fastest & standard for Messenger)
+    payload = {
+        "recipient": {"id": recipient_id},
+        "message": {
+            "attachment": {
+                "type": media_type,
+                "payload": {
+                    "url": full_url,
+                    "is_reusable": True
+                }
+            }
+        }
+    }
+    try:
+        r = requests.post(url, params=params, json=payload, timeout=15)
+        print(f"[Facebook Media URL Send]: status={r.status_code}, body={r.text}")
+        if r.status_code == 200:
+            return True
+    except Exception as e:
+        print(f"[Facebook Media URL Error]: {e}")
+
+    # 2. Local binary fallback if file exists on disk
     filename = Path(media_url).name
     candidate_paths = [
-        settings.UPLOADS_DIR / filename,
-        settings.BASE_DIR / media_url.lstrip("/"),
         settings.STATIC_DIR / media_url.replace("/static/", "").lstrip("/"),
+        settings.BASE_DIR / media_url.lstrip("/"),
+        settings.UPLOADS_DIR / filename,
         settings.BASE_DIR / "static" / "uploads" / filename
     ]
 
@@ -85,7 +109,7 @@ def send_fb_media_message(recipient_id: str, media_type: str, media_url: str) ->
                     })
                 }
                 with open(p, "rb") as f_bin:
-                    mime = "image/jpeg" if media_type == "image" else "audio/mp4"
+                    mime = "image/jpeg" if media_type == "image" else ("video/mp4" if media_type == "video" else "audio/mp4")
                     files = {"filedata": (p.name, f_bin, mime)}
                     r = requests.post(url, params=params, data=data, files=files, timeout=25)
                     print(f"[Facebook Direct Binary Upload Result]: HTTP {r.status_code}, Body: {r.text}")
@@ -94,29 +118,7 @@ def send_fb_media_message(recipient_id: str, media_type: str, media_url: str) ->
             except Exception as up_err:
                 print(f"[Facebook Binary Upload Error]: {up_err}")
 
-    # 2. Fallback to URL payload
-    base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
-    full_url = media_url if media_url.startswith("http") else f"{base_server_url}{media_url}"
-
-    payload = {
-        "recipient": {"id": recipient_id},
-        "message": {
-            "attachment": {
-                "type": media_type,
-                "payload": {
-                    "url": full_url,
-                    "is_reusable": True
-                }
-            }
-        }
-    }
-    try:
-        r = requests.post(url, params=params, json=payload, timeout=15)
-        print(f"[Facebook Media URL Send Result]: HTTP {r.status_code}, Body: {r.text}")
-        return r.status_code == 200
-    except Exception as e:
-        print(f"[Facebook Media Send Error]: {e}")
-        return False
+    return False
 
 def send_fb_audio_message(recipient_id: str, audio_url: str) -> bool:
     """Sends an audio / voice message via Facebook Messenger."""
@@ -201,10 +203,12 @@ async def handle_facebook_webhook_event(data: dict):
                                 r = requests.get(att_url, timeout=10)
                                 if r.status_code == 200:
                                     image_bytes = r.content
+                                    image_mime = r.headers.get("content-type", "image/jpeg").split(";")[0].strip()
                             elif att_type in ["audio", "voice"]:
                                 r = requests.get(att_url, timeout=10)
                                 if r.status_code == 200:
                                     audio_bytes = r.content
+                                    audio_mime = r.headers.get("content-type", "audio/mp4").split(";")[0].strip()
                         except Exception as e:
                             print(f"[Facebook Media DL Error]: {e}")
 

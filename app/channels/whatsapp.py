@@ -234,7 +234,9 @@ async def handle_whatsapp_webhook_event(data: dict):
                     msg_type = msg.get("type")
                     msg_text = ""
                     image_bytes = None
+                    image_mime = "image/jpeg"
                     audio_bytes = None
+                    audio_mime = "audio/mp4"
 
                     print(f"[WhatsApp Webhook] received from={sender_phone} type={msg_type} msg_id={msg_id}")
 
@@ -251,6 +253,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                                     img_resp = requests.get(media_url, headers={"Authorization": f"Bearer {token}"}, timeout=10)
                                     if img_resp.status_code == 200:
                                         image_bytes = img_resp.content
+                                        image_mime = img_resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
                             except Exception as dl_err:
                                 print(f"[WhatsApp Image DL Error]: {dl_err}")
                         msg_text = msg.get("image", {}).get("caption", "")
@@ -265,6 +268,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                                     aud_resp = requests.get(media_url, headers={"Authorization": f"Bearer {token}"}, timeout=10)
                                     if aud_resp.status_code == 200:
                                         audio_bytes = aud_resp.content
+                                        audio_mime = aud_resp.headers.get("content-type", "audio/mp4").split(";")[0].strip()
                             except Exception as dl_err:
                                 print(f"[WhatsApp Audio DL Error]: {dl_err}")
 
@@ -285,7 +289,9 @@ async def handle_whatsapp_webhook_event(data: dict):
                         ai_result = await process_customer_message(
                             message_text=msg_text,
                             image_bytes=image_bytes,
+                            image_mime=image_mime,
                             audio_bytes=audio_bytes,
+                            audio_mime=audio_mime,
                             conversation_history=history,
                             channel="whatsapp",
                             sender_id=sender_phone,
