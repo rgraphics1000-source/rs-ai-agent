@@ -5,7 +5,7 @@ import io
 import uuid
 import requests
 from typing import Optional, List
-from fastapi import FastAPI, Request, Response, Form, File, UploadFile, Query, HTTPException, Depends
+from fastapi import FastAPI, Request, Response, Form, File, UploadFile, Query, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -921,10 +921,10 @@ async def facebook_verify(request: Request):
     return PlainTextResponse(content="Verification failed", status_code=403)
 
 @app.post("/webhook/facebook")
-async def facebook_events(request: Request):
+async def facebook_events(request: Request, background_tasks: BackgroundTasks):
     data = await request.json()
-    await handle_facebook_webhook_event(data)
-    return JSONResponse(content={"status": "ok"})
+    background_tasks.add_task(handle_facebook_webhook_event, data)
+    return JSONResponse(content={"status": "EVENT_RECEIVED"})
 
 @app.get("/webhook/whatsapp")
 async def whatsapp_verify(request: Request):
@@ -945,7 +945,7 @@ async def whatsapp_verify(request: Request):
     return PlainTextResponse(content="Verification failed", status_code=403)
 
 @app.post("/webhook/whatsapp")
-async def whatsapp_events(request: Request):
+async def whatsapp_events(request: Request, background_tasks: BackgroundTasks):
     data = await request.json()
-    await handle_whatsapp_webhook_event(data)
-    return JSONResponse(content={"status": "ok"})
+    background_tasks.add_task(handle_whatsapp_webhook_event, data)
+    return JSONResponse(content={"status": "EVENT_RECEIVED"})

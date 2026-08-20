@@ -10,6 +10,7 @@ from app.channels.omnichat import record_conversation_message, get_conversation_
 from app.ai_agent.gemini_brain import process_customer_message
 
 GRAPH_API_URL = "https://graph.facebook.com/v19.0"
+PROCESSED_FB_MESSAGE_IDS = set()
 
 def get_fb_token() -> str:
     token = get_setting("fb_page_access_token")
@@ -182,6 +183,15 @@ async def handle_facebook_webhook_event(data: dict):
                     msg = event.get("message", {})
                     if not msg:
                         continue
+
+                    msg_id = msg.get("mid")
+                    if msg_id:
+                        if msg_id in PROCESSED_FB_MESSAGE_IDS:
+                            print(f"[Facebook Webhook] Duplicate message skipped: mid={msg_id}")
+                            continue
+                        PROCESSED_FB_MESSAGE_IDS.add(msg_id)
+                        if len(PROCESSED_FB_MESSAGE_IDS) > 2000:
+                            PROCESSED_FB_MESSAGE_IDS.pop()
 
                     msg_text = msg.get("text", "")
                     attachments = msg.get("attachments", [])

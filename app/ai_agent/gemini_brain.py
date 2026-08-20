@@ -179,8 +179,8 @@ def build_system_instruction(customer_name: str = "") -> str:
 """
     return prompt
 
-def get_category_batch_images(category_or_code: str) -> list:
-    """Returns all gallery images for a specific product category to send as a batch."""
+def get_category_batch_images(category_or_code: str, max_count: int = 4) -> list:
+    """Returns a curated batch of 3-4 sample gallery images for a specific product category."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT code, name, image_url, gallery_images FROM products WHERE is_active = 1")
@@ -200,30 +200,43 @@ def get_category_batch_images(category_or_code: str) -> list:
                         images.append(gu)
             except Exception:
                 pass
-    return images
+    # Return at most max_count (3-4) curated images to avoid spamming the customer
+    return images[:max_count]
 
 def detect_sample_photos_to_send(user_msg: str, conversation_history: list = None, bot_reply: str = "") -> list:
     """
     Robust detection for sending category sample photos.
     Triggers if user directly asks for photos, confirms previous bot offer, or bot reply states photos are sent.
+    STOPS immediately if customer indicates they don't want more photos.
     """
     msg = (user_msg or "").strip().lower()
     reply = (bot_reply or "").strip().lower()
 
-    # 1. Direct photo request keywords
+    # 1. Stop / Cancellation check (Never send photos if customer says "আর লাগবে না", "না", "থামুন", etc.)
+    stop_phrases = [
+        "লাগবে না", "আর লাগবে না", "থামুন", "আর দিয়েন না", "আর পাঠাবেন না", 
+        "ছবি লাগবে না", "ফটো লাগবে না", "আর না", "চাই না", "আর দিও না",
+        "stop", "no more", "don't send", "dont send"
+    ]
+    msg_words = msg.split()
+    is_stopping = any(sp in msg for sp in stop_phrases) or (len(msg_words) == 1 and msg_words[0] in ["না", "no"])
+    if is_stopping:
+        return []
+
+    # 2. Direct photo request keywords
     is_asking_photo = any(k in msg for k in [
         "ছবি", "স্যাম্পল", "ফটো", "পিক", "পিকচার", "ফটোগ্রাফ", "দেখতে চাই", "দেখবো",
         "photo", "photos", "picture", "pictures", "sample", "samples", "pic", "pics", "image", "images"
     ])
 
-    # 2. Agreement / confirmation keywords
+    # 3. Agreement / confirmation keywords
     agreement_keywords = [
         "হ্যাঁ", "পাঠান", "দেখান", "জি", "হুম", "পাঠাও", "দেখাও", "দিলে ভালো", "দিলে ভালো হয়",
         "yes", "sure", "ok", "okay", "send", "show", "ha", "ji", "achha", "yep", "yeah", "সেন্ড করুন"
     ]
     is_agreeing = any(k in msg for k in agreement_keywords)
 
-    # 3. Check if bot reply explicitly mentions sending photos
+    # 4. Check if bot reply explicitly mentions sending photos
     bot_claims_photos = any(k in reply for k in [
         "পাঠিয়ে দেওয়া হলো", "পাঠানো হলো", "ছবি দেওয়া হলো", "স্যাম্পল ছবি", "নিচে দেখুন", "পাঠিয়েছি", "ছবি পাঠাচ্ছি"
     ])
@@ -237,17 +250,42 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     context = (hist_text + " " + msg + " " + reply).lower()
 
     if any(k in context for k in ["ফিতা", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]):
-        batch = get_category_batch_images("FITA-02")
-        return batch if batch else get_category_batch_images("IDC-01")
+        batch = get_category_batch_images("FITA-02", max_count=4)
+        return batch if batch else get_category_batch_images("IDC-01", max_count=4)
     elif any(k in context for k in ["কভার", "হোল্ডার", "holder", "cover"]):
-        batch = get_category_batch_images("COV-03")
-        return batch if batch else get_category_batch_images("IDC-01")
+        batch = get_category_batch_images("COV-03", max_count=4)
+        return batch if batch else get_category_batch_images("IDC-01", max_count=4)
     elif any(k in context for k in ["প্যাকেজ", "কম্বো", "package", "combo"]):
-        batch = get_category_batch_images("PKG-COMBO")
-        return batch if batch else get_category_batch_images("IDC-01")
+        batch = get_category_batch_images("PKG-COMBO", max_count=4)
+        return batch if batch else get_category_batch_images("IDC-01", max_count=4)
     else:
         # Default category: ID Card sample batch
-        return get_category_batch_images("IDC-01")
+        return get_category_batch_images("IDC-01", max_count=4)
+
+def generate_smart_fallback_reply(user_msg: str, customer_name: str = "") -> str:
+    """Generates an intelligent context-aware reply if Gemini API is unreachable or rate-limited."""
+    msg = (user_msg or "").strip().lower()
+    honorific = detect_customer_gender_title(customer_name)
+
+    if any(k in msg for k in ["লাগবে না", "আর লাগবে না", "না", "stop", "no"]):
+        return f"জি {honorific}, ঠিক আছে। আপনার আর কোনো তথ্য বা অর্ডার সংক্রান্ত সহযোগিতা প্রয়োজন হলে জানাবেন প্লিজ।"
+    
+    if any(k in msg for k in ["ফিতা", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]) and any(k in msg for k in ["ছবি", "স্যাম্পল", "photo", "picture"]):
+        return f"জি {honorific}, নিচে আমাদের ডিজিটাল সাবলিমেশন ফিতার কিছু স্যাম্পল ছবি দেওয়া হলো। আপনার কত পিস ফিতা প্রয়োজন জানাবেন প্লিজ?"
+
+    if any(k in msg for k in ["আইডি", "কার্ড", "id card"]) and any(k in msg for k in ["ছবি", "স্যাম্পল", "photo", "picture"]):
+        return f"জি {honorific}, নিচে আমাদের জাপানি UV প্রিন্ট আইডি কার্ডের কিছু স্যাম্পল ছবি দেওয়া হলো। আপনার কত পিস আইডি কার্ড প্রয়োজন জানাবেন প্লিজ?"
+
+    if any(k in msg for k in ["ফিতা", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]):
+        return f"জি {honorific}, আমাদের প্রিমিয়াম কোয়ালিটি ডিজিটাল সাবলিমেশন ফিতা (১.৫ ও ২ সেমি) প্রিন্ট করা হয়। কত পিস প্রয়োজন জানাবেন প্লিজ?"
+
+    if any(k in msg for k in ["দাম", "রেট", "মূল্য", "price", "cost"]):
+        return f"জি {honorific}, আমাদের জাপানি মেশিনের UV প্রিন্ট আইডি কার্ডের রেগুলার মূল্য ৩৫ টাকা (অফার মূল্য ৩০ টাকা)। কত পিস বানাবেন জানাবেন প্লিজ? (মিনিমাম অর্ডার ২০ পিস)।"
+
+    if any(k in msg for k in ["ডেলিভারি", "কুরিয়ার", "delivery"]):
+        return f"জি {honorific}, ডেলিভারি চার্জ ঢাকার ভেতরে ৭০ টাকা এবং ঢাকার বাইরে ১৩০ টাকা। ক্যাশ অন ডেলিভারি সুবিধা রয়েছে।"
+
+    return f"জি {honorific}, আসসালামু আলাইকুম! আমাদের জাপানি UV প্রিন্ট আইডি কার্ড, ডিজিটাল ফিতা ও কভারের প্রিমিয়াম প্রিন্টিং সেবা রয়েছে। আপনি কত পিস বানাতে চান জানাবেন প্লিজ?"
 
 async def process_customer_message(
     message_text: str = "",
@@ -269,16 +307,12 @@ async def process_customer_message(
     
     # Check if API key is provided
     if not api_key:
-        fallback_reply = (
-            "আসসালামু আলাইকুম! আমাদের শপে স্বাগতম। "
-            "আপনার অর্ডার ও প্রশ্নের উত্তর দেওয়ার জন্য এআই এজেন্ট প্রস্তুত। "
-            "(দয়া করে অ্যাডমিন ড্যাশবোর্ডের Settings থেকে আপনার ফ্রি Gemini API Key-টি সেট করুন)।"
-        )
+        fallback_reply = generate_smart_fallback_reply(message_text, customer_name)
         return {
             "reply_text": fallback_reply,
             "voice_url": "",
             "order_created": None,
-            "matched_images": []
+            "matched_images": detect_sample_photos_to_send(message_text, conversation_history, fallback_reply)
         }
 
     try:
@@ -318,12 +352,14 @@ async def process_customer_message(
         if message_text:
             contents.append(f"কাস্টমারের মেসেজ ({customer_name}): {message_text}")
 
-        saved_model = get_setting("gemini_model", "")
-        valid_models = ["gemini-2.5-flash", "gemini-3.6-flash", "gemini-2.5-pro", "gemini-flash-latest"]
-        candidate_models = [saved_model] if saved_model in valid_models else []
-        for vm in valid_models:
-            if vm not in candidate_models:
-                candidate_models.append(vm)
+        # Prioritize high-quota active working models
+        candidate_models = [
+            "gemini-3.6-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-flash-latest",
+            "gemini-flash-lite-latest",
+            "gemini-2.5-flash"
+        ]
 
         response = None
         system_instruction = build_system_instruction(customer_name=customer_name)
@@ -345,7 +381,7 @@ async def process_customer_message(
                 print(f"[Gemini Model {m_name} failed]: {model_err}")
                 continue
 
-        raw_text = response.text if response and response.text else "জি বলুন, কীভাবে সাহায্য করতে পারি?"
+        raw_text = response.text if response and response.text else generate_smart_fallback_reply(message_text, customer_name)
 
         # Parse order json block if present
         order_created = None
@@ -380,8 +416,17 @@ async def process_customer_message(
             u = url.strip()
             if u and u not in matched_images:
                 matched_images.append(u)
+
+        # Clean raw /static/uploads/... links from text if Gemini printed them
+        raw_urls = re.findall(r'/static/uploads/\S+', clean_reply)
+        for u in raw_urls:
+            u_clean = u.strip().rstrip(").,'\"")
+            if u_clean and u_clean not in matched_images:
+                matched_images.append(u_clean)
+
         clean_reply = re.sub(r'!\[[^\]]*\]\([^)]+\)', '', clean_reply)
         clean_reply = re.sub(r'\[Image[s]?:\s*[^\]]+\]', '', clean_reply, flags=re.IGNORECASE)
+        clean_reply = re.sub(r'/static/uploads/\S+', '', clean_reply)
         clean_reply = re.sub(r'\n{3,}', '\n\n', clean_reply).strip()
 
         # Detect sample photos to send
@@ -393,6 +438,9 @@ async def process_customer_message(
         if sample_batch:
             matched_images = sample_batch
 
+        # Strictly cap sample photos to 4 max to prevent chat flooding
+        matched_images = matched_images[:4]
+
         return {
             "reply_text": clean_reply,
             "voice_url": "",
@@ -402,10 +450,10 @@ async def process_customer_message(
 
     except Exception as e:
         print(f"[GeminiBrain Error]: {e}")
-        err_msg = "ধন্যবাদ আপনার বার্তার জন্য! আমাদের একজন প্রতিনিধি খুব শীঘ্রই আপনার সাথে যোগাযোগ করবেন।"
+        err_msg = generate_smart_fallback_reply(message_text, customer_name)
         return {
             "reply_text": err_msg,
             "voice_url": "",
             "order_created": None,
-            "matched_images": []
+            "matched_images": detect_sample_photos_to_send(message_text, conversation_history, err_msg)
         }
