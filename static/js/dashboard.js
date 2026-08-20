@@ -2659,17 +2659,48 @@ async function saveAllSettings() {
     }
 }
 
-// Direct WhatsApp App Opener (Native or Web Intent)
+// Direct WhatsApp Business App Opener (Explicitly targets com.whatsapp.w4b)
+function openWhatsAppBusinessApp(phone = "") {
+    if (window.AndroidBridge && typeof window.AndroidBridge.openWhatsAppBusiness === "function") {
+        window.AndroidBridge.openWhatsAppBusiness(phone);
+        return;
+    }
+    const clean = phone.replace("+", "").replace(/\s+/g, "").replace(/-/g, "");
+    if (/Android/i.test(navigator.userAgent)) {
+        // Android intent specifically for WhatsApp Business
+        if (clean) {
+            window.location.href = `intent://send?phone=${clean}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end`;
+        } else {
+            window.location.href = `intent:#Intent;package=com.whatsapp.w4b;end`;
+        }
+    } else {
+        if (clean) {
+            window.open(`https://api.whatsapp.com/send?phone=${clean}`, "_blank");
+        } else {
+            window.open("https://web.whatsapp.com", "_blank");
+        }
+    }
+}
+
+// Direct WhatsApp Personal App Opener (Explicitly targets com.whatsapp)
 function openWhatsAppAppDirectly(phone = "") {
     if (window.AndroidBridge && typeof window.AndroidBridge.openWhatsApp === "function") {
         window.AndroidBridge.openWhatsApp(phone);
         return;
     }
     const clean = phone.replace("+", "").replace(/\s+/g, "").replace(/-/g, "");
-    if (clean) {
-        window.open(`https://api.whatsapp.com/send?phone=${clean}`, "_blank");
+    if (/Android/i.test(navigator.userAgent)) {
+        if (clean) {
+            window.location.href = `intent://send?phone=${clean}#Intent;package=com.whatsapp;scheme=whatsapp;end`;
+        } else {
+            window.location.href = `intent:#Intent;package=com.whatsapp;end`;
+        }
     } else {
-        window.open("https://web.whatsapp.com", "_blank");
+        if (clean) {
+            window.open(`https://api.whatsapp.com/send?phone=${clean}`, "_blank");
+        } else {
+            window.open("https://web.whatsapp.com", "_blank");
+        }
     }
 }
 

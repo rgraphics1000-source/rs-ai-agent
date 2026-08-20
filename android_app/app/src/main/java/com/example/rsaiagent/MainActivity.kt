@@ -239,17 +239,45 @@ class MainActivity : ComponentActivity() {
             runOnUiThread {
                 try {
                     val clean = phone.replace("+", "").replace(" ", "").replace("-", "")
+                    val pm = packageManager
                     val intent = if (clean.isNotEmpty()) {
                         Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=$clean"))
                     } else {
-                        val pm = packageManager
-                        pm.getLaunchIntentForPackage("com.whatsapp.w4b")
-                            ?: pm.getLaunchIntentForPackage("com.whatsapp")
+                        pm.getLaunchIntentForPackage("com.whatsapp")
+                            ?: pm.getLaunchIntentForPackage("com.whatsapp.w4b")
                             ?: Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com"))
                     }
                     startActivity(intent)
                 } catch (e: Exception) {
                     Toast.makeText(this@MainActivity, "WhatsApp ওপেন করা যায়নি", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun openWhatsAppBusiness(phone: String = "") {
+            runOnUiThread {
+                try {
+                    val clean = phone.replace("+", "").replace(" ", "").replace("-", "")
+                    val pm = packageManager
+                    val intent = if (clean.isNotEmpty()) {
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=$clean")).apply {
+                            setPackage("com.whatsapp.w4b")
+                        }
+                    } else {
+                        pm.getLaunchIntentForPackage("com.whatsapp.w4b")
+                            ?: Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.whatsapp.w4b"))
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    try {
+                        val fallback = packageManager.getLaunchIntentForPackage("com.whatsapp.w4b")
+                            ?: packageManager.getLaunchIntentForPackage("com.whatsapp")
+                            ?: Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.whatsapp.w4b"))
+                        startActivity(fallback)
+                    } catch (e2: Exception) {
+                        Toast.makeText(this@MainActivity, "WhatsApp Business অ্যাপ পাওয়া যায়নি", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }
