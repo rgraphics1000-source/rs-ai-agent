@@ -874,9 +874,16 @@ async def api_toggle_chat_ai(request: Request):
 # ==========================================
 @app.get("/api/pages")
 async def api_get_connected_pages():
-    """Lists all connected Facebook Pages with their linked WhatsApp status."""
+    """Lists all connected Facebook Pages with their linked WhatsApp status (tokens masked)."""
     pages = get_all_connected_pages()
-    return {"success": True, "pages": pages}
+    sanitized = []
+    for p in pages:
+        p_copy = dict(p)
+        raw_tok = str(p_copy.get("page_access_token", "") or "")
+        p_copy["page_access_token"] = f"{raw_tok[:6]}...{raw_tok[-4:]}" if len(raw_tok) > 12 else ("********" if raw_tok else "")
+        p_copy["has_token"] = bool(raw_tok and len(raw_tok) > 10)
+        sanitized.append(p_copy)
+    return {"success": True, "pages": sanitized}
 
 @app.post("/api/pages/connect")
 async def api_connect_page(request: Request):
@@ -924,8 +931,13 @@ async def api_disconnect_page(page_id: str):
 
 @app.get("/api/pages/{page_id}/whatsapp")
 async def api_get_page_whatsapp(page_id: str):
-    """Gets WhatsApp connection status for a specific Page."""
+    """Gets WhatsApp connection status for a specific Page (tokens masked)."""
     wa_acc = get_whatsapp_account_by_page_id(page_id)
+    if wa_acc:
+        wa_acc = dict(wa_acc)
+        raw_tok = str(wa_acc.get("access_token", "") or "")
+        wa_acc["access_token"] = f"{raw_tok[:6]}...{raw_tok[-4:]}" if len(raw_tok) > 12 else ("********" if raw_tok else "")
+        wa_acc["has_token"] = bool(raw_tok and len(raw_tok) > 10)
     return {"success": True, "whatsapp": wa_acc}
 
 @app.post("/api/pages/{page_id}/whatsapp/connect")

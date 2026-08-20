@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any
 from app.config import settings
 from app.database import (
     get_db_connection, get_setting, is_conversation_ai_active,
-    get_connected_page, get_page_ai_config
+    get_connected_page, get_all_connected_pages, get_page_ai_config
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.ai_agent.gemini_brain import process_customer_message
@@ -17,13 +17,17 @@ GRAPH_API_URL = "https://graph.facebook.com/v19.0"
 PROCESSED_FB_MESSAGE_IDS = set()
 
 def get_fb_token(page_id: str = None) -> str:
-    """Retrieves the access token for a specific Page ID, or falls back to global settings."""
+    """Retrieves the access token for a specific Page ID, or falls back to global settings / primary connected page."""
     if page_id:
         p = get_connected_page(page_id)
         if p and p.get("page_access_token"):
             return p["page_access_token"]
-    token = get_setting("fb_page_access_token")
-    return token if token else settings.FB_PAGE_ACCESS_TOKEN
+    token = get_setting("fb_page_access_token") or settings.FB_PAGE_ACCESS_TOKEN
+    if not token:
+        all_pages = get_all_connected_pages()
+        if all_pages and all_pages[0].get("page_access_token"):
+            return all_pages[0]["page_access_token"]
+    return token or ""
 
 def get_fb_user_profile(sender_id: str, page_token: str = None, page_id: str = None) -> str:
     """Fetches the user name from Facebook Graph API."""

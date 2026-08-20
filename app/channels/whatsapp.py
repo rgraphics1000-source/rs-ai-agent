@@ -9,7 +9,7 @@ from app.config import settings
 from app.database import (
     get_setting, set_setting, get_all_settings,
     is_conversation_ai_active, get_whatsapp_account_by_phone_id,
-    get_whatsapp_account_by_page_id, get_page_ai_config
+    get_whatsapp_account_by_page_id, get_all_whatsapp_accounts, get_page_ai_config
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.ai_agent.gemini_brain import process_customer_message
@@ -59,6 +59,12 @@ def get_whatsapp_credentials(phone_number_id: str = None, page_id: str = None) -
         or all_s.get("whatsapp_access_token") 
         or all_s.get("fb_page_access_token")
     )
+    if not phone_id or not token:
+        all_wa = get_all_whatsapp_accounts()
+        if all_wa:
+            phone_id = phone_id or all_wa[0].get("phone_number_id", "")
+            token = token or all_wa[0].get("access_token", "")
+
     return phone_id, token
 
 def send_whatsapp_message(to_number: str, message_text: str, phone_id: str = None, token: str = None, page_id: str = None) -> bool:
