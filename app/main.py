@@ -50,7 +50,9 @@ from app.channels.whatsapp import (
     send_whatsapp_image,
     send_whatsapp_audio,
     send_whatsapp_video,
-    handle_whatsapp_webhook_event
+    handle_whatsapp_webhook_event,
+    validate_whatsapp_token_with_meta,
+    resolve_whatsapp_token_info
 )
 from app.channels.omnichat import (
     get_all_conversations, 
@@ -1096,7 +1098,106 @@ async def api_diagnostics_meta():
         }
     }
 
+@app.get("/api/diagnostics/whatsapp")
 @app.get("/api/diagnostic/whatsapp")
+async def api_get_diagnostics_whatsapp():
+    """
+    Dedicated diagnostic endpoint validating WhatsApp Phone Number ID (4184514263660680),
+    WABA ID (27905447135785944), token presence, token source, and live Meta Graph API read access.
+    Never exposes raw tokens or full customer numbers.
+    """
+    ensure_whatsapp_account_consistency()
+    
+    wa_account = get_whatsapp_account_by_phone_id("4184514263660680")
+    token_info = resolve_whatsapp_token_info(wa_account=wa_account, workspace_id=1)
+    resolved_tok = token_info.get("token", "")
+    token_source = token_info.get("source", "unknown")
+
+    clean_tok = str(resolved_tok or "").strip().strip('"').strip("'")
+    if clean_tok.lower().startswith("bearer "):
+        clean_tok = clean_tok[7:].strip()
+
+    token_len = len(clean_tok)
+    token_prefix = clean_tok[:6] if token_len > 6 else ""
+    token_suffix = clean_tok[-4:] if token_len > 10 else ""
+
+    phone_id = wa_account.get("phone_number_id", "4184514263660680") if wa_account else "4184514263660680"
+    display_phone = wa_account.get("display_phone_number", "+8801816504097") if wa_account else "+8801816504097"
+    waba_id = wa_account.get("waba_id", "27905447135785944") if wa_account else "27905447135785944"
+
+    meta_val = validate_whatsapp_token_with_meta(token=clean_tok, phone_id=phone_id)
+    ready_for_send = bool(meta_val.get("valid") and meta_val.get("phone_number_access"))
+
+    return {
+        "workspace_id": 1,
+        "account_id": wa_account.get("id") if wa_account else 1,
+        "phone_number_id": phone_id,
+        "display_phone_number": display_phone,
+        "waba_id": waba_id,
+        "token_present": bool(clean_tok),
+        "token_source": token_source,
+        "token_prefix": token_prefix,
+        "token_suffix": token_suffix,
+        "token_length": token_len,
+        "token_valid": meta_val.get("valid", False),
+        "phone_number_access": meta_val.get("phone_number_access", False),
+        "meta_graph_version": settings.META_GRAPH_VERSION,
+        "endpoint_url": f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}/{phone_id}/messages",
+        "ready_for_send": ready_for_send,
+        "meta_validation": meta_val
+    }
+
+@app.get("/api/diagnostics/facebook")
+async def api_get_diagnostics_facebook():
+    """
+    Dedicated diagnostic endpoint validating Facebook Page (105116472071659),
+    connected_pages mapping, token presence, and live Meta Graph API read access.
+    """
+    ensure_facebook_page_consistency()
+    
+    page = get_connected_page("105116472071659")
+    token = page.get("page_access_token") if page else get_setting("fb_page_access_token")
+    clean_tok = str(token or "").strip().strip('"').strip("'")
+    if clean_tok.lower().startswith("bearer "):
+        clean_tok = clean_tok[7:].strip()
+
+    token_len = len(clean_tok)
+    token_prefix = clean_tok[:6] if token_len > 6 else ""
+    token_suffix = clean_tok[-4:] if token_len > 10 else ""
+
+    is_real = len(clean_tok) > 30 and not clean_tok.startswith("EAATest") and not clean_tok.startswith("EAA_")
+    
+    meta_val = None
+    if is_real:
+        try:
+            r = requests.get(
+                f"https://graph.facebook.com/v19.0/105116472071659",
+                headers={"Authorization": f"Bearer {clean_tok}"},
+                params={"fields": "id,name,category,link"},
+                timeout=5
+            )
+            if r.status_code == 200:
+                meta_val = {"valid": True, "data": r.json()}
+            else:
+                meta_val = {"valid": False, "http_status": r.status_code, "error": r.json().get("error", {})}
+        except Exception as ex:
+            meta_val = {"valid": False, "error": str(ex)}
+
+    return {
+        "workspace_id": 1,
+        "page_id": "105116472071659",
+        "page_name": page.get("page_name", "RS Graphics (আরএস গ্রাফিক্স)") if page else "RS Graphics (আরএস গ্রাফিক্স)",
+        "token_present": bool(clean_tok),
+        "token_prefix": token_prefix,
+        "token_suffix": token_suffix,
+        "token_length": token_len,
+        "is_real_token": is_real,
+        "meta_graph_version": "v19.0",
+        "endpoint_url": "https://graph.facebook.com/v19.0/me/messages",
+        "ready_for_send": bool(meta_val and meta_val.get("valid")),
+        "meta_validation": meta_val
+    }
+
 @app.get("/api/diagnostics")
 async def api_get_diagnostics():
     """Safe admin diagnostic endpoint returning masked configuration for debugging."""

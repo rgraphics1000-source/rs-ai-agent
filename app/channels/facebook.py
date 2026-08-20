@@ -429,6 +429,3 @@ async def handle_facebook_webhook_event(data: dict):
         print(f"[Facebook Webhook Handler Error]: {e}")
 
 
-    except Exception as e:
-        print(f"[Facebook Webhook Handler Error]: {e}")
-
