@@ -117,6 +117,21 @@ body {
   box-shadow: 0 0 20px var(--primary-glow);
 }
 
+.brand-logo-img {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.4);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.brand-logo-img:hover {
+  transform: scale(1.06) rotate(3deg);
+  box-shadow: 0 0 25px rgba(59, 130, 246, 0.7);
+}
+
 .brand-text-wrapper {
   display: flex;
   flex-direction: column;

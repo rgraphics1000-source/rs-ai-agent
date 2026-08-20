@@ -6,7 +6,7 @@ import uuid
 import requests
 from typing import Optional, List
 from fastapi import FastAPI, Request, Response, Form, File, UploadFile, Query, HTTPException, Depends, BackgroundTasks
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, PlainTextResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,18 +25,27 @@ from app.ai_agent.order_engine import list_orders, update_order_status, create_o
 from datetime import datetime
 import time
 from app.channels.facebook import (
-    handle_facebook_webhook_event, 
     send_fb_text_message,
     send_fb_media_message,
     send_fb_audio_message,
-    send_fb_video_message
+    send_fb_video_message,
+    handle_facebook_webhook_event, 
+    handle_facebook_feed_comment
 )
 from app.channels.whatsapp import (
-    handle_whatsapp_webhook_event, 
-    normalize_whatsapp_phone_number,
     send_whatsapp_message,
     send_whatsapp_image,
     send_whatsapp_audio,
+    send_whatsapp_video,
+    handle_whatsapp_webhook_event, 
+    sync_embedded_signup_phone
+)
+from app.channels.omnichat import (
+    get_all_conversations, 
+    get_conversation_history, 
+    record_conversation_message,
+    send_whatsapp_media,
+    send_whatsapp_audio as send_omnichat_wa_audio,
     send_whatsapp_video
 )
 
@@ -65,6 +74,15 @@ templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
 def startup_event():
     init_db()
     print(f"[{settings.PROJECT_NAME}] Database initialized successfully.")
+
+# Root manifest and favicon
+@app.get("/manifest.json")
+async def get_manifest():
+    return FileResponse(settings.STATIC_DIR / "manifest.json", media_type="application/manifest+json")
+
+@app.get("/favicon.ico")
+async def get_favicon():
+    return FileResponse(settings.STATIC_DIR / "favicon.ico", media_type="image/x-icon")
 
 # ==========================================
 # 1. FRONTEND DASHBOARD ROUTE
