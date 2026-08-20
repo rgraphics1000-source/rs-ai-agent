@@ -2,6 +2,7 @@ import os
 import requests
 import json
 import time
+import asyncio
 from pathlib import Path
 from app.config import settings
 from app.database import (
@@ -319,7 +320,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                                 img_ok = send_whatsapp_image(sender_phone, img_path)
                                 if img_ok:
                                     record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "", img_path)
-                                time.sleep(0.3)
+                                await asyncio.sleep(0.15)
 
                         # Send video demo if requested
                         matched_video = ai_result.get("video_url", "")

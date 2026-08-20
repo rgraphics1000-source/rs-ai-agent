@@ -489,14 +489,27 @@ def toggle_conversation_ai(conversation_id: int, status: int = None) -> bool:
 
 def get_muted_numbers() -> list:
     raw = get_setting("blacklisted_ai_numbers", "")
-    if not raw:
-        return []
-    items = [x.strip() for x in raw.replace("\n", ",").split(",") if x.strip()]
+    items = [x.strip() for x in raw.replace("\n", ",").split(",") if x.strip()] if raw else []
+    
+    # Also fetch any active conversations where human_takeover == 1
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT sender_id FROM conversations WHERE human_takeover = 1")
+        for row in cursor.fetchall():
+            s_id = row["sender_id"]
+            if s_id and s_id not in items:
+                items.append(s_id)
+        conn.close()
+    except Exception:
+        pass
+
     seen = set()
     res = []
     for it in items:
-        if it not in seen:
-            seen.add(it)
+        clean = "".join([c for c in it if c.isdigit()]) or it
+        if clean not in seen:
+            seen.add(clean)
             res.append(it)
     return res
 
@@ -508,14 +521,48 @@ def add_muted_number(phone: str) -> list:
     if phone not in current:
         current.append(phone)
         set_setting("blacklisted_ai_numbers", ", ".join(current))
+    
+    clean_target = "".join([c for c in phone if c.isdigit()])
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if clean_target:
+            cursor.execute("UPDATE conversations SET human_takeover = 1 WHERE sender_id LIKE ?", (f"%{clean_target}%",))
+        else:
+            cursor.execute("UPDATE conversations SET human_takeover = 1 WHERE sender_id = ?", (phone,))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
     return current
 
 def remove_muted_number(phone: str) -> list:
     phone = str(phone).strip()
     current = get_muted_numbers()
     clean_target = "".join([c for c in phone if c.isdigit()])
-    updated = [x for x in current if x != phone and "".join([c for c in x if c.isdigit()]) != clean_target]
+    
+    def is_match(x):
+        if x == phone:
+            return True
+        c_x = "".join([c for c in str(x) if c.isdigit()])
+        if clean_target and c_x:
+            return clean_target in c_x or c_x in clean_target
+        return False
+
+    updated = [x for x in current if not is_match(x)]
     set_setting("blacklisted_ai_numbers", ", ".join(updated))
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if clean_target:
+            cursor.execute("UPDATE conversations SET human_takeover = 0 WHERE sender_id LIKE ?", (f"%{clean_target}%",))
+        else:
+            cursor.execute("UPDATE conversations SET human_takeover = 0 WHERE sender_id = ?", (phone,))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
     return updated
 
 def get_muted_contacts_detailed() -> list:

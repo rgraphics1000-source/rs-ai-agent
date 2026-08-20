@@ -265,7 +265,7 @@ async def handle_facebook_webhook_event(data: dict):
                         print(f"[Facebook Messenger Sending Image]: {full_img_url} to {sender_id}")
                         send_fb_media_message(sender_id, "image", img_path)
                         record_conversation_message("facebook", sender_id, customer_name, "bot", "", full_img_url)
-                        time.sleep(0.3)
+                        await asyncio.sleep(0.15)
 
                     # Send video demo if requested
                     matched_video = ai_result.get("video_url", "")

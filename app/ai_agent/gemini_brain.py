@@ -121,6 +121,13 @@ def build_system_instruction(customer_name: str = "") -> str:
 🔴 অত্যন্ত গুরুত্বপূর্ণ সেলস ও বিহেভিয়ার রুলস (Strict Rules):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+০. ভয়েস মেসেজের সরাসরি উত্তর দেওয়ার কঠোর নিয়ম (Voice Message Direct Answering):
+   - কাস্টমার ভয়েস মেসেজ পাঠালে অডিওটি মনোযোগ দিয়ে শুনে কাস্টমার যা জানতে চেয়েছেন তার সরাসরি ও তাৎক্ষণিক উত্তর দেবে।
+   - 🚫 সম্পূর্ণ নিষিদ্ধ বাক্য (STRICTLY FORBIDDEN):
+     • কখনোই বলবে না: "টাইপ করে দিলে ভালো হয়", "টাইপ করে দিন", "ভয়েস বুঝতে পারছি না", "টেক্সট করে জানান"। এ ধরনের কথা বলা সম্পূর্ণ নিষেধ! ভয়েস শুনে সাথে সাথে সরাসরি উত্তর দেবে।
+     • কখনোই বলবে না: "আপনার ভয়েস মেসেজটি পেয়েছি", "ভয়েস মেসেজের জন্য ধন্যবাদ"। কোনো রোবোটিক রিসিভ ঘোষণা দেবে না!
+     • কাস্টমার যদি ভয়েসে বা টেক্সটে ছবি/স্যাম্পল দেখতে চায়, অনুমতি চাইতে যাবে না (যেমন: "আমি কি আমাদের কিছু স্যাম্পল ছবি পাঠাবো?"—এ কথা কখনোই বলবে না)। সরাসরি বলবে: "জি {honorific}, নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো দেওয়া হলো।" এবং সকল ছবি সেন্ড করবে।
+
 ১. স্মৃতিশক্তি ও পূর্ববর্তী কথোপকথন মনে রাখা (Strict Multi-Turn Memory):
    - কাস্টমার চ্যাটের যেকোনো পর্যায়ে আগে যা যা বলেছেন (যেমন: কাস্টমারের নাম, মোবাইল নম্বর, ঠিকানা, কত পিস পণ্য লাগবে বা কোন প্যাকেজ পছন্দ করেছেন), তা এআই-কে সম্পূর্ণ মনে রাখতে হবে।
    - ⚠️ STRICT NO-REPETITION RULE: কাস্টমার যেসব তথ্যের উত্তর ইতিপূর্বে দিয়ে দিয়েছেন, সেই একই কথা বা প্রশ্ন (যেমন: "কত পিস লাগবে?", "ফোন নম্বর দিন", "আপনার নাম কী?") কখনোই পুনরায় কাস্টমারকে জিজ্ঞাসা করবে না!
@@ -247,10 +254,12 @@ def parse_requested_image_count(user_msg: str) -> Optional[int]:
 
 def detect_sample_photos_to_send(user_msg: str, conversation_history: list = None, bot_reply: str = "") -> list:
     """
-    Robust detection for sending category sample photos with STRICT category priority.
+    Robust detection for sending category sample photos with full category support.
+    Extracts all requested photos across Package, ID Card, Ribbon, and Cover.
     """
     msg = (user_msg or "").strip().lower()
     reply = (bot_reply or "").strip().lower()
+    hist_text = " ".join([m.get("content", "") for m in (conversation_history or [])[-3:]]).lower()
 
     # 1. Stop / Cancellation check
     stop_phrases = [
@@ -263,10 +272,10 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     if is_stopping:
         return []
 
-    # 2. Direct photo request keywords
+    # 2. Check if photos are requested in user message, bot reply, or history
     is_asking_photo = any(k in msg for k in [
         "ছবি", "স্যাম্পল", "ফটো", "পিক", "পিকচার", "ফটোগ্রাফ", "দেখতে চাই", "দেখবো", "দেখান", "পাঠান", "পাঠাও", "দেখাও",
-        "photo", "photos", "picture", "pictures", "sample", "samples", "pic", "pics", "image", "images"
+        "photo", "photos", "picture", "pictures", "sample", "samples", "pic", "pics", "image", "images", "সবগুলো"
     ])
 
     agreement_keywords = [
@@ -274,43 +283,65 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
         "yes", "sure", "ok", "okay", "send", "show", "ha", "ji", "achha", "yep", "yeah", "সেন্ড করুন"
     ]
     is_agreeing = any(k in msg for k in agreement_keywords)
+    
     bot_claims_photos = any(k in reply for k in [
-        "পাঠিয়ে দেওয়া হলো", "পাঠানো হলো", "ছবি দেওয়া হলো", "স্যাম্পল ছবি", "নিচে দেখুন", "পাঠিয়েছি", "ছবি পাঠাচ্ছি"
+        "পাঠিয়ে দেওয়া হলো", "পাঠানো হলো", "ছবি দেওয়া হলো", "স্যাম্পল ছবি", "নিচে দেখুন", 
+        "পাঠিয়েছি", "ছবি পাঠাচ্ছি", "ছবি দেখতে চেয়েছেন", "স্যাম্পল পাঠাচ্ছি", "ছবিগুলো দেওয়া হলো"
     ])
 
+    # If incoming was an audio voice note, always evaluate if bot detected photo request
     should_send = is_asking_photo or is_agreeing or bot_claims_photos
     if not should_send:
         return []
 
-    req_count = parse_requested_image_count(msg)
+    req_count = parse_requested_image_count(msg) or parse_requested_image_count(reply)
 
-    # PRIORITY 1: Combo Package (প্যাকেজ/কম্বো)
-    if any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ", "সেট"]):
-        return get_category_batch_images("PKG-COMBO", requested_count=req_count)
+    # Search across user message first, then bot reply, then history
+    target_scope = f"{msg} {reply}"
+    
+    selected_images = []
 
-    # PRIORITY 2: Fita / Ribbon / Lanyard (ফিতা)
-    if any(k in msg for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]):
-        return get_category_batch_images("FITA-02", requested_count=req_count)
+    is_pkg = any(k in target_scope for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ", "সেট"])
+    is_fita = any(k in target_scope for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"])
+    is_cover = any(k in target_scope for k in ["কভার", "হোল্ডার", "holder", "cover"])
+    is_id = any(k in target_scope for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"])
 
-    # PRIORITY 3: Cover / Holder (কভার)
-    if any(k in msg for k in ["কভার", "হোল্ডার", "holder", "cover"]):
-        return get_category_batch_images("COV-03", requested_count=req_count)
+    # If specific category found in target_scope:
+    if is_pkg:
+        for u in get_category_batch_images("PKG-COMBO"):
+            if u not in selected_images:
+                selected_images.append(u)
 
-    # PRIORITY 4: ID Card (কার্ড)
-    if any(k in msg for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"]):
-        return get_category_batch_images("IDC-01", requested_count=req_count)
+    if is_fita:
+        for u in get_category_batch_images("FITA-02"):
+            if u not in selected_images:
+                selected_images.append(u)
 
-    # If current message didn't specify category, check last 2 turns in history
-    hist_text = " ".join([m.get("content", "") for m in (conversation_history or [])[-2:]]).lower()
-    if any(k in hist_text for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ"]):
-        return get_category_batch_images("PKG-COMBO", requested_count=req_count)
-    elif any(k in hist_text for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]):
-        return get_category_batch_images("FITA-02", requested_count=req_count)
-    elif any(k in hist_text for k in ["কভার", "হোল্ডার", "holder", "cover"]):
-        return get_category_batch_images("COV-03", requested_count=req_count)
-    else:
-        # Default: ID Card sample batch
-        return get_category_batch_images("IDC-01", requested_count=req_count)
+    if is_cover:
+        for u in get_category_batch_images("COV-03"):
+            if u not in selected_images:
+                selected_images.append(u)
+
+    if is_id and not is_pkg:
+        # Only add stand-alone ID cards if package wasn't the only requested item
+        for u in get_category_batch_images("IDC-01"):
+            if u not in selected_images:
+                selected_images.append(u)
+
+    # Fallback to history if still empty
+    if not selected_images:
+        if any(k in hist_text for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ"]):
+            selected_images = get_category_batch_images("PKG-COMBO")
+        elif any(k in hist_text for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]):
+            selected_images = get_category_batch_images("FITA-02")
+        elif any(k in hist_text for k in ["কভার", "হোল্ডার", "holder", "cover"]):
+            selected_images = get_category_batch_images("COV-03")
+        else:
+            selected_images = get_category_batch_images("PKG-COMBO")
+
+    if req_count and req_count > 0:
+        return selected_images[:req_count]
+    return selected_images
 
 def detect_saved_media_to_send(user_msg: str, bot_reply: str = "") -> dict:
     """Detects if customer requested a demo video or pre-recorded voice note."""
@@ -411,7 +442,7 @@ async def process_customer_message(
 
         # Add audio attachment (Voice Note)
         if audio_bytes:
-            detected_audio_mime = audio_mime or "audio/mp4"
+            detected_audio_mime = audio_mime or "audio/ogg"
             if audio_bytes.startswith(b"RIFF"):
                 detected_audio_mime = "audio/wav"
             elif audio_bytes.startswith(b"OggS"):
@@ -422,8 +453,7 @@ async def process_customer_message(
                 detected_audio_mime = "audio/mp4"
 
             contents.append(types.Part.from_bytes(data=audio_bytes, mime_type=detected_audio_mime))
-            if not message_text:
-                message_text = "কাস্টমার একটি অডিও/ভয়েস মেসেজ পাঠিয়েছেন। অডিওটি শুনুন এবং কাস্টমার যা বলেছেন তার সরাসরি সঠিক ও সংক্ষিপ্ত উত্তর দিন।"
+            message_text = "কাস্টমার একটি ভয়েস অডিও বার্তা পাঠিয়েছেন। অডিওটি মনোযোগ দিয়ে শুনুন এবং কাস্টমার যা বলেছেন/চেয়েছেন (যেমন পণ্যের দাম, ছবি, বিবরণ বা অর্ডার) তার সরাসরি সঠিক ও সংক্ষিপ্ত উত্তর দিন। কখনোই কাস্টমারকে 'টাইপ করে দিন' বা 'ভয়েস পেয়েছি' বলবেন না।"
 
         if message_text:
             contents.append(f"কাস্টমারের বার্তা ({customer_name}): {message_text}")
@@ -503,7 +533,6 @@ async def process_customer_message(
         clean_reply = re.sub(r'!\[[^\]]*\]\([^)]+\)', '', clean_reply)
         clean_reply = re.sub(r'\[Image[s]?:\s*[^\]]+\]', '', clean_reply, flags=re.IGNORECASE)
         clean_reply = re.sub(r'/static/uploads/\S+', '', clean_reply)
-        clean_reply = re.sub(r'\n{3,}', '\n\n', clean_reply).strip()
 
         # Detect sample photos to send
         sample_batch = detect_sample_photos_to_send(
@@ -513,6 +542,29 @@ async def process_customer_message(
         )
         if sample_batch:
             matched_images = sample_batch
+
+        # Clean robotic voice acknowledgement and asking for type
+        clean_reply = re.sub(r'^(জি\s+)?(ভাইয়া|আপু|স্যার|ম্যাম)?[,\s]*আপনার\s+ভয়েস\s+(মেসেজটি|বার্তাটি)?\s*(পেয়েছি|শুনেছি)[।,\.\s]*', '', clean_reply, flags=re.IGNORECASE)
+        clean_reply = re.sub(r'আপনার\s+ভয়েস\s+(মেসেজটি|বার্তাটি)?\s*(পেয়েছি|শুনেছি)[।,\.\s]*', '', clean_reply, flags=re.IGNORECASE)
+        clean_reply = re.sub(r'ভয়েস\s+মেসেজের\s+জন্য\s+ধন্যবাদ[।,\.\s]*', '', clean_reply, flags=re.IGNORECASE)
+        clean_reply = re.sub(r'(একটু\s+)?টাইপ\s+করে\s+(দিলে|দিতেন|দিন)[^\n।]*', '', clean_reply, flags=re.IGNORECASE)
+
+        # If sample images are being sent, eliminate redundant question 'আমি কি স্যাম্পল পাঠাবো?'
+        if matched_images:
+            clean_reply = re.sub(r'আমি\s+কি\s+(আমাদের\s+)?(কিছু\s+)?স্যাম্পল\s+(ছবি\s+)?পাঠাবো\??', '', clean_reply, flags=re.IGNORECASE)
+            clean_reply = re.sub(r'কিছু\s+স্যাম্পল\s+ছবি\s+পাঠাবো\??', '', clean_reply, flags=re.IGNORECASE)
+            clean_reply = re.sub(r'ছবি\s+পাঠাবো\s+কি\??', '', clean_reply, flags=re.IGNORECASE)
+            clean_reply = re.sub(r'আমি\s+কি\s+ছবি\s+পাঠাতে\s+পারি\??', '', clean_reply, flags=re.IGNORECASE)
+
+        clean_reply = re.sub(r'\n{3,}', '\n\n', clean_reply).strip()
+
+        # If clean_reply became too brief after cleaning, provide polite human greeting
+        if not clean_reply or len(clean_reply) < 6:
+            honorific = detect_customer_gender_title(customer_name)
+            if matched_images:
+                clean_reply = f"জি {honorific}, নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো পাঠানো হলো। আপনার কত পিস প্রয়োজন জানাবেন প্লিজ।"
+            else:
+                clean_reply = f"জি {honorific}, আমাদের প্রডাক্ট ও অর্ডার সম্পর্কে যেকোনো তথ্য প্রয়োজন হলে জানাবেন প্লিজ।"
 
         # Detect demo videos and pre-recorded voice clips
         media_found = detect_saved_media_to_send(user_msg=message_text, bot_reply=clean_reply)
