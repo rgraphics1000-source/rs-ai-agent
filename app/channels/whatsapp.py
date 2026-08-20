@@ -10,13 +10,24 @@ from app.database import (
     get_setting, set_setting, get_all_settings, get_db_connection,
     is_conversation_ai_active, get_whatsapp_account_by_phone_id,
     get_whatsapp_account_by_page_id, get_whatsapp_account_by_workspace_id,
-    get_all_whatsapp_accounts, get_page_ai_config
+    get_all_whatsapp_accounts, get_page_ai_config,
+    ensure_whatsapp_account_consistency, get_active_training_rules,
+    get_all_faqs, get_all_products
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.ai_agent.gemini_brain import process_customer_message
 
 GRAPH_API_URL = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}"
 PROCESSED_WA_MESSAGE_IDS = set()
+
+def mask_phone_number(raw_phone: str) -> str:
+    """Masks a phone number for secure logging (e.g. 88018****4097)."""
+    if not raw_phone:
+        return "***"
+    phone_str = str(raw_phone).strip()
+    if len(phone_str) > 8:
+        return f"{phone_str[:5]}****{phone_str[-4:]}"
+    return "***"
 
 def normalize_whatsapp_phone_number(raw_phone: str) -> str:
     """Normalizes phone numbers to standard E.164 digits without plus or spaces."""
@@ -256,82 +267,28 @@ async def handle_whatsapp_webhook_event(data: dict):
                 # 1. Resolve specific WhatsApp account by phone_number_id
                 wa_account = get_whatsapp_account_by_phone_id(meta_phone_id)
 
-                # 2. If not found by phone_number_id, check if display_phone_number or meta_phone_id matches any registered account or Workspace 1
-                if not wa_account and meta_phone_id:
-                    norm_incoming_display = normalize_whatsapp_phone_number(display_phone_number)
-                    
-                    conn = None
-                    try:
-                        conn = get_db_connection()
-                        cursor = conn.cursor()
-                        
-                        # Find candidate account in whatsapp_accounts matching incoming display number
-                        cursor.execute("SELECT id, workspace_id, display_phone_number, phone_number_id FROM whatsapp_accounts ORDER BY id ASC")
-                        all_wa_rows = cursor.fetchall()
-                        
-                        matched_acc_id = None
-                        for row in all_wa_rows:
-                            acc_display = normalize_whatsapp_phone_number(row["display_phone_number"])
-                            if norm_incoming_display and acc_display and norm_incoming_display == acc_display:
-                                matched_acc_id = row["id"]
-                                break
-                        
-                        # Fallback: check if incoming display or phone_id matches Workspace 1 primary setting / known RS Graphics ID
-                        if not matched_acc_id:
-                            primary_display = normalize_whatsapp_phone_number(get_setting("whatsapp_display_phone_number") or settings.WHATSAPP_DISPLAY_PHONE_NUMBER or "+8801816504097")
-                            primary_phone_id = str(get_setting("whatsapp_phone_number_id") or settings.WHATSAPP_PHONE_NUMBER_ID or "").strip()
-                            
-                            is_primary = (
-                                (norm_incoming_display and primary_display and norm_incoming_display == primary_display) or
-                                (primary_phone_id and meta_phone_id == primary_phone_id) or
-                                (meta_phone_id in ["418451426636680", "4184514263660680"])
-                            )
-                            if is_primary:
-                                cursor.execute("SELECT id FROM whatsapp_accounts WHERE workspace_id = 1 ORDER BY id ASC LIMIT 1")
-                                w1_row = cursor.fetchone()
-                                if w1_row:
-                                    matched_acc_id = w1_row["id"]
-                                else:
-                                    cursor.execute("""
-                                        INSERT INTO whatsapp_accounts (workspace_id, phone_number_id, display_phone_number, connection_mode, connection_status, coexistence_active)
-                                        VALUES (1, ?, ?, 'business_app_coexistence', 'connected', 1)
-                                    """, (meta_phone_id, display_phone_number or "+8801816504097"))
-                                    matched_acc_id = cursor.lastrowid
+                # 2. If not found by phone_number_id, check if it's the primary RS Graphics account or display number
+                if not wa_account and (meta_phone_id in ["4184514263660680", "418451426636680"] or "01816504097" in display_phone_number):
+                    wa_account = ensure_whatsapp_account_consistency()
 
-                        if matched_acc_id:
-                            # Safe update targeting only matched_acc_id by primary key
-                            cursor.execute("DELETE FROM whatsapp_accounts WHERE phone_number_id = ? AND id != ?", (meta_phone_id, matched_acc_id))
-                            cursor.execute("UPDATE whatsapp_accounts SET phone_number_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (meta_phone_id, matched_acc_id))
-                            cursor.execute("UPDATE settings SET value = ? WHERE key = 'whatsapp_phone_number_id'", (meta_phone_id,))
-                            conn.commit()
-                            
-                        conn.close()
-                        conn = None
-                        wa_account = get_whatsapp_account_by_phone_id(meta_phone_id)
-                    except Exception as sync_err:
-                        print(f"[WhatsApp Webhook Auto-Sync Error]: {sync_err}")
-                    finally:
-                        if conn:
-                            conn.close()
-
-                if wa_account:
-                    effective_phone_id = wa_account.get("phone_number_id") or meta_phone_id
-                    effective_token = wa_account.get("access_token") or (
-                        get_setting("meta_system_user_access_token") 
-                        or get_setting("whatsapp_access_token") 
-                        or get_setting("fb_page_access_token")
-                    )
-                    page_id = wa_account.get("page_id") or ""
-                    page_name = wa_account.get("shop_name") or wa_account.get("page_name") or wa_account.get("workspace_name") or "RS Graphics"
-                    workspace_id = wa_account.get("workspace_id") or wa_account.get("ws_id") or 1
-                    workspace_name = wa_account.get("workspace_name") or "RS Graphics"
-
-                    print(f"[WhatsApp Routing] matched_account_id={wa_account.get('id')} workspace_id={workspace_id} workspace={workspace_name}")
-                else:
+                if not wa_account:
                     # Strict rule: Unknown Phone ID cannot be resolved to any registered workspace.
                     # Log the routing error and DO NOT send an AI reply (never fall back to Workspace 1).
                     print(f"[WhatsApp Routing Error]: Unknown phone_number_id {meta_phone_id}. No matching whatsapp_account found. Event dropped without fallback.")
                     continue
+
+                effective_phone_id = wa_account.get("phone_number_id") or meta_phone_id
+                effective_token = wa_account.get("access_token") or (
+                    get_setting("whatsapp_access_token") 
+                    or get_setting("meta_system_user_access_token") 
+                    or settings.WHATSAPP_ACCESS_TOKEN
+                )
+                page_id = wa_account.get("page_id") or ""
+                page_name = wa_account.get("shop_name") or wa_account.get("page_name") or wa_account.get("workspace_name") or "RS Graphics"
+                workspace_id = wa_account.get("workspace_id") or wa_account.get("ws_id") or 1
+                workspace_name = wa_account.get("workspace_name") or "RS Graphics (আরএস গ্রাফিক্স)"
+
+                print(f"[WhatsApp Routing] matched_account_id={wa_account.get('id')} workspace_id={workspace_id} workspace={workspace_name}")
 
                 messages = value.get("messages", [])
                 contacts = value.get("contacts", [])
@@ -350,6 +307,7 @@ async def handle_whatsapp_webhook_event(data: dict):
 
                     raw_from = msg.get("from") # E.164 phone e.g. 8801816504097
                     sender_phone = normalize_whatsapp_phone_number(raw_from)
+                    masked_sender = mask_phone_number(sender_phone)
                     msg_type = msg.get("type")
                     msg_text = ""
                     image_bytes = None
@@ -357,7 +315,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                     audio_bytes = None
                     audio_mime = "audio/mp4"
 
-                    print(f"[WhatsApp Webhook (Workspace: {workspace_id}, Account: {effective_phone_id})] received from={sender_phone} type={msg_type} msg_id={msg_id}")
+                    print(f"[WhatsApp Webhook (Workspace: {workspace_id}, Account: {effective_phone_id})] received from={masked_sender} type={msg_type} msg_id={msg_id}")
 
                     if msg_type == "text":
                         msg_text = msg.get("text", {}).get("body", "")
@@ -396,12 +354,17 @@ async def handle_whatsapp_webhook_event(data: dict):
 
                         # Check if AI Master Switch or Per-Customer Takeover is active
                         if not is_conversation_ai_active(sender_id=sender_phone):
-                            print(f"[WhatsApp]: AI is PAUSED for customer {sender_phone} on account {effective_phone_id} (Human Takeover). AI will stay silent.")
+                            print(f"[WhatsApp]: AI is PAUSED for customer {masked_sender} on account {effective_phone_id} (Human Takeover). AI will stay silent.")
                             continue
 
                         # Fetch conversation history scoped strictly to Workspace
                         history = get_conversation_history("whatsapp", sender_phone, limit=8, page_id=page_id, workspace_id=workspace_id)
-                        print(f"[WhatsApp AI] workspace_id={workspace_id} training_rules_loaded={len(history)}")
+                        
+                        # Load workspace specific data and log
+                        training_rules = get_active_training_rules(workspace_id=workspace_id)
+                        faqs = get_all_faqs(workspace_id=workspace_id)
+                        products = get_all_products(workspace_id=workspace_id)
+                        print(f"[WhatsApp AI] workspace_id={workspace_id} training_rules_loaded={len(training_rules)} faqs_loaded={len(faqs)} products_loaded={len(products)}")
 
                         # Process with Gemini AI Brain with Workspace isolation
                         ai_result = await process_customer_message(
@@ -420,7 +383,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                         )
 
                         reply_text = ai_result.get("reply_text", "")
-                        print(f"[AI Reply on Workspace {workspace_id} WA {effective_phone_id}] generated for={sender_phone}: {reply_text[:60] if reply_text else 'None'}...")
+                        print(f"[AI Reply on Workspace {workspace_id} WA {effective_phone_id}] generated for={masked_sender}: {reply_text[:60] if reply_text else 'None'}...")
 
                         if reply_text and sender_phone:
                             send_ok = send_whatsapp_message(
@@ -429,8 +392,9 @@ async def handle_whatsapp_webhook_event(data: dict):
                             )
                             if send_ok:
                                 record_conversation_message("whatsapp", sender_phone, customer_name, "bot", reply_text, page_id=page_id, workspace_id=workspace_id)
+                                print(f"[WhatsApp Send] phone_number_id={effective_phone_id} recipient={masked_sender} status=success")
                             else:
-                                print(f"[WhatsApp Send] Delivery FAILED for {sender_phone}. AI message was NOT recorded as sent.")
+                                print(f"[WhatsApp Send] Delivery FAILED for {masked_sender}. AI message was NOT recorded as sent.")
 
                         # Batch send sample images if requested
                         matched_images = ai_result.get("matched_images", [])

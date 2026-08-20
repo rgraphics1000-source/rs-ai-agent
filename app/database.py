@@ -393,60 +393,8 @@ def init_db():
         """, (p1_id, p1_name, p1_token, p1_prompt, p1_name, p1_phone))
         print(f"[Auto-Migration] Existing Page 1 ('{p1_name}', Page ID: {p1_id}) initialized in connected_pages.")
 
-    # Safe Automatic Migration for Existing WhatsApp Account 1 into whatsapp_accounts
-    target_wa_phone_id = str(settings.WHATSAPP_PHONE_NUMBER_ID or "4184514263660680").strip()
-    target_waba_id = str(settings.WHATSAPP_WABA_ID or "27905447135785944").strip()
-    target_wa_display = str(settings.WHATSAPP_DISPLAY_PHONE_NUMBER or "+8801816504097").strip()
-    target_wa_token = str(settings.WHATSAPP_ACCESS_TOKEN or settings.META_SYSTEM_USER_ACCESS_TOKEN or "").strip()
-
-    cursor.execute("SELECT COUNT(*) FROM whatsapp_accounts")
-    wa_count = cursor.fetchone()[0]
-    if wa_count == 0:
-        cursor.execute("SELECT value FROM settings WHERE key = 'whatsapp_phone_number_id'")
-        wa_p_row = cursor.fetchone()
-        wa_phone_id = wa_p_row["value"] if (wa_p_row and wa_p_row["value"]) else target_wa_phone_id
-
-        cursor.execute("SELECT value FROM settings WHERE key = 'whatsapp_waba_id'")
-        wa_w_row = cursor.fetchone()
-        wa_waba_id = wa_w_row["value"] if (wa_w_row and wa_w_row["value"]) else target_waba_id
-
-        cursor.execute("SELECT value FROM settings WHERE key = 'whatsapp_display_phone_number'")
-        wa_d_row = cursor.fetchone()
-        wa_display = wa_d_row["value"] if (wa_d_row and wa_d_row["value"]) else target_wa_display
-
-        cursor.execute("SELECT value FROM settings WHERE key = 'whatsapp_access_token'")
-        wa_t_row = cursor.fetchone()
-        wa_token = wa_t_row["value"] if (wa_t_row and wa_t_row["value"]) else target_wa_token
-        if not wa_token:
-            cursor.execute("SELECT value FROM settings WHERE key = 'meta_system_user_access_token'")
-            ms_row = cursor.fetchone()
-            wa_token = ms_row["value"] if (ms_row and ms_row["value"]) else ""
-
-        # Find primary connected page ID
-        cursor.execute("SELECT id, page_id FROM connected_pages ORDER BY id ASC LIMIT 1")
-        primary_cp = cursor.fetchone()
-        primary_cp_id = primary_cp["id"] if primary_cp else 1
-
-        cursor.execute("""
-            INSERT OR IGNORE INTO whatsapp_accounts (
-                workspace_id, connected_page_id, waba_id, phone_number_id, display_phone_number, access_token,
-                connection_mode, connection_status, coexistence_active
-            ) VALUES (1, ?, ?, ?, ?, ?, 'business_app_coexistence', 'connected', 1)
-        """, (primary_cp_id, wa_waba_id, wa_phone_id, wa_display, wa_token))
-        print(f"[Auto-Migration] Existing WhatsApp Account ({wa_display}, Phone ID: {wa_phone_id}) initialized in whatsapp_accounts.")
-    else:
-        # Idempotent upgrade for Workspace 1: ensure phone_number_id has verified Meta Cloud API ID
-        cursor.execute("SELECT id, phone_number_id, display_phone_number FROM whatsapp_accounts WHERE workspace_id = 1 ORDER BY id ASC")
-        w1_wa_rows = cursor.fetchall()
-        if w1_wa_rows:
-            primary_acc = w1_wa_rows[0]
-            # Delete any other row with target_wa_phone_id to prevent UNIQUE constraint violation
-            cursor.execute("DELETE FROM whatsapp_accounts WHERE phone_number_id = ? AND id != ?", (target_wa_phone_id, primary_acc["id"]))
-            cursor.execute("UPDATE whatsapp_accounts SET phone_number_id = ?, display_phone_number = '+8801816504097', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (target_wa_phone_id, primary_acc["id"]))
-            print(f"[Auto-Migration] Updated Workspace 1 WhatsApp Account (ID: {primary_acc['id']}) phone_number_id to '{target_wa_phone_id}'.")
-
-    # Update settings table key whatsapp_phone_number_id
-    cursor.execute("UPDATE settings SET value = ? WHERE key = 'whatsapp_phone_number_id'", (target_wa_phone_id,))
+    # Safe Idempotent Consistency Check for WhatsApp Accounts
+    ensure_whatsapp_account_consistency(conn=conn)
 
     # Scope legacy conversations and comment_logs to primary Page 1
     cursor.execute("SELECT page_id FROM connected_pages ORDER BY id ASC LIMIT 1")
@@ -727,6 +675,22 @@ def get_faqs(workspace_id: Optional[int] = None) -> list:
         cursor.execute("SELECT * FROM faqs WHERE workspace_id = ? ORDER BY id DESC", (int(workspace_id),))
     else:
         cursor.execute("SELECT * FROM faqs ORDER BY id DESC")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def get_all_faqs(workspace_id: Optional[int] = None) -> list:
+    """Alias for get_faqs."""
+    return get_faqs(workspace_id)
+
+def get_all_products(workspace_id: Optional[int] = None) -> list:
+    """Returns active products scoped to a workspace or all if None."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if workspace_id is not None:
+        cursor.execute("SELECT * FROM products WHERE workspace_id = ? AND is_active = 1 ORDER BY id ASC", (int(workspace_id),))
+    else:
+        cursor.execute("SELECT * FROM products WHERE is_active = 1 ORDER BY id ASC")
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
@@ -1131,10 +1095,131 @@ def get_all_whatsapp_accounts() -> list:
         if conn:
             conn.close()
 
+def ensure_whatsapp_account_consistency(conn=None) -> Optional[dict]:
+    """
+    Self-healing migration and consistency enforcer for WhatsApp accounts.
+    Guarantees:
+    1. Workspace 1 (RS Graphics) always has a valid, canonical WhatsApp account with phone_number_id = 4184514263660680.
+    2. Zero duplicate rows for phone_number_id = 4184514263660680.
+    3. Legacy IDs (418451426636680, 8801816504097_wa, empty) are safely migrated without losing tokens, WABA ID, or conversation data.
+    4. Settings table is kept in sync (whatsapp_phone_number_id = 4184514263660680).
+    5. Fully idempotent and safe to call concurrently or repeatedly.
+    """
+    target_wa_phone_id = "4184514263660680"
+    target_waba_id = str(settings.WHATSAPP_WABA_ID or "27905447135785944").strip()
+    target_display = str(settings.WHATSAPP_DISPLAY_PHONE_NUMBER or "+8801816504097").strip()
+    target_token = str(settings.WHATSAPP_ACCESS_TOKEN or settings.META_SYSTEM_USER_ACCESS_TOKEN or "").strip()
+
+    close_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        close_conn = True
+
+    try:
+        cursor = conn.cursor()
+
+        # Step 1: Check if an account already exists with the exact target phone_number_id
+        cursor.execute("SELECT * FROM whatsapp_accounts WHERE phone_number_id = ?", (target_wa_phone_id,))
+        exact_match = cursor.fetchone()
+
+        canonical_id = None
+        if exact_match:
+            canonical_id = exact_match["id"]
+            # Ensure workspace_id is 1, display and waba_id are populated
+            cursor.execute("""
+                UPDATE whatsapp_accounts SET
+                    workspace_id = 1,
+                    display_phone_number = COALESCE(NULLIF(display_phone_number, ''), ?),
+                    waba_id = COALESCE(NULLIF(waba_id, ''), ?),
+                    access_token = CASE WHEN access_token IS NULL OR access_token = '' THEN ? ELSE access_token END,
+                    connection_mode = 'business_app_coexistence',
+                    connection_status = 'connected',
+                    coexistence_active = 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (target_display, target_waba_id, target_token, canonical_id))
+            # Delete any duplicate rows with target_wa_phone_id if any exist
+            cursor.execute("DELETE FROM whatsapp_accounts WHERE phone_number_id = ? AND id != ?", (target_wa_phone_id, canonical_id))
+        else:
+            # Step 2: Look for candidate/legacy rows belonging to Workspace 1
+            cursor.execute("""
+                SELECT * FROM whatsapp_accounts 
+                WHERE workspace_id = 1 
+                   OR phone_number_id IN ('418451426636680', '8801816504097_wa', '8801816504097', '')
+                   OR display_phone_number LIKE '%01816504097%'
+                ORDER BY id ASC
+            """)
+            w1_candidates = cursor.fetchall()
+            if w1_candidates:
+                canonical_id = w1_candidates[0]["id"]
+                # Delete any other row with target_wa_phone_id before updating
+                cursor.execute("DELETE FROM whatsapp_accounts WHERE phone_number_id = ? AND id != ?", (target_wa_phone_id, canonical_id))
+                cursor.execute("""
+                    UPDATE whatsapp_accounts SET
+                        workspace_id = 1,
+                        phone_number_id = ?,
+                        display_phone_number = COALESCE(NULLIF(display_phone_number, ''), ?),
+                        waba_id = COALESCE(NULLIF(waba_id, ''), ?),
+                        access_token = CASE WHEN access_token IS NULL OR access_token = '' THEN ? ELSE access_token END,
+                        connection_mode = 'business_app_coexistence',
+                        connection_status = 'connected',
+                        coexistence_active = 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (target_wa_phone_id, target_display, target_waba_id, target_token, canonical_id))
+            else:
+                # Step 3: Insert canonical row
+                cursor.execute("SELECT id FROM connected_pages WHERE workspace_id = 1 ORDER BY id ASC LIMIT 1")
+                cp_row = cursor.fetchone()
+                cp_id = cp_row["id"] if cp_row else 1
+
+                cursor.execute("""
+                    INSERT OR IGNORE INTO whatsapp_accounts (
+                        workspace_id, connected_page_id, waba_id, phone_number_id, display_phone_number,
+                        access_token, connection_mode, connection_status, coexistence_active
+                    ) VALUES (1, ?, ?, ?, ?, ?, 'business_app_coexistence', 'connected', 1)
+                """, (cp_id, target_waba_id, target_wa_phone_id, target_display, target_token))
+                canonical_id = cursor.lastrowid
+
+        # Step 4: Link canonical account to Page 1 if not connected
+        cursor.execute("SELECT id FROM connected_pages WHERE workspace_id = 1 ORDER BY id ASC LIMIT 1")
+        cp_p1 = cursor.fetchone()
+        if cp_p1 and canonical_id:
+            cursor.execute("UPDATE whatsapp_accounts SET connected_page_id = ? WHERE id = ? AND (connected_page_id IS NULL OR connected_page_id = '')", (cp_p1["id"], canonical_id))
+
+        # Step 5: Ensure settings table is consistent
+        cursor.execute("UPDATE settings SET value = ? WHERE key = 'whatsapp_phone_number_id'", (target_wa_phone_id,))
+        cursor.execute("UPDATE settings SET value = ? WHERE key = 'whatsapp_display_phone_number'", (target_display,))
+        cursor.execute("UPDATE settings SET value = ? WHERE key = 'whatsapp_waba_id'", (target_waba_id,))
+
+        conn.commit()
+
+        # Step 6: Query and return the canonical account dict
+        cursor.execute("""
+            SELECT wa.*, cp.page_id, cp.page_name, cp.shop_name, cp.ai_enabled as page_ai_enabled,
+                   cp.ai_system_prompt as page_ai_prompt, cp.delivery_inside_dhaka, cp.delivery_outside_dhaka,
+                   w.name as workspace_name, w.id as ws_id
+            FROM whatsapp_accounts wa
+            LEFT JOIN connected_pages cp ON wa.connected_page_id = cp.id
+            LEFT JOIN workspaces w ON wa.workspace_id = w.id
+            WHERE wa.phone_number_id = ?
+        """, (target_wa_phone_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[ensure_whatsapp_account_consistency Error]: {e}")
+        if conn:
+            conn.rollback()
+        return None
+    finally:
+        if close_conn and conn:
+            conn.close()
+
 def get_whatsapp_account_by_phone_id(phone_number_id: str) -> Optional[dict]:
     """Finds a WhatsApp account record by its Meta phone_number_id."""
     if not phone_number_id:
         return None
+    phone_id_str = str(phone_number_id).strip()
     conn = None
     try:
         conn = get_db_connection()
@@ -1147,20 +1232,10 @@ def get_whatsapp_account_by_phone_id(phone_number_id: str) -> Optional[dict]:
             LEFT JOIN connected_pages cp ON wa.connected_page_id = cp.id
             LEFT JOIN workspaces w ON wa.workspace_id = w.id
             WHERE wa.phone_number_id = ?
-        """, (str(phone_number_id),))
+        """, (phone_id_str,))
         row = cursor.fetchone()
-        if not row and str(phone_number_id) in ["4184514263660680", "418451426636680"]:
-            cursor.execute("""
-                SELECT wa.*, cp.page_id, cp.page_name, cp.shop_name, cp.ai_enabled as page_ai_enabled,
-                       cp.ai_system_prompt as page_ai_prompt, cp.delivery_inside_dhaka, cp.delivery_outside_dhaka,
-                       w.name as workspace_name, w.id as ws_id
-                FROM whatsapp_accounts wa
-                LEFT JOIN connected_pages cp ON wa.connected_page_id = cp.id
-                LEFT JOIN workspaces w ON wa.workspace_id = w.id
-                WHERE wa.workspace_id = 1
-                ORDER BY wa.id ASC LIMIT 1
-            """)
-            row = cursor.fetchone()
+        if not row and phone_id_str in ["4184514263660680", "418451426636680"]:
+            return ensure_whatsapp_account_consistency(conn=conn)
         return dict(row) if row else None
     except Exception as e:
         print(f"[DB get_whatsapp_account_by_phone_id Error]: {e}")
