@@ -188,10 +188,17 @@ def init_db():
     for k, v in default_settings.items():
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
 
+    # Migration: update shop name & phone if default
+    cursor.execute("UPDATE settings SET value = 'RS Graphics (আরএস গ্রাফিক্স)' WHERE key = 'shop_name' AND (value = 'আমার ই-কমার্স শপ' OR value = '')")
+    cursor.execute("UPDATE settings SET value = '01816504097' WHERE key = 'shop_phone' AND (value = '01700000000' OR value = '')")
+
     # Migration: update any stale 17-digit config_id to official 16-digit ID
     cursor.execute("UPDATE settings SET value = '1003403176086013' WHERE key = 'meta_embedded_signup_config_id' AND value = '10034031760860138'")
     # Migration: clear unrelated phone number ID 1265595526643418 so only verified target ID is stored
     cursor.execute("UPDATE settings SET value = '' WHERE key = 'whatsapp_phone_number_id' AND value = '1265595526643418'")
+
+    # Migration: update sample photos training rule to send immediately without asking permission
+    cursor.execute("UPDATE ai_training_rules SET response_or_rule = 'কাস্টমার ছবি বা স্যাম্পল দেখতে চাইলে কালবিলম্ব না করে সরাসরি অমায়িক ভাষায় বলবে জি ভাইয়া, অবশ্যই দেওয়া যাবে। নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো পাঠানো হলো। এবং সাথে সাথে সবগুলো স্যাম্পল ছবি পাঠাবে।' WHERE title LIKE '%স্যাম্পল%'")
 
     # Seed initial AI Training Rules if none exist
     cursor.execute("SELECT COUNT(*) FROM ai_training_rules")
@@ -202,7 +209,7 @@ def init_db():
             ("ইউভি প্রিন্ট কোয়ালিটি", "আমরা জাপানি মেশিনের অরজিনাল UV কালার প্রিন্ট করি, যা ১০০% ওয়াটারপ্রুফ, প্রিমিয়াম ফিনিশিং এবং দীর্ঘস্থায়ী।", "qa", "কোয়ালিটি কেমন?", "Product Quality", 1),
             ("ডিসকাউন্ট পলিসি", "প্রথমে নিয়মিত বিক্রয়মূল্য বলবে। কাস্টমার ৫০ বা ১০০+ পিস চাইলে বা দাম বেশি বললে স্পেশাল হোলসেল রেট অফার করবে।", "price_policy", "ডিসকাউন্ট বা কম রাখা যাবে?", "Price Policy", 1),
             ("ক্রয়মূল্য গোপন রাখা", "কাস্টমারকে কখনো আমাদের নিজস্ব উৎপাদন বা ক্রয়মূল্য বলা যাবে না। সর্বদা সেল প্রাইস বলতে হবে।", "instruction", "", "Business Policy", 1),
-            ("স্যাম্পল ছবি পাঠানোর নিয়ম", "কাস্টমার ছবি বা স্যাম্পল দেখতে চাইলে সরাসরি ছবি না দিয়ে আগে অনুমতি চাইবে 'আমি কি আমাদের কিছু স্যাম্পল ছবি পাঠাবো?' কাস্টমার সম্মতি দিলে সম্পূর্ণ স্যাম্পল পাঠাবে।", "instruction", "", "Sales Rule", 1)
+            ("স্যাম্পল ছবি পাঠানোর নিয়ম", "কাস্টমার ছবি বা স্যাম্পল দেখতে চাইলে সরাসরি ছবি না দিয়ে অনুমতি চাওয়ার কোনো দরকার নেই। সাথে সাথে সম্পূর্ণ স্যাম্পল পাঠাবে।", "instruction", "", "Sales Rule", 1)
         ]
         cursor.executemany("""
             INSERT INTO ai_training_rules (title, response_or_rule, rule_type, question_or_trigger, category, is_active)
@@ -299,20 +306,24 @@ def init_db():
     conn.close()
 
 def get_setting(key: str, default: str = "") -> str:
-    # 1. First check environment variables (Render Environment)
+    # 1. Check database settings first (Primary Source of Truth)
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row and row["value"] is not None and str(row["value"]).strip() != "":
+            return str(row["value"]).strip()
+    except Exception:
+        pass
+
+    # 2. Fallback to environment variables if database is empty
     env_val = os.getenv(key.upper()) or os.getenv(key)
     if env_val is not None and str(env_val).strip() != "":
         return str(env_val).strip()
 
-    # 2. Then check database settings
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
-    row = cursor.fetchone()
-    conn.close()
-    
-    if row and row["value"] is not None and str(row["value"]).strip() != "":
-        return str(row["value"]).strip()
     return default
 
 def set_setting(key: str, value: str):
@@ -331,7 +342,7 @@ def get_all_settings(masked: bool = False) -> dict:
     
     result = {row["key"]: row["value"] for row in rows}
     
-    # Overlay environment variables if present
+    # Overlay environment variables ONLY if database value is missing or empty
     env_keys = [
         "META_APP_ID", "META_EMBEDDED_SIGNUP_CONFIG_ID", "FB_PAGE_ACCESS_TOKEN", 
         "FB_VERIFY_TOKEN", "FB_PAGE_ID", "FB_APP_SECRET", "GEMINI_API_KEY", 
@@ -341,7 +352,9 @@ def get_all_settings(masked: bool = False) -> dict:
     for ek in env_keys:
         val = os.getenv(ek)
         if val is not None and str(val).strip() != "":
-            result[ek.lower()] = str(val).strip()
+            k = ek.lower()
+            if not result.get(k) or str(result.get(k)).strip() == "":
+                result[k] = str(val).strip()
             
     # Calculate connection statuses
     has_wa_token = bool(

@@ -2333,15 +2333,25 @@ async function loadAllSettings() {
 
         const setVal = (id, key, def) => {
             const el = document.getElementById(id);
-            if (el && settings[key] !== undefined) el.value = settings[key];
+            if (el && settings[key] !== undefined && settings[key] !== null) el.value = settings[key];
             else if (el && def !== undefined) el.value = def;
         };
 
-        setVal("setting-shop-name", "shop_name", "আমার ই-কমার্স শপ");
-        setVal("setting-shop-phone", "shop_phone", "01700000000");
+        const shopName = settings["shop_name"] || "RS Graphics (আরএস গ্রাফিক্স)";
+        const shopPhone = settings["shop_phone"] || "01816504097";
+
+        setVal("setting-shop-name", "shop_name", shopName);
+        setVal("setting-shop-phone", "shop_phone", shopPhone);
         setVal("setting-delivery-inside", "delivery_inside_dhaka", 70);
         setVal("setting-delivery-outside", "delivery_outside_dhaka", 130);
         setVal("setting-blacklisted-numbers", "blacklisted_ai_numbers", "");
+
+        // Also sync AI Train Tab Inputs
+        setVal("arena-shop-name", "shop_name", shopName);
+        setVal("arena-system-prompt", "ai_system_prompt", "");
+        
+        const phoneHeader = document.getElementById("phone-header-shop-name");
+        if (phoneHeader) phoneHeader.innerText = shopName;
         
         await loadMutedContacts();
     } catch (e) {
@@ -2644,11 +2654,14 @@ async function saveAllSettings() {
         return el ? el.value.trim() : "";
     };
 
+    const shopName = getVal("setting-shop-name") || getVal("arena-shop-name") || "RS Graphics (আরএস গ্রাফিক্স)";
+    const shopPhone = getVal("setting-shop-phone") || "01816504097";
+
     const payload = {
-        shop_name: getVal("setting-shop-name"),
-        shop_phone: getVal("setting-shop-phone"),
-        delivery_inside_dhaka: getVal("setting-delivery-inside"),
-        delivery_outside_dhaka: getVal("setting-delivery-outside"),
+        shop_name: shopName,
+        shop_phone: shopPhone,
+        delivery_inside_dhaka: getVal("setting-delivery-inside") || "70",
+        delivery_outside_dhaka: getVal("setting-delivery-outside") || "130",
         blacklisted_ai_numbers: getVal("setting-blacklisted-numbers")
     };
 
@@ -2661,12 +2674,54 @@ async function saveAllSettings() {
         const data = await res.json();
         if (data.success) {
             showToast("✅ সেটিংস সফলভাবে সেভ হয়েছে!", "success");
+            const aName = document.getElementById("arena-shop-name");
+            if (aName) aName.value = shopName;
+            const pName = document.getElementById("phone-header-shop-name");
+            if (pName) pName.innerText = shopName;
             await loadMutedContacts();
         } else {
             showToast("সেটিংস সেভ করতে সমস্যা হয়েছে", "danger");
         }
     } catch (e) {
         console.error("saveAllSettings error:", e);
+        showToast("সার্ভার এরর", "danger");
+    }
+}
+
+async function saveArenaSettings() {
+    const getVal = (id) => {
+        const el = document.getElementById(id);
+        return el ? el.value.trim() : "";
+    };
+
+    const shopName = getVal("arena-shop-name") || getVal("setting-shop-name") || "RS Graphics (আরএস গ্রাফিক্স)";
+    const prompt = getVal("arena-system-prompt");
+    const geminiKey = getVal("arena-gemini-key");
+
+    const payload = {
+        shop_name: shopName
+    };
+    if (prompt) payload.ai_system_prompt = prompt;
+    if (geminiKey) payload.gemini_api_key = geminiKey;
+
+    try {
+        const res = await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("✅ AI ব্রেইন ও শপের নাম সফলভাবে সংরক্ষিত হয়েছে!", "success");
+            const sName = document.getElementById("setting-shop-name");
+            if (sName) sName.value = shopName;
+            const pName = document.getElementById("phone-header-shop-name");
+            if (pName) pName.innerText = shopName;
+        } else {
+            showToast("সংরক্ষণ করতে সমস্যা হয়েছে", "danger");
+        }
+    } catch (e) {
+        console.error("saveArenaSettings error:", e);
         showToast("সার্ভার এরর", "danger");
     }
 }

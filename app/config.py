@@ -42,8 +42,8 @@ class Settings:
     META_GRAPH_VERSION: str = os.getenv("META_GRAPH_VERSION", "v23.0")
     
     # Shop Default Settings
-    SHOP_NAME: str = os.getenv("SHOP_NAME", "আমার ই-কমার্স শপ")
-    SHOP_PHONE: str = os.getenv("SHOP_PHONE", "01700000000")
+    SHOP_NAME: str = os.getenv("SHOP_NAME", "RS Graphics (আরএস গ্রাফিক্স)")
+    SHOP_PHONE: str = os.getenv("SHOP_PHONE", "01816504097")
     DELIVERY_FEE_INSIDE_DHAKA: float = float(os.getenv("DELIVERY_FEE_INSIDE_DHAKA", "70"))
     DELIVERY_FEE_OUTSIDE_DHAKA: float = float(os.getenv("DELIVERY_FEE_OUTSIDE_DHAKA", "130"))
     AUTO_COMMENT_REPLY: bool = os.getenv("AUTO_COMMENT_REPLY", "true").lower() == "true"
