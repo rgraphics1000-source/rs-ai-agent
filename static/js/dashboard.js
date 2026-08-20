@@ -2315,21 +2315,27 @@ function setMutedNumbersList(list) {
 
 function renderMutedContactsChips() {
     const container = document.getElementById("muted-contacts-chips-container");
-    if (!container) return;
+    const dashContainer = document.getElementById("dash-muted-contacts-chips");
 
     const list = getMutedNumbersList();
+    const emptyHtml = `<span style="color: var(--text-dim); font-size: 12px;"><i class="fas fa-info-circle"></i> এখনো কোনো নম্বর মিউট করা হয়নি। উপরের বাটন দিয়ে সিলেক্ট করুন।</span>`;
+
     if (list.length === 0) {
-        container.innerHTML = `<span style="color: var(--text-dim); font-size: 12px;"><i class="fas fa-info-circle"></i> এখনো কোনো নম্বর মিউট করা হয়নি। উপরের বাটন দিয়ে সিলেক্ট করুন।</span>`;
+        if (container) container.innerHTML = emptyHtml;
+        if (dashContainer) dashContainer.innerHTML = emptyHtml;
         return;
     }
 
-    container.innerHTML = list.map(num => `
+    const html = list.map(num => `
         <span style="display: inline-flex; align-items: center; gap: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #fca5a5; padding: 4px 10px; border-radius: 16px; font-size: 12px; font-weight: 500;">
             <i class="fas fa-phone-slash" style="font-size: 10px;"></i>
             <span>${num}</span>
             <i class="fas fa-times" style="cursor: pointer; margin-left: 4px; color: #f87171;" onclick="removeMutedContact('${num}')"></i>
         </span>
     `).join('');
+
+    if (container) container.innerHTML = html;
+    if (dashContainer) dashContainer.innerHTML = html;
 }
 
 function removeMutedContact(num) {

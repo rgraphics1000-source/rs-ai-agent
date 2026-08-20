@@ -18,7 +18,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260820v5">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260820v6">
 </head>
 <body>
 
@@ -97,19 +97,19 @@
     <!-- Main Content Wrapper -->
     <div class="main-wrapper">
         <!-- Mobile Top Nav Header -->
-        <div class="mobile-top-bar">
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <button class="mobile-menu-btn" onclick="toggleMobileSidebar()" aria-label="Open Menu">
+        <div class="mobile-top-bar" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: rgba(13, 17, 28, 0.95); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.08); position: sticky; top: 0; z-index: 40;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="mobile-menu-btn" onclick="toggleMobileSidebar()" aria-label="Open Menu" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: #fff; cursor: pointer;">
                     <i class="fas fa-bars"></i>
                 </button>
-                <img src="/static/img/logo.png" alt="RS AI Logo" style="width: 34px; height: 34px; border-radius: 50%; object-fit: cover; border: 1.5px solid rgba(59, 130, 246, 0.5); box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);">
-                <div style="font-weight: 700; font-size: 16px; letter-spacing: -0.5px;">RS_AI</div>
+                <img src="/static/img/logo.png" alt="RS AI Logo" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(59, 130, 246, 0.7); box-shadow: 0 0 12px rgba(59, 130, 246, 0.5); display: inline-block; vertical-align: middle;">
+                <div style="font-weight: 800; font-size: 17px; letter-spacing: -0.5px; color: #ffffff;">RS_AI</div>
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <a href="/download/RS_AI.apk" download="RS_AI.apk" class="btn" style="background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; color: #34d399; font-size: 11px; padding: 4px 8px; border-radius: 16px; text-decoration: none;">
-                    <i class="fab fa-android"></i> App (.apk)
-                </a>
-                <button id="mobile-ai-master-btn" class="btn" style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; font-size: 11px; padding: 5px 10px; border-radius: 20px; font-weight: 600;" onclick="toggleAIMasterSwitch()">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <button class="btn btn-sm" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239,68,68,0.4); color: #fca5a5; font-size: 11px; padding: 5px 9px; border-radius: 16px; display: flex; align-items: center; gap: 4px;" onclick="openChatSelectorModal()">
+                    <i class="fas fa-phone-slash"></i> মিউট
+                </button>
+                <button id="mobile-ai-master-btn" class="btn" style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; font-size: 11px; padding: 5px 9px; border-radius: 16px; font-weight: 600; display: flex; align-items: center; gap: 4px;" onclick="toggleAIMasterSwitch()">
                     <i class="fas fa-circle" style="font-size: 7px;"></i> <span id="mobile-ai-master-text">Active</span>
                 </button>
             </div>
@@ -318,6 +318,31 @@
                         </div>
                         <p style="font-size: 13px; color: var(--text-main); font-weight: 600;">RS_AI Autonomous Sales Bot</p>
                         <small style="color: #34d399;"><i class="fas fa-circle" style="font-size: 8px;"></i> 24/7 Auto-Replying to Facebook & WhatsApp</small>
+                    </div>
+                </div>
+
+                <!-- Quick Mobile & Desktop Action: Muted / Blacklisted Customers -->
+                <div class="glass-card" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(16, 185, 129, 0.04)); border: 1px solid rgba(239, 68, 68, 0.3); margin-bottom: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <strong style="color: #f87171; font-size: 14.5px; display: flex; align-items: center; gap: 8px;">
+                                <i class="fas fa-phone-slash"></i> এআই মিউট কন্টাক্ট (এজেন্ট যাদের রিপ্লাই দেবে না)
+                            </strong>
+                            <p style="color: var(--text-muted); font-size: 12px; margin: 4px 0 0 0;">
+                                যেসব কাস্টমারকে আপনি সিলেক্ট করবেন, এআই তাদের কোনো উত্তর দেবে না।
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button type="button" class="btn" style="background: linear-gradient(135deg, #2563eb, #06b6d4); color: #fff; font-size: 12px; padding: 7px 12px; font-weight: 600;" onclick="pickPhoneOrWhatsAppContact()">
+                                <i class="fas fa-address-book"></i> 📱 ফোন কন্টাক্ট
+                            </button>
+                            <button type="button" class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-size: 12px; padding: 7px 12px; font-weight: 600;" onclick="openChatSelectorModal()">
+                                <i class="fab fa-whatsapp"></i> 💬 হোয়াটসঅ্যাপ চ্যাট
+                            </button>
+                        </div>
+                    </div>
+                    <div id="dash-muted-contacts-chips" style="min-height: 40px; background: rgba(10, 14, 23, 0.7); border: 1px dashed rgba(255,255,255,0.15); border-radius: 8px; padding: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+                        <!-- Populated dynamically -->
                     </div>
                 </div>
 
@@ -1295,33 +1320,33 @@
 
     <!-- Mobile App-Like Bottom Navigation -->
     <nav class="mobile-bottom-nav">
-        <a href="javascript:void(0)" class="mobile-nav-link active" data-tab="test-arena">
-            <i class="fas fa-robot"></i>
-            <span>AI Setup</span>
-        </a>
         <a href="javascript:void(0)" class="mobile-nav-link" data-tab="dashboard">
             <i class="fas fa-chart-pie"></i>
             <span>Dashboard</span>
         </a>
-        <a href="javascript:void(0)" class="mobile-nav-link" data-tab="orders">
-            <i class="fas fa-box"></i>
-            <span>Orders</span>
+        <a href="javascript:void(0)" class="mobile-nav-link active" data-tab="test-arena">
+            <i class="fas fa-robot"></i>
+            <span>AI Setup</span>
         </a>
-        <a href="javascript:void(0)" class="mobile-nav-link" data-tab="products">
-            <i class="fas fa-tags"></i>
-            <span>Products</span>
+        <a href="javascript:void(0)" class="mobile-nav-link" data-tab="content">
+            <i class="fas fa-brain"></i>
+            <span>Training</span>
         </a>
         <a href="javascript:void(0)" class="mobile-nav-link" data-tab="omnichat">
             <i class="fas fa-comments"></i>
             <span>Inbox</span>
         </a>
+        <a href="javascript:void(0)" class="mobile-nav-link" data-tab="settings">
+            <i class="fas fa-sliders"></i>
+            <span>মিউট/সেটিংস</span>
+        </a>
         <a href="javascript:void(0)" class="mobile-nav-link" onclick="toggleMobileSidebar()">
             <i class="fas fa-bars"></i>
-            <span>More</span>
+            <span>মেনু</span>
         </a>
     </nav>
 
     <div id="fb-root"></div>
-    <script src="/static/js/dashboard.js?v=20260820v5"></script>
+    <script src="/static/js/dashboard.js?v=20260820v6"></script>
 </body>
 </html>

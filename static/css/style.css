@@ -922,6 +922,57 @@ body {
 /* =========================================================
    Responsive Media Queries (Mobile & Tablet)
    ========================================================= */
+.mobile-top-bar {
+  display: none;
+}
+
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: rgba(13, 17, 28, 0.98);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  grid-template-columns: repeat(6, 1fr);
+  z-index: 100;
+  padding: 4px 6px;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.6);
+}
+
+.mobile-nav-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.mobile-nav-link i {
+  font-size: 16px;
+  transition: transform 0.2s ease;
+}
+
+.mobile-nav-link.active {
+  color: #f97316;
+  background: rgba(234, 88, 12, 0.12);
+}
+
+.mobile-nav-link.active i {
+  transform: translateY(-2px) scale(1.15);
+  color: #ea580c;
+  text-shadow: 0 0 10px rgba(234, 88, 12, 0.6);
+}
+
 @media (max-width: 992px) {
   .mobile-top-bar {
     display: flex;
@@ -955,7 +1006,7 @@ body {
   }
 
   .content-container {
-    padding: 16px 12px 84px 12px; /* Bottom padding for mobile bar */
+    padding: 14px 12px 90px 12px; /* Bottom padding for mobile bar */
   }
 
   /* Dual-pane Simulator on Mobile */

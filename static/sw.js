@@ -1,5 +1,5 @@
 // RS AI Agent - Service Worker for Android PWA Support
-const CACHE_NAME = 'rs-ai-agent-v5';
+const CACHE_NAME = 'rs-ai-agent-v6';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
