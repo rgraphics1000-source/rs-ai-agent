@@ -431,18 +431,42 @@
 
                 <!-- Sub-tab 1: AI Brain Training & Custom Rules -->
                 <div id="content-subtab-rules">
+                    <!-- Smart Auto-Digest Box for Unstructured Training Notes -->
+                    <div class="glass-card" style="background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(16, 185, 129, 0.06)); border: 1px solid rgba(59, 130, 246, 0.35); margin-bottom: 24px;">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div class="card-title" style="color: #60a5fa; font-size: 16px;">
+                                <i class="fas fa-brain" style="color: #38bdf8;"></i>
+                                ⚡ স্মার্ট অটো-ট্রেইনিং (এলোমেলো কথা/নির্দেশনা দিয়ে এক-ক্লিকে এআই ট্রেইন)
+                            </div>
+                            <span class="badge" style="background: rgba(59,130,246,0.2); color: #93c5fd; font-size: 11px;">AI Auto-Digest</span>
+                        </div>
+                        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 12px;">
+                            এখানে কোনো সাজানো গোছানো রুল বানানোর প্রয়োজন নেই! আপনার ব্যবসা সম্পর্কিত যে কোনো নিয়ম, কাস্টমার হ্যান্ডলিংয়ের এলোমেলো নির্দেশনা, কথা বলার স্টাইল বা পলিসি নিজের মতো বাংলায় লিখে দিন। এআই স্বয়ংক্রিয়ভাবে সবকিছু বুঝে আলাদা আলাদা সুনির্দিষ্ট রুলে রূপান্তর করে মুখস্থ করে নেবে।
+                        </p>
+                        <div class="form-group">
+                            <textarea id="auto-synthesize-input" class="form-control" rows="4" style="background: rgba(10, 14, 23, 0.7); border: 1px solid rgba(255,255,255,0.12); font-size: 13px; line-height: 1.6;" placeholder="যেমন: উত্তর সবসময় সংক্ষিপ্ত দিবা। ক্রয়মূল্য কখনো বলবা না। শুরুতে ডিসকাউন্ট বলবা না, পরে বলবা। কাস্টমারকে ছবি দেওয়ার আগে জিজ্ঞাসা করবা স্যাম্পল পাঠাবো কি না। নাম দেখে ভাইয়া/আপু বলবা..."></textarea>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                            <button id="btn-auto-synthesize" class="btn btn-primary" style="background: linear-gradient(135deg, #2563eb, #06b6d4); font-weight: 600; padding: 10px 20px; box-shadow: 0 4px 14px rgba(37,99,235,0.4);" onclick="handleAutoSynthesizeTraining()">
+                                <i class="fas fa-wand-magic-sparkles"></i> 🧠 অটো-সিন্থেসাইজ ও এআই ট্রেইন করুন
+                            </button>
+                        </div>
+                        <div id="synthesize-result-alert" style="display: none; margin-top: 14px; padding: 12px 16px; border-radius: 8px; font-size: 13px;"></div>
+                    </div>
+
+                    <!-- Structured Active Rules List -->
                     <div class="glass-card">
                         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <div class="card-title">
-                                <i class="fas fa-wand-magic-sparkles" style="color:var(--accent);"></i>
-                                ইন-অ্যাপ এআই ট্রেইনিং সেন্টার (Custom Brain Rules & Policies)
+                                <i class="fas fa-list-check" style="color:var(--accent);"></i>
+                                এআই ব্রেইনের সক্রিয় মেমোরি ও রুলস (Active Brain Rules)
                             </div>
-                            <button class="btn btn-primary" onclick="openModal('modal-add-training-rule')">
-                                <i class="fas fa-plus"></i> Add New Training Rule
+                            <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;" onclick="openModal('modal-add-training-rule')">
+                                <i class="fas fa-plus"></i> কাস্টম রুল যোগ করুন
                             </button>
                         </div>
                         <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
-                            এখানে আপনি সরাসরি আপনার শপের বিশেষ পলিসি, দাম নির্ধারণের নিয়ম, কাস্টমারের আপত্তি মোকাবিলার কৌশল এবং প্রশ্নোত্তর যুক্ত করতে পারেন। এআই স্বয়ংক্রিয়ভাবে এই নিয়মগুলো চ্যাটে কাস্টমারের সাথে কথা বলার সময় প্রয়োগ করবে।
+                            নিচের রুলগুলো বর্তমানে আপনার এআই এজেন্টের মেমোরিতে সক্রিয় রয়েছে। যেকোনো রুল ১-ক্লিকে অন/অফ বা মুছে দিতে পারেন।
                         </p>
                         
                         <div id="training-rules-list-container">

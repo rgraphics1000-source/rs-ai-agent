@@ -2068,3 +2068,206 @@ function createToastContainer() {
     document.body.appendChild(div);
     return div;
 }
+
+// ==========================================
+// 11. TRAIN CONTENT & AI AUTO-SYNTHESIZER
+// ==========================================
+function switchContentSubtab(tabName, btn) {
+    document.querySelectorAll(".content-subtab-btn").forEach(b => {
+        b.className = "btn btn-secondary content-subtab-btn";
+    });
+    if (btn) btn.className = "btn btn-primary content-subtab-btn";
+
+    const subtabs = ["rules", "media", "faqs", "comments"];
+    subtabs.forEach(t => {
+        const el = document.getElementById(`content-subtab-${t}`);
+        if (el) el.style.display = (t === tabName) ? "block" : "none";
+    });
+
+    if (tabName === "rules") loadTrainingRules();
+    if (tabName === "media") loadSavedMediaList();
+    if (tabName === "faqs") loadFaqs();
+}
+
+async function loadTrainingRules() {
+    const container = document.getElementById("training-rules-list-container");
+    if (!container) return;
+
+    try {
+        const res = await fetch("/api/training/rules");
+        const data = await res.json();
+        const rules = data.rules || [];
+
+        if (rules.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; color: var(--text-dim); padding: 30px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px;">
+                    <i class="fas fa-brain" style="font-size: 28px; color: var(--primary-light); margin-bottom: 10px; display: block;"></i>
+                    এখনো কোনো স্পেশাল এআই রুলস যোগ করা হয়নি।<br>
+                    উপরে আপনার শপের পলিসি বা কাস্টমার হ্যান্ডলিংয়ের কথা বাংলায় লিখে <strong>'🧠 অটো-সিন্থেসাইজ ও এআই ট্রেইন করুন'</strong> বাটনে চাপুন।
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = rules.map(r => `
+            <div style="background: rgba(13, 17, 28, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;">
+                <div style="flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                        <span class="badge" style="background: rgba(37,99,235,0.25); color: #60a5fa; font-size: 11px;">${r.category || 'General'}</span>
+                        <strong style="font-size: 14px; color: #fff;">${r.title}</strong>
+                        ${r.is_active ? '<span style="color: #34d399; font-size: 11px;"><i class="fas fa-check-circle"></i> Active</span>' : '<span style="color: #ef4444; font-size: 11px;"><i class="fas fa-pause-circle"></i> Paused</span>'}
+                    </div>
+                    ${r.question_or_trigger ? `<div style="font-size: 12px; color: #fbbf24; margin-bottom: 4px;"><strong>ট্রিগার:</strong> ${r.question_or_trigger}</div>` : ''}
+                    <p style="font-size: 13px; color: var(--text-muted); line-height: 1.5; margin: 0;">${r.response_or_rule}</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-sm" style="background: ${r.is_active ? 'rgba(239,68,68,0.15); color: #f87171;' : 'rgba(16,185,129,0.15); color: #34d399;'}" onclick="toggleTrainingRuleActive(${r.id})">
+                        ${r.is_active ? '<i class="fas fa-pause"></i> Pause' : '<i class="fas fa-play"></i> Activate'}
+                    </button>
+                    <button class="btn btn-sm" style="background: rgba(239,68,68,0.2); color: #f87171;" onclick="deleteTrainingRuleById(${r.id})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    } catch (e) {
+        console.error("loadTrainingRules error:", e);
+    }
+}
+
+async function handleAutoSynthesizeTraining() {
+    const textarea = document.getElementById("auto-synthesize-input");
+    const btn = document.getElementById("btn-auto-synthesize");
+    const alertBox = document.getElementById("synthesize-result-alert");
+    const text = textarea ? textarea.value.trim() : "";
+
+    if (!text) {
+        showToast("দয়া করে আপনার ব্যবসায়িক নির্দেশনা বা কথাগুলো বক্সে লিখুন", "danger");
+        return;
+    }
+
+    const originalBtnHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> এআই ব্রেইন বিশ্লেষণ করছে...`;
+
+    if (alertBox) alertBox.style.display = "none";
+
+    try {
+        const res = await fetch("/api/training/synthesize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ raw_text: text })
+        });
+        const data = await res.json();
+
+        if (data.success && data.count > 0) {
+            textarea.value = "";
+            showToast(`🎉 চমৎকার! ${data.count}টি সুনির্দিষ্ট সেলস রুল এআই ব্রেইনে যুক্ত হয়েছে!`, "success");
+            
+            if (alertBox) {
+                alertBox.style.display = "block";
+                alertBox.style.background = "rgba(16, 185, 129, 0.15)";
+                alertBox.style.border = "1px solid #10b981";
+                alertBox.style.color = "#34d399";
+                alertBox.innerHTML = `<i class="fas fa-check-circle"></i> <strong>সফল হয়েছে:</strong> আপনার এলোমেলো নোট থেকে <strong>${data.count}টি রুল</strong> স্বয়ংক্রিয়ভাবে আলাদা করে এআই ব্রেইনে সক্রিয় করা হয়েছে।`;
+            }
+            loadTrainingRules();
+        } else {
+            showToast(data.message || "রুল সিন্থেসাইজে সমস্যা হয়েছে", "danger");
+        }
+    } catch (e) {
+        console.error("handleAutoSynthesizeTraining error:", e);
+        showToast("সার্ভার এরর: এআই ট্রেইনিং সফল হয়নি", "danger");
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalBtnHtml;
+    }
+}
+
+async function toggleTrainingRuleActive(id) {
+    try {
+        const res = await fetch(`/api/training/rules/${id}/toggle`, { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+            showToast("রুল স্ট্যাটাস পরিবর্তন করা হয়েছে", "success");
+            loadTrainingRules();
+        }
+    } catch (e) {
+        console.error("toggleTrainingRuleActive error:", e);
+    }
+}
+
+async function deleteTrainingRuleById(id) {
+    if (!confirm("আপনি কি নিশ্চিত এই ট্রেইনিং রুলটি মুছে ফেলতে চান?")) return;
+    try {
+        const res = await fetch(`/api/training/rules/${id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.success) {
+            showToast("ট্রেইনিং রুলটি মুছে ফেলা হয়েছে", "info");
+            loadTrainingRules();
+        }
+    } catch (e) {
+        console.error("deleteTrainingRuleById error:", e);
+    }
+}
+
+async function loadSavedMediaList() {
+    const grid = document.getElementById("saved-media-grid");
+    if (!grid) return;
+
+    try {
+        const res = await fetch("/api/saved-media");
+        const data = await res.json();
+        const media = data.media || [];
+
+        if (media.length === 0) {
+            grid.innerHTML = `
+                <div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">
+                    কোনো সেভ করা ভয়েস ক্লিপ বা ডেমো ভিডিও নেই। উপরে '+ Upload Voice / Video' বাটনে ক্লিক করুন।
+                </div>
+            `;
+            return;
+        }
+
+        grid.innerHTML = media.map(m => `
+            <div class="glass-card" style="padding: 14px; margin-bottom: 0; background: rgba(13, 17, 28, 0.75);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span class="badge" style="background: ${m.media_type === 'voice' ? 'rgba(236,72,153,0.2)' : 'rgba(59,130,246,0.2)'}; color: ${m.media_type === 'voice' ? '#f472b6' : '#60a5fa'}; font-size: 11px;">
+                        <i class="fas ${m.media_type === 'voice' ? 'fa-microphone' : 'fa-video'}"></i> ${m.media_type.toUpperCase()}
+                    </span>
+                    <button class="btn btn-sm" style="background: rgba(239,68,68,0.2); color: #f87171; padding: 2px 6px;" onclick="deleteSavedMediaById(${m.id})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+                <strong style="font-size: 13px; color: #fff; display: block; margin-bottom: 6px;">${m.title}</strong>
+                ${m.media_type === 'voice' ? `
+                    <audio controls style="width: 100%; height: 32px; margin-top: 6px;">
+                        <source src="${m.file_url}" type="audio/mpeg">
+                    </audio>
+                ` : `
+                    <video controls style="width: 100%; max-height: 140px; border-radius: 6px; margin-top: 6px; background: #000;">
+                        <source src="${m.file_url}" type="video/mp4">
+                    </video>
+                `}
+                <small style="color: var(--text-dim); display: block; margin-top: 6px;">${m.description || ''}</small>
+            </div>
+        `).join('');
+    } catch (e) {
+        console.error("loadSavedMediaList error:", e);
+    }
+}
+
+async function deleteSavedMediaById(id) {
+    if (!confirm("আপনি কি নিশ্চিত এই মিডিয়া ফাইলটি মুছে ফেলতে চান?")) return;
+    try {
+        const res = await fetch(`/api/saved-media/${id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.success) {
+            showToast("মিডিয়া ফাইলটি মুছে ফেলা হয়েছে", "info");
+            loadSavedMediaList();
+        }
+    } catch (e) {
+        console.error("deleteSavedMediaById error:", e);
+    }
+}
+

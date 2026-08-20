@@ -536,6 +536,21 @@ async def api_get_training_rules():
     rules = get_all_training_rules()
     return {"rules": rules}
 
+@app.post("/api/training/synthesize")
+async def api_synthesize_training(request: Request):
+    """
+    Takes raw, unorganized Bengali owner instructions and uses AI to automatically
+    extract, organize, categorize, and save clean structured training rules into the database.
+    """
+    from app.ai_agent.synthesizer import synthesize_training_text_to_rules
+    data = await request.json()
+    raw_text = data.get("raw_text", "").strip()
+    if not raw_text:
+        raise HTTPException(status_code=400, detail="Raw training text is required")
+    
+    rules = synthesize_training_text_to_rules(raw_text)
+    return {"success": True, "count": len(rules), "rules": rules}
+
 @app.post("/api/training/rules")
 async def api_create_training_rule(request: Request):
     data = await request.json()
