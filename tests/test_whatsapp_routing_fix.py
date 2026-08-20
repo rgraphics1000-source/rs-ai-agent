@@ -2,8 +2,8 @@
 """
 Tests for WhatsApp Webhook Routing Fix & Workspace Isolation.
 Tests A through J:
-- A: RS Graphics phone_number_id (4184514263660680) resolves correctly
-- B: phone_number_id 4184514263660680 resolves correctly as configured Meta number
+- A: RS Graphics phone_number_id (418451426636680) resolves correctly
+- B: phone_number_id 418451426636680 resolves correctly as configured Meta number
 - C: Unknown phone_number_id is dropped without fallback
 - D: Workspace 1 WhatsApp message uses Workspace 1 credentials
 - E: Workspace 2 WhatsApp message uses Workspace 2 credentials
