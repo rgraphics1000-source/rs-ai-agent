@@ -33,8 +33,10 @@ COPY --chown=user:user . .
 # Ensure upload directory exists and is writable
 RUN mkdir -p static/uploads
 
-# Expose port (7860 is default for Hugging Face)
+# Expose ports (7860 for Hugging Face, 10000 for Render, 8000 for VPS/local)
 EXPOSE 7860
+EXPOSE 10000
+EXPOSE 8000
 
-# Launch FastAPI app with Uvicorn on port 7860
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
+# Launch FastAPI app with Uvicorn on dynamic PORT
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
