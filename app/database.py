@@ -359,41 +359,8 @@ def init_db():
         except Exception:
             pass
 
-    # Safe Automatic Migration for Existing Page 1 into connected_pages
-    cursor.execute("SELECT COUNT(*) FROM connected_pages")
-    page_count = cursor.fetchone()[0]
-    p1_id = None
-    if page_count == 0:
-        cursor.execute("SELECT value FROM settings WHERE key = 'fb_page_id'")
-        p_id_row = cursor.fetchone()
-        p1_id = p_id_row["value"] if (p_id_row and p_id_row["value"]) else (settings.FB_PAGE_ID or "rs_graphics_page_1")
-        
-        cursor.execute("SELECT value FROM settings WHERE key = 'fb_page_access_token'")
-        p_tok_row = cursor.fetchone()
-        p1_token = p_tok_row["value"] if (p_tok_row and p_tok_row["value"]) else (settings.FB_PAGE_ACCESS_TOKEN or "")
-
-        cursor.execute("SELECT value FROM settings WHERE key = 'shop_name'")
-        p_name_row = cursor.fetchone()
-        p1_name = p_name_row["value"] if (p_name_row and p_name_row["value"]) else "RS Graphics (আরএস গ্রাফিক্স)"
-
-        cursor.execute("SELECT value FROM settings WHERE key = 'shop_phone'")
-        p_phone_row = cursor.fetchone()
-        p1_phone = p_phone_row["value"] if (p_phone_row and p_phone_row["value"]) else "01816504097"
-
-        cursor.execute("SELECT value FROM settings WHERE key = 'ai_system_prompt'")
-        p_prompt_row = cursor.fetchone()
-        p1_prompt = p_prompt_row["value"] if (p_prompt_row and p_prompt_row["value"]) else ""
-
-        cursor.execute("""
-            INSERT OR IGNORE INTO connected_pages (
-                workspace_id, page_id, page_name, page_access_token, page_status,
-                messenger_enabled, comments_enabled, ai_enabled, ai_system_prompt,
-                shop_name, shop_phone, shop_address, delivery_inside_dhaka, delivery_outside_dhaka
-            ) VALUES (1, ?, ?, ?, 'connected', 1, 1, 1, ?, ?, ?, 'ঢাকা, বাংলাদেশ', 70.0, 130.0)
-        """, (p1_id, p1_name, p1_token, p1_prompt, p1_name, p1_phone))
-        print(f"[Auto-Migration] Existing Page 1 ('{p1_name}', Page ID: {p1_id}) initialized in connected_pages.")
-
-    # Safe Idempotent Consistency Check for WhatsApp Accounts
+    # Safe Idempotent Consistency Check for Facebook Page 1 and WhatsApp Accounts
+    ensure_facebook_page_consistency(conn=conn)
     ensure_whatsapp_account_consistency(conn=conn)
 
     # Scope legacy conversations and comment_logs to primary Page 1
@@ -934,6 +901,120 @@ def get_all_connected_pages() -> list:
         print(f"[DB get_all_connected_pages Error]: {e}")
         return []
 
+def ensure_facebook_page_consistency(conn=None) -> Optional[dict]:
+    """
+    Self-healing migration and consistency enforcer for Facebook connected pages.
+    Guarantees:
+    1. Workspace 1 (RS Graphics) always has a valid, canonical Facebook page with real Meta Page ID 105116472071659.
+    2. Legacy placeholder IDs (rs_graphics_page_1, empty, default) are safely migrated to 105116472071659.
+    3. Token from settings or environment is safely synced.
+    4. Fully idempotent and safe to call concurrently or repeatedly.
+    """
+    target_page_id = str(
+        get_setting("fb_page_id")
+        or os.getenv("FB_PAGE_ID")
+        or settings.FB_PAGE_ID
+        or "105116472071659"
+    ).strip()
+    target_page_token = str(
+        get_setting("fb_page_access_token")
+        or os.getenv("FB_PAGE_ACCESS_TOKEN")
+        or settings.FB_PAGE_ACCESS_TOKEN
+        or ""
+    ).strip()
+    target_page_name = str(settings.SHOP_NAME or "RS Graphics (আরএস গ্রাফিক্স)").strip()
+    target_shop_phone = str(settings.SHOP_PHONE or "01816504097").strip()
+
+    close_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        close_conn = True
+
+    try:
+        cursor = conn.cursor()
+
+        # Step 1: Check if page already exists with target_page_id
+        cursor.execute("SELECT * FROM connected_pages WHERE page_id = ?", (target_page_id,))
+        exact_match = cursor.fetchone()
+
+        canonical_id = None
+        if exact_match:
+            canonical_id = exact_match["id"]
+            cursor.execute("""
+                UPDATE connected_pages SET
+                    workspace_id = 1,
+                    page_name = COALESCE(NULLIF(page_name, ''), ?),
+                    page_access_token = CASE 
+                        WHEN LENGTH(?) > 30 THEN ?
+                        WHEN page_access_token IS NULL OR page_access_token = '' THEN ?
+                        ELSE page_access_token 
+                    END,
+                    page_status = 'connected',
+                    messenger_enabled = 1,
+                    comments_enabled = 1,
+                    ai_enabled = 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (target_page_name, target_page_token, target_page_token, target_page_token, canonical_id))
+            # Delete duplicate rows with target_page_id if any
+            cursor.execute("DELETE FROM connected_pages WHERE page_id = ? AND id != ?", (target_page_id, canonical_id))
+        else:
+            # Step 2: Look for candidate row belonging to Workspace 1
+            cursor.execute("""
+                SELECT * FROM connected_pages 
+                WHERE workspace_id = 1 
+                   OR page_id IN ('rs_graphics_page_1', '', 'default')
+                ORDER BY id ASC
+            """)
+            w1_candidates = cursor.fetchall()
+            if w1_candidates:
+                canonical_id = w1_candidates[0]["id"]
+                cursor.execute("DELETE FROM connected_pages WHERE page_id = ? AND id != ?", (target_page_id, canonical_id))
+                cursor.execute("""
+                    UPDATE connected_pages SET
+                        workspace_id = 1,
+                        page_id = ?,
+                        page_name = COALESCE(NULLIF(page_name, ''), ?),
+                        page_access_token = CASE 
+                            WHEN LENGTH(?) > 30 THEN ?
+                            WHEN page_access_token IS NULL OR page_access_token = '' THEN ?
+                            ELSE page_access_token 
+                        END,
+                        page_status = 'connected',
+                        messenger_enabled = 1,
+                        comments_enabled = 1,
+                        ai_enabled = 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (target_page_id, target_page_name, target_page_token, target_page_token, target_page_token, canonical_id))
+            else:
+                # Step 3: Insert canonical row
+                cursor.execute("""
+                    INSERT OR IGNORE INTO connected_pages (
+                        workspace_id, page_id, page_name, page_access_token, page_status,
+                        messenger_enabled, comments_enabled, ai_enabled, ai_system_prompt,
+                        shop_name, shop_phone, shop_address, delivery_inside_dhaka, delivery_outside_dhaka
+                    ) VALUES (1, ?, ?, ?, 'connected', 1, 1, 1, '', ?, ?, 'ঢাকা, বাংলাদেশ', 70.0, 130.0)
+                """, (target_page_id, target_page_name, target_page_token, target_page_name, target_shop_phone))
+                canonical_id = cursor.lastrowid
+
+        # Update settings table
+        cursor.execute("UPDATE settings SET value = ? WHERE key = 'fb_page_id'", (target_page_id,))
+        if target_page_token and len(target_page_token) > 30:
+            cursor.execute("UPDATE settings SET value = ? WHERE key = 'fb_page_access_token'", (target_page_token,))
+
+        conn.commit()
+
+        cursor.execute("SELECT * FROM connected_pages WHERE id = ?", (canonical_id,))
+        final_row = cursor.fetchone()
+        return dict(final_row) if final_row else None
+    except Exception as e:
+        print(f"[ensure_facebook_page_consistency Error]: {e}")
+        return None
+    finally:
+        if close_conn and conn:
+            conn.close()
+
 def get_connected_page(page_id_or_id) -> Optional[dict]:
     """Retrieves a single connected page record by page_id (string) or internal id (integer)."""
     if not page_id_or_id:
@@ -947,6 +1028,10 @@ def get_connected_page(page_id_or_id) -> Optional[dict]:
             cursor.execute("SELECT * FROM connected_pages WHERE page_id = ?", (str(page_id_or_id),))
         row = cursor.fetchone()
         conn.close()
+
+        if not row and str(page_id_or_id) in ["105116472071659", "rs_graphics_page_1"]:
+            return ensure_facebook_page_consistency()
+
         return dict(row) if row else None
     except Exception as e:
         print(f"[DB get_connected_page Error]: {e}")

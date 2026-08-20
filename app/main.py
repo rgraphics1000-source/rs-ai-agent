@@ -1,10 +1,17 @@
 import os
+import sys
 import json
 import csv
 import io
 import uuid
 import requests
 from typing import Optional, List
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 from fastapi import FastAPI, Request, Response, Form, File, UploadFile, Query, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, PlainTextResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,7 +30,8 @@ from app.database import (
     get_all_whatsapp_accounts, get_whatsapp_account_by_phone_id, get_whatsapp_account_by_page_id,
     get_whatsapp_account_by_workspace_id, save_whatsapp_account, delete_whatsapp_account, get_page_ai_config,
     get_all_workspaces, get_workspace, save_workspace, delete_workspace,
-    get_faqs, create_faq, delete_faq, ensure_whatsapp_account_consistency
+    get_faqs, create_faq, delete_faq, ensure_whatsapp_account_consistency,
+    ensure_facebook_page_consistency
 )
 from app.ai_agent.gemini_brain import process_customer_message
 from app.ai_agent.voice_engine import generate_bangla_voice, list_available_voices
@@ -942,6 +950,10 @@ async def api_save_settings(request: Request):
     if any(k in data for k in ["whatsapp_access_token", "meta_system_user_access_token", "whatsapp_phone_number_id", "whatsapp_waba_id"]):
         ensure_whatsapp_account_consistency()
 
+    # Sync Facebook connected pages if credentials updated
+    if any(k in data for k in ["fb_page_id", "fb_page_access_token"]):
+        ensure_facebook_page_consistency()
+
     return {"success": True, "message": "Settings updated successfully"}
 
 # Dedicated Muted / Blacklisted Contacts Endpoints
@@ -970,6 +982,120 @@ async def api_remove_muted_contact(request: Request):
 # ==========================================
 # DIAGNOSTICS & SYSTEM STATUS APIS
 # ==========================================
+@app.get("/api/diagnostics/meta")
+async def api_diagnostics_meta():
+    """
+    Comprehensive, secure diagnostic endpoint returning Facebook Page and WhatsApp 
+    configuration, routing health, and token status with sensitive tokens masked.
+    """
+    ensure_facebook_page_consistency()
+    ensure_whatsapp_account_consistency()
+
+    pages = get_all_connected_pages()
+    whatsapp_accounts = get_all_whatsapp_accounts()
+
+    def mask_tok(t):
+        if not t:
+            return ""
+        t_s = str(t).strip()
+        if len(t_s) <= 10:
+            return "********"
+        return f"{t_s[:6]}...{t_s[-4:]}"
+
+    fb_diagnostics = []
+    fb_w1_ready = False
+    for p in pages:
+        p_dict = dict(p)
+        token = str(p_dict.get("page_access_token") or "").strip()
+        page_id = str(p_dict.get("page_id") or "").strip()
+        is_real_token = len(token) > 30 and not token.startswith("EAATest") and not token.startswith("EAA_")
+        is_w1 = p_dict.get("workspace_id") == 1 or page_id == "105116472071659"
+        
+        diag = {
+            "id": p_dict.get("id"),
+            "workspace_id": p_dict.get("workspace_id"),
+            "page_id": page_id,
+            "page_name": p_dict.get("page_name"),
+            "page_status": p_dict.get("page_status"),
+            "token_present": bool(token),
+            "token_masked": mask_tok(token),
+            "token_length": len(token),
+            "is_real_token": is_real_token,
+            "page_mapping_valid": page_id not in ["rs_graphics_page_1", "default", ""] and len(page_id) >= 10
+        }
+        if is_w1 and diag["page_mapping_valid"]:
+            fb_w1_ready = True
+        fb_diagnostics.append(diag)
+
+    wa_diagnostics = []
+    wa_w1_ready = False
+    for wa in whatsapp_accounts:
+        wa_dict = dict(wa)
+        token = str(wa_dict.get("access_token") or "").strip()
+        phone_id = str(wa_dict.get("phone_number_id") or "").strip()
+        is_real_token = len(token) > 30 and not token.startswith("EAATest") and not token.startswith("TOKEN_")
+        is_w1 = wa_dict.get("workspace_id") == 1 or phone_id == "4184514263660680"
+
+        api_test_status = None
+        api_test_error = None
+        if is_real_token and phone_id:
+            try:
+                r = requests.get(
+                    f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}/{phone_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                    params={"fields": "id,display_phone_number,verified_name,quality_rating"},
+                    timeout=3
+                )
+                if r.status_code == 200:
+                    api_test_status = "valid"
+                else:
+                    err_j = r.json().get("error", {})
+                    api_test_status = "error"
+                    api_test_error = f"HTTP {r.status_code} ({err_j.get('type')}: {err_j.get('message')})"
+            except Exception as ex:
+                api_test_status = "unreachable"
+                api_test_error = str(ex)
+
+        diag = {
+            "id": wa_dict.get("id"),
+            "workspace_id": wa_dict.get("workspace_id"),
+            "phone_number_id": phone_id,
+            "display_phone_number": wa_dict.get("display_phone_number"),
+            "waba_id": wa_dict.get("waba_id"),
+            "connection_status": wa_dict.get("connection_status"),
+            "token_present": bool(token),
+            "token_masked": mask_tok(token),
+            "token_length": len(token),
+            "is_real_token": is_real_token,
+            "phone_number_mapping_valid": phone_id == "4184514263660680" or (len(phone_id) >= 15 and phone_id.isdigit()),
+            "token_api_check": api_test_status,
+            "token_api_error": api_test_error
+        }
+        if is_w1 and diag["phone_number_mapping_valid"]:
+            wa_w1_ready = True
+        wa_diagnostics.append(diag)
+
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "meta_graph_version": settings.META_GRAPH_VERSION,
+        "rs_graphics_workspace_1": {
+            "canonical_facebook_page_id": "105116472071659",
+            "facebook_ready": fb_w1_ready,
+            "canonical_whatsapp_phone_id": "4184514263660680",
+            "canonical_whatsapp_waba_id": "27905447135785944",
+            "whatsapp_ready": wa_w1_ready
+        },
+        "facebook": {
+            "connected_pages_count": len(pages),
+            "pages": fb_diagnostics
+        },
+        "whatsapp": {
+            "accounts_count": len(whatsapp_accounts),
+            "accounts": wa_diagnostics
+        }
+    }
+
 @app.get("/api/diagnostic/whatsapp")
 @app.get("/api/diagnostics")
 async def api_get_diagnostics():

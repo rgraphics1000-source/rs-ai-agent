@@ -29,7 +29,7 @@ class Settings:
     META_EMBEDDED_SIGNUP_CONFIG_ID: str = os.getenv("META_EMBEDDED_SIGNUP_CONFIG_ID") or "10034031760860138"
     FB_PAGE_ACCESS_TOKEN: str = os.getenv("FB_PAGE_ACCESS_TOKEN", "")
     FB_VERIFY_TOKEN: str = os.getenv("FB_VERIFY_TOKEN", "rs_secure_verify_token_2026")
-    FB_PAGE_ID: str = os.getenv("FB_PAGE_ID", "")
+    FB_PAGE_ID: str = os.getenv("FB_PAGE_ID", "105116472071659")
     FB_APP_SECRET: str = os.getenv("FB_APP_SECRET", "")
     
     # WhatsApp Cloud API & Coexistence

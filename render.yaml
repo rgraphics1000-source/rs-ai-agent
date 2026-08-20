@@ -17,5 +17,7 @@ services:
         value: "rs_whatsapp_token_2026"
       - key: FB_VERIFY_TOKEN
         value: "rs_secure_verify_token_2026"
+      - key: FB_PAGE_ID
+        value: "105116472071659"
       - key: META_GRAPH_VERSION
         value: "v23.0"

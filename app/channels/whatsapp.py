@@ -1,10 +1,17 @@
 import os
+import sys
 import requests
 import json
 import time
 import asyncio
 from pathlib import Path
 from typing import Optional, Tuple
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 from app.config import settings
 from app.database import (
     get_setting, set_setting, get_all_settings, get_db_connection,
@@ -144,9 +151,19 @@ def send_whatsapp_message(to_number: str, message_text: str, phone_id: str = Non
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
         status_ok = r.status_code in [200, 201]
-        print(f"[WhatsApp Send] phone_number_id={phone_id} recipient={masked_rec} status={'success' if status_ok else 'failed'}")
-        if not status_ok:
-            print(f"[WhatsApp Send ERROR] status={r.status_code} response={r.text}")
+        if status_ok:
+            print(f"[WhatsApp Send] workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} status=success")
+        else:
+            try:
+                err_data = r.json().get("error", {})
+                err_code = err_data.get("code")
+                err_subcode = err_data.get("error_subcode")
+                err_type = err_data.get("type")
+                err_msg = err_data.get("message")
+                token_preview = f"{clean_token[:6]}...{clean_token[-4:]}" if len(clean_token) > 10 else "SHORT/EMPTY"
+                print(f"[WhatsApp Send] workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} status=failed http_status={r.status_code} graph_error_code={err_code} error_type={err_type} error_message={err_msg} token_preview={token_preview}")
+            except Exception:
+                print(f"[WhatsApp Send ERROR] status={r.status_code} response={r.text}")
         return status_ok
     except Exception as e:
         print(f"[WhatsApp Send Exception]: {e}")

@@ -13,4 +13,5 @@ Thumbs.db
 android_app/.gradle/
 android_app/**/build/
 android_app/local.properties
+rs_ai_backup_*.db
 

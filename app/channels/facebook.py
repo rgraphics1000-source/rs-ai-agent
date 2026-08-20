@@ -1,14 +1,22 @@
 import os
+import sys
 import json
 import time
 import requests
 import asyncio
 from pathlib import Path
 from typing import Optional, Dict, Any
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 from app.config import settings
 from app.database import (
     get_db_connection, get_setting, is_conversation_ai_active,
-    get_connected_page, get_all_connected_pages, get_page_ai_config
+    get_connected_page, get_all_connected_pages, get_page_ai_config,
+    ensure_facebook_page_consistency
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.ai_agent.gemini_brain import process_customer_message
@@ -47,7 +55,11 @@ def get_fb_user_profile(sender_id: str, page_token: str = None, page_id: str = N
 def send_fb_text_message(recipient_id: str, text: str, page_token: str = None, page_id: str = None) -> bool:
     """Sends a text message to a Facebook Messenger user using specific Page credentials."""
     token = page_token or get_fb_token(page_id)
-    if not token:
+    clean_token = str(token or "").strip().strip('"').strip("'")
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
+    if not clean_token:
         print(f"[Facebook Send Error]: Page Access Token missing for Page ID {page_id or 'default'}!")
         return False
     if not recipient_id:
@@ -55,7 +67,7 @@ def send_fb_text_message(recipient_id: str, text: str, page_token: str = None, p
         return False
 
     url = f"{GRAPH_API_URL}/me/messages"
-    params = {"access_token": token}
+    params = {"access_token": clean_token}
     payload = {
         "recipient": {"id": recipient_id},
         "message": {"text": text},
@@ -63,8 +75,9 @@ def send_fb_text_message(recipient_id: str, text: str, page_token: str = None, p
     }
     try:
         r = requests.post(url, params=params, json=payload, timeout=10)
+        status_ok = r.status_code == 200
         print(f"[Facebook Send Result]: HTTP {r.status_code}, Body: {r.text}")
-        return r.status_code == 200
+        return status_ok
     except Exception as e:
         print(f"[Facebook Send Exception]: {e}")
         return False
@@ -72,11 +85,15 @@ def send_fb_text_message(recipient_id: str, text: str, page_token: str = None, p
 def send_fb_media_message(recipient_id: str, media_type: str, media_url: str, page_token: str = None, page_id: str = None) -> bool:
     """Sends an image, video, or audio attachment to a Facebook Messenger user."""
     token = page_token or get_fb_token(page_id)
-    if not token or not recipient_id or not media_url:
+    clean_token = str(token or "").strip().strip('"').strip("'")
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
+    if not clean_token or not recipient_id or not media_url:
         return False
 
     url = f"{GRAPH_API_URL}/me/messages"
-    params = {"access_token": token}
+    params = {"access_token": clean_token}
     base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
     full_url = media_url if media_url.startswith("http") else f"{base_server_url}{media_url}"
 
@@ -145,11 +162,15 @@ def send_fb_video_message(recipient_id: str, video_url: str, page_token: str = N
 def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, page_id: str = None) -> bool:
     """Replies publicly to a Facebook post comment."""
     token = page_token or get_fb_token(page_id)
-    if not token or not comment_id:
+    clean_token = str(token or "").strip().strip('"').strip("'")
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
+    if not clean_token or not comment_id:
         return False
 
     url = f"{GRAPH_API_URL}/{comment_id}/comments"
-    params = {"access_token": token}
+    params = {"access_token": clean_token}
     payload = {"message": message}
     try:
         r = requests.post(url, params=params, data=payload, timeout=10)
@@ -161,11 +182,15 @@ def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, p
 def send_fb_private_reply_to_comment(comment_id: str, message: str, page_token: str = None, page_id: str = None) -> bool:
     """Sends a private message to the user who commented on a post."""
     token = page_token or get_fb_token(page_id)
-    if not token or not comment_id:
+    clean_token = str(token or "").strip().strip('"').strip("'")
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
+    if not clean_token or not comment_id:
         return False
 
     url = f"{GRAPH_API_URL}/me/messages"
-    params = {"access_token": token}
+    params = {"access_token": clean_token}
     payload = {
         "recipient": {"comment_id": comment_id},
         "message": {"text": message}
@@ -182,25 +207,33 @@ async def handle_facebook_webhook_event(data: dict):
     try:
         entries = data.get("entry", [])
         for entry in entries:
+            entry_id = str(entry.get("id", "")).strip()
+
             # 1. Handle Messenger Messages
             if "messaging" in entry:
                 for event in entry["messaging"]:
                     sender_id = event.get("sender", {}).get("id")
                     recipient_id = event.get("recipient", {}).get("id") # Target Page ID
                     
-                    if not recipient_id or not sender_id:
+                    target_page_id = str(recipient_id or entry_id).strip()
+                    if not target_page_id or not sender_id:
                         continue
 
                     # Look up the specific connected page for this message
-                    page_conn = get_connected_page(recipient_id)
+                    page_conn = get_connected_page(target_page_id)
+                    if not page_conn and target_page_id in ["105116472071659", "rs_graphics_page_1"]:
+                        page_conn = ensure_facebook_page_consistency()
+
                     if not page_conn:
-                        print(f"[Facebook Routing Error]: Unknown recipient_id {recipient_id}. No matching connected_page found. Event dropped without fallback.")
+                        print(f"[Facebook Routing Error]: Unknown recipient_id {target_page_id}. No matching connected_page found. Event dropped without fallback.")
                         continue
 
                     workspace_id = page_conn.get("workspace_id", 1)
-                    page_id = page_conn.get("page_id", recipient_id)
+                    page_id = page_conn.get("page_id", target_page_id)
                     page_token = page_conn.get("page_access_token")
                     page_name = page_conn.get("page_name", "Facebook Page")
+
+                    print(f"[Facebook Routing] recipient_id={target_page_id} matched_page_id={page_id} workspace_id={workspace_id} page_name={page_name}")
 
                     # Prevent replying to messages sent by our own pages
                     if sender_id == recipient_id or get_connected_page(sender_id) is not None:
@@ -311,8 +344,11 @@ async def handle_facebook_webhook_event(data: dict):
 
             # 2. Handle Feed Comments (Auto Comment Reply & Private Inbox Message)
             if "changes" in entry:
-                page_id = str(entry.get("id", "")) # Page ID owning the feed
+                page_id = str(entry.get("id", "")).strip() # Page ID owning the feed
                 page_conn = get_connected_page(page_id)
+                if not page_conn and page_id in ["105116472071659", "rs_graphics_page_1"]:
+                    page_conn = ensure_facebook_page_consistency()
+
                 if not page_conn:
                     print(f"[Facebook Routing Error]: Unknown page_id {page_id} for comment. Event dropped without fallback.")
                     continue
