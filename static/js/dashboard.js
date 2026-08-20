@@ -1255,14 +1255,22 @@ async function loadOmnichatConversations() {
                 item.style.background = "var(--primary-soft)";
                 updateOmnichatHeader(c);
                 loadOmnichatMessages(c.id);
+                // On mobile: smoothly switch to chat pane
+                document.querySelector(".omnichat-box")?.classList.add("mobile-chat-open");
             });
             container.appendChild(item);
         });
 
-        if (activeConversationId) loadOmnichatMessages(activeConversationId);
+        if (activeConversationId && window.innerWidth > 992) {
+            loadOmnichatMessages(activeConversationId);
+        }
     } catch (e) {
         console.error("Load Omnichat conversations error:", e);
     }
+}
+
+function closeOmnichatMobileChat() {
+    document.querySelector(".omnichat-box")?.classList.remove("mobile-chat-open");
 }
 
 function updateOmnichatHeader(c) {
