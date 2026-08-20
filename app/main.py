@@ -23,7 +23,7 @@ from app.database import (
     get_all_whatsapp_accounts, get_whatsapp_account_by_phone_id, get_whatsapp_account_by_page_id,
     get_whatsapp_account_by_workspace_id, save_whatsapp_account, delete_whatsapp_account, get_page_ai_config,
     get_all_workspaces, get_workspace, save_workspace, delete_workspace,
-    get_faqs, create_faq, delete_faq
+    get_faqs, create_faq, delete_faq, ensure_whatsapp_account_consistency
 )
 from app.ai_agent.gemini_brain import process_customer_message
 from app.ai_agent.voice_engine import generate_bangla_voice, list_available_voices
@@ -937,6 +937,11 @@ async def api_save_settings(request: Request):
     data = await request.json()
     for k, v in data.items():
         set_setting(k, str(v))
+    
+    # Sync WhatsApp accounts if credentials updated
+    if any(k in data for k in ["whatsapp_access_token", "meta_system_user_access_token", "whatsapp_phone_number_id", "whatsapp_waba_id"]):
+        ensure_whatsapp_account_consistency()
+
     return {"success": True, "message": "Settings updated successfully"}
 
 # Dedicated Muted / Blacklisted Contacts Endpoints

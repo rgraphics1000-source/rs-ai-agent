@@ -40,54 +40,72 @@ def normalize_whatsapp_phone_number(raw_phone: str) -> str:
         pass
     return digits
 
+def is_valid_meta_token(token: str) -> bool:
+    """Returns True if token looks like a real Meta token (not empty or short test fixture)."""
+    if not token:
+        return False
+    t = str(token).strip()
+    return len(t) > 30 and not t.startswith("EAATest") and not t.startswith("EAA_WA") and not t.startswith("TOKEN_")
+
+def resolve_whatsapp_token(wa_account: Optional[dict] = None, workspace_id: int = 1) -> str:
+    """Resolves the best available WhatsApp token for sending messages in priority order."""
+    acc_tok = str(wa_account.get("access_token", "") if wa_account else "").strip()
+    if is_valid_meta_token(acc_tok):
+        return acc_tok
+
+    setting_tok = str(
+        get_setting("whatsapp_access_token") 
+        or get_setting("meta_system_user_access_token") 
+        or get_setting("fb_page_access_token")
+    ).strip()
+    if is_valid_meta_token(setting_tok):
+        return setting_tok
+
+    env_tok = str(
+        os.getenv("META_SYSTEM_USER_ACCESS_TOKEN") 
+        or os.getenv("WHATSAPP_ACCESS_TOKEN") 
+        or os.getenv("FB_PAGE_ACCESS_TOKEN") 
+        or settings.WHATSAPP_ACCESS_TOKEN 
+        or settings.META_SYSTEM_USER_ACCESS_TOKEN
+        or ""
+    ).strip()
+    if is_valid_meta_token(env_tok):
+        return env_tok
+
+    # Fallback to whatever non-empty token exists
+    return acc_tok or setting_tok or env_tok
+
 def get_whatsapp_credentials(phone_number_id: str = None, page_id: str = None, workspace_id: int = None) -> Tuple[str, str]:
     """Gets valid Phone Number ID and Access Token for a specific account, page, workspace, or global default."""
     if phone_number_id:
         acc = get_whatsapp_account_by_phone_id(phone_number_id)
         if acc:
             p_id = acc.get("phone_number_id")
-            token = acc.get("access_token") or (
-                get_setting("meta_system_user_access_token") 
-                or get_setting("whatsapp_access_token") 
-                or get_setting("fb_page_access_token")
-            )
+            token = resolve_whatsapp_token(acc, workspace_id=acc.get("workspace_id") or 1)
             return p_id, token
 
     if page_id:
         acc = get_whatsapp_account_by_page_id(page_id)
         if acc:
             p_id = acc.get("phone_number_id")
-            token = acc.get("access_token") or (
-                get_setting("meta_system_user_access_token") 
-                or get_setting("whatsapp_access_token") 
-                or get_setting("fb_page_access_token")
-            )
+            token = resolve_whatsapp_token(acc, workspace_id=acc.get("workspace_id") or 1)
             return p_id, token
 
     if workspace_id:
         acc = get_whatsapp_account_by_workspace_id(workspace_id)
         if acc:
             p_id = acc.get("phone_number_id")
-            token = acc.get("access_token") or (
-                get_setting("meta_system_user_access_token") 
-                or get_setting("whatsapp_access_token") 
-                or get_setting("fb_page_access_token")
-            )
+            token = resolve_whatsapp_token(acc, workspace_id=workspace_id)
             return p_id, token
 
     all_s = get_all_settings(masked=False)
     phone_id = all_s.get("whatsapp_phone_number_id", "") or settings.WHATSAPP_PHONE_NUMBER_ID
-    token = (
-        all_s.get("meta_system_user_access_token") 
-        or all_s.get("whatsapp_access_token") 
-        or all_s.get("fb_page_access_token")
-        or settings.WHATSAPP_ACCESS_TOKEN
-    )
+    token = resolve_whatsapp_token(None, workspace_id=1)
     if not phone_id or not token:
         all_wa = get_all_whatsapp_accounts()
         if all_wa:
             phone_id = phone_id or all_wa[0].get("phone_number_id", "")
-            token = token or all_wa[0].get("access_token", "")
+            token = token or resolve_whatsapp_token(all_wa[0], workspace_id=1)
 
     return phone_id, token
 
@@ -98,15 +116,19 @@ def send_whatsapp_message(to_number: str, message_text: str, phone_id: str = Non
         phone_id = phone_id or resolved_pid
         token = token or resolved_tok
 
+    clean_token = str(token or "").strip().strip('"').strip("'")
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
     masked_rec = f"{to_number[:5]}****{to_number[-4:]}" if len(to_number) > 8 else "***"
-    if not phone_id or not token or not to_number or not message_text:
-        print(f"[WhatsApp Send] Missing credentials or recipient! phone_id={'SET' if phone_id else 'MISSING'}, token={'SET' if token else 'MISSING'}, recipient={masked_rec}")
+    if not phone_id or not clean_token or not to_number or not message_text:
+        print(f"[WhatsApp Send] Missing credentials or recipient! phone_id={'SET' if phone_id else 'MISSING'}, token={'SET' if clean_token else 'MISSING'}, recipient={masked_rec}")
         return False
 
     norm_to = normalize_whatsapp_phone_number(to_number)
     url = f"{GRAPH_API_URL}/{phone_id}/messages"
     headers = {
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"Bearer {clean_token}",
         "Content-Type": "application/json"
     }
     payload = {
@@ -138,14 +160,18 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone
         token = token or resolved_tok
 
     masked_rec = f"{to_number[:5]}****{to_number[-4:]}" if len(to_number) > 8 else "***"
-    if not phone_id or not token or not to_number or not image_url:
-        print(f"[WhatsApp Image Send] Missing credentials or recipient! phone_id={'SET' if phone_id else 'MISSING'}, token={'SET' if token else 'MISSING'}, recipient={masked_rec}")
+    clean_token = str(token or "").strip().strip('"').strip("'")
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
+    if not phone_id or not clean_token or not to_number or not image_url:
+        print(f"[WhatsApp Image Send] Missing credentials or recipient! phone_id={'SET' if phone_id else 'MISSING'}, token={'SET' if clean_token else 'MISSING'}, recipient={masked_rec}")
         return False
 
     norm_to = normalize_whatsapp_phone_number(to_number)
     url = f"{GRAPH_API_URL}/{phone_id}/messages"
     headers = {
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"Bearer {clean_token}",
         "Content-Type": "application/json"
     }
 
@@ -180,13 +206,17 @@ def send_whatsapp_audio(to_number: str, audio_url: str, phone_id: str = None, to
         phone_id = phone_id or resolved_pid
         token = token or resolved_tok
 
-    if not phone_id or not token or not to_number or not audio_url:
+    clean_token = str(token or "").strip().strip('"').strip("'")
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
+    if not phone_id or not clean_token or not to_number or not audio_url:
         return False
 
     norm_to = normalize_whatsapp_phone_number(to_number)
     url = f"{GRAPH_API_URL}/{phone_id}/messages"
     headers = {
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"Bearer {clean_token}",
         "Content-Type": "application/json"
     }
 
@@ -217,13 +247,17 @@ def send_whatsapp_video(to_number: str, video_url: str, caption: str = "", phone
         phone_id = phone_id or resolved_pid
         token = token or resolved_tok
 
-    if not phone_id or not token or not to_number or not video_url:
+    clean_token = str(token or "").strip().strip('"').strip("'")
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
+    if not phone_id or not clean_token or not to_number or not video_url:
         return False
 
     norm_to = normalize_whatsapp_phone_number(to_number)
     url = f"{GRAPH_API_URL}/{phone_id}/messages"
     headers = {
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"Bearer {clean_token}",
         "Content-Type": "application/json"
     }
 
@@ -277,16 +311,12 @@ async def handle_whatsapp_webhook_event(data: dict):
                     print(f"[WhatsApp Routing Error]: Unknown phone_number_id {meta_phone_id}. No matching whatsapp_account found. Event dropped without fallback.")
                     continue
 
-                effective_phone_id = wa_account.get("phone_number_id") or meta_phone_id
-                effective_token = wa_account.get("access_token") or (
-                    get_setting("whatsapp_access_token") 
-                    or get_setting("meta_system_user_access_token") 
-                    or settings.WHATSAPP_ACCESS_TOKEN
-                )
                 page_id = wa_account.get("page_id") or ""
                 page_name = wa_account.get("shop_name") or wa_account.get("page_name") or wa_account.get("workspace_name") or "RS Graphics"
                 workspace_id = wa_account.get("workspace_id") or wa_account.get("ws_id") or 1
                 workspace_name = wa_account.get("workspace_name") or "RS Graphics (আরএস গ্রাফিক্স)"
+                effective_phone_id = wa_account.get("phone_number_id") or meta_phone_id
+                effective_token = resolve_whatsapp_token(wa_account, workspace_id=workspace_id)
 
                 print(f"[WhatsApp Routing] matched_account_id={wa_account.get('id')} workspace_id={workspace_id} workspace={workspace_name}")
 

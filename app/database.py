@@ -1108,7 +1108,15 @@ def ensure_whatsapp_account_consistency(conn=None) -> Optional[dict]:
     target_wa_phone_id = "4184514263660680"
     target_waba_id = str(settings.WHATSAPP_WABA_ID or "27905447135785944").strip()
     target_display = str(settings.WHATSAPP_DISPLAY_PHONE_NUMBER or "+8801816504097").strip()
-    target_token = str(settings.WHATSAPP_ACCESS_TOKEN or settings.META_SYSTEM_USER_ACCESS_TOKEN or "").strip()
+    target_token = str(
+        get_setting("whatsapp_access_token")
+        or get_setting("meta_system_user_access_token")
+        or os.getenv("META_SYSTEM_USER_ACCESS_TOKEN")
+        or os.getenv("WHATSAPP_ACCESS_TOKEN")
+        or settings.WHATSAPP_ACCESS_TOKEN
+        or settings.META_SYSTEM_USER_ACCESS_TOKEN
+        or ""
+    ).strip()
 
     close_conn = False
     if conn is None:
@@ -1131,13 +1139,17 @@ def ensure_whatsapp_account_consistency(conn=None) -> Optional[dict]:
                     workspace_id = 1,
                     display_phone_number = COALESCE(NULLIF(display_phone_number, ''), ?),
                     waba_id = COALESCE(NULLIF(waba_id, ''), ?),
-                    access_token = CASE WHEN access_token IS NULL OR access_token = '' THEN ? ELSE access_token END,
+                    access_token = CASE 
+                        WHEN LENGTH(?) > 30 THEN ?
+                        WHEN access_token IS NULL OR access_token = '' THEN ?
+                        ELSE access_token 
+                    END,
                     connection_mode = 'business_app_coexistence',
                     connection_status = 'connected',
                     coexistence_active = 1,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
-            """, (target_display, target_waba_id, target_token, canonical_id))
+            """, (target_display, target_waba_id, target_token, target_token, target_token, canonical_id))
             # Delete any duplicate rows with target_wa_phone_id if any exist
             cursor.execute("DELETE FROM whatsapp_accounts WHERE phone_number_id = ? AND id != ?", (target_wa_phone_id, canonical_id))
         else:
@@ -1160,13 +1172,17 @@ def ensure_whatsapp_account_consistency(conn=None) -> Optional[dict]:
                         phone_number_id = ?,
                         display_phone_number = COALESCE(NULLIF(display_phone_number, ''), ?),
                         waba_id = COALESCE(NULLIF(waba_id, ''), ?),
-                        access_token = CASE WHEN access_token IS NULL OR access_token = '' THEN ? ELSE access_token END,
+                        access_token = CASE 
+                            WHEN LENGTH(?) > 30 THEN ?
+                            WHEN access_token IS NULL OR access_token = '' THEN ?
+                            ELSE access_token 
+                        END,
                         connection_mode = 'business_app_coexistence',
                         connection_status = 'connected',
                         coexistence_active = 1,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                """, (target_wa_phone_id, target_display, target_waba_id, target_token, canonical_id))
+                """, (target_wa_phone_id, target_display, target_waba_id, target_token, target_token, target_token, canonical_id))
             else:
                 # Step 3: Insert canonical row
                 cursor.execute("SELECT id FROM connected_pages WHERE workspace_id = 1 ORDER BY id ASC LIMIT 1")
