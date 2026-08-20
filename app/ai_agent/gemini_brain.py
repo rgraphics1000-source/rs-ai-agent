@@ -233,23 +233,32 @@ def get_category_batch_images(category_or_code: str, requested_count: int = None
     return images
 
 def parse_requested_image_count(user_msg: str) -> Optional[int]:
-    """Detects if user asked for a specific number of images (e.g., '২টি ছবি', '৩টা ছবি', '৪-৫টি ছবি')."""
-    msg = (user_msg or "").lower()
+    """
+    Detects if user explicitly asked for a specific number of photos/images
+    (e.g., '২-৩টা ছবি', '২টা ছবি', '৩টি ছবি', '৪টা ছবি', '৫টা ছবি').
+    """
+    if not user_msg:
+        return None
+    msg = user_msg.lower()
     
-    if any(k in msg for k in ["২-৩", "২টি", "২ টা", "২টা", "দুটো", "দুইটা", "দুই টি", "2টা", "2টি", "2"]):
-        if "২-৩" in msg or "2-3" in msg:
-            return 3
-        return 2
-    if any(k in msg for k in ["৩-৪", "৩টি", "৩ টা", "৩টা", "তিনটি", "তিনটা", "3টা", "3টি", "3"]):
-        if "৩-৪" in msg or "3-4" in msg:
-            return 4
+    # Range patterns: '২-৩টা ছবি', '2-3টা', '3-4 pics'
+    if re.search(r'(?:২\s*[-–]\s*৩|2\s*[-–]\s*3)\s*(?:টা|টি|পিস|টি\s*ছবি|টা\s*ছবি|pics|photos)?', msg):
         return 3
-    if any(k in msg for k in ["৪টি", "৪ টা", "৪টা", "চারটি", "চারটা", "4টা", "4টি", "4"]):
+    if re.search(r'(?:৩\s*[-–]\s*৪|3\s*[-–]\s*4)\s*(?:টা|টি|পিস|টি\s*ছবি|টা\s*ছবি|pics|photos)?', msg):
         return 4
-    if any(k in msg for k in ["৫টি", "৫ টা", "৫টা", "পাঁচটি", "পাঁচটা", "5টা", "5টি", "5"]):
+        
+    # Explicit count with photo context
+    if re.search(r'(?:২|2|দুই|দুটো)\s*(?:টা|টি|পিস)\s*(?:ছবি|পিক|স্যাম্পল|photo|pic)?', msg):
+        return 2
+    if re.search(r'(?:৩|3|তিন|তিনটি|তিনটা)\s*(?:টা|টি|পিস)\s*(?:ছবি|পিক|স্যাম্পল|photo|pic)?', msg):
+        return 3
+    if re.search(r'(?:৪|4|চার|চারটি|চারটা)\s*(?:টা|টি|পিস)\s*(?:ছবি|পিক|স্যাম্পল|photo|pic)?', msg):
+        return 4
+    if re.search(r'(?:৫|5|পাঁচ|পাঁচটি|পাঁচটা)\s*(?:টা|টি|পিস)\s*(?:ছবি|পিক|স্যাম্পল|photo|pic)?', msg):
         return 5
-    if any(k in msg for k in ["১টি", "১ টা", "১টা", "একটা", "একটি", "1টা", "1টি"]):
+    if re.search(r'(?:১|1|এক|একটি|একটা)\s*(?:টা|টি|পিস)\s*(?:ছবি|পিক|স্যাম্পল|photo|pic)', msg):
         return 1
+
     return None
 
 def detect_sample_photos_to_send(user_msg: str, conversation_history: list = None, bot_reply: str = "") -> list:
@@ -289,12 +298,13 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
         "পাঠিয়েছি", "ছবি পাঠাচ্ছি", "ছবি দেখতে চেয়েছেন", "স্যাম্পল পাঠাচ্ছি", "ছবিগুলো দেওয়া হলো"
     ])
 
-    # If incoming was an audio voice note, always evaluate if bot detected photo request
+    # If incoming was an audio voice note or regular message, evaluate if photos should be delivered
     should_send = is_asking_photo or is_agreeing or bot_claims_photos
     if not should_send:
         return []
 
-    req_count = parse_requested_image_count(msg) or parse_requested_image_count(reply)
+    # Only respect count if customer EXPLICITLY specified count in user message (Never from bot prompt or bot reply)
+    req_count = parse_requested_image_count(msg)
 
     # Search across user message first, then bot reply, then history
     target_scope = f"{msg} {reply}"
