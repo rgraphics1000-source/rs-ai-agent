@@ -198,18 +198,59 @@ class MainActivity : ComponentActivity() {
         webView.loadUrl("https://rs-ai-agent.onrender.com")
     }
 
+    private val contactPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            launchContactPicker()
+        } else {
+            Toast.makeText(this, "কন্টাক্ট সিলেক্ট করতে পারমিশন প্রয়োজন", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun launchContactPicker() {
+        try {
+            val intent = Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+            contactPickerLauncher.launch(intent)
+        } catch (e: Exception) {
+            try {
+                val intent = Intent(Intent.ACTION_PICK, ContactsContract.Contacts.CONTENT_URI)
+                contactPickerLauncher.launch(intent)
+            } catch (e2: Exception) {
+                Toast.makeText(this, "Contact picker not supported", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     inner class AndroidNativeBridge {
         @JavascriptInterface
         fun openContactPicker() {
-            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.READ_CONTACTS), 102)
-                return
+            runOnUiThread {
+                if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+                    contactPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+                } else {
+                    launchContactPicker()
+                }
             }
-            try {
-                val intent = Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
-                contactPickerLauncher.launch(intent)
-            } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "Contact picker not supported", Toast.LENGTH_SHORT).show()
+        }
+
+        @JavascriptInterface
+        fun openWhatsApp(phone: String = "") {
+            runOnUiThread {
+                try {
+                    val clean = phone.replace("+", "").replace(" ", "").replace("-", "")
+                    val intent = if (clean.isNotEmpty()) {
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=$clean"))
+                    } else {
+                        val pm = packageManager
+                        pm.getLaunchIntentForPackage("com.whatsapp.w4b")
+                            ?: pm.getLaunchIntentForPackage("com.whatsapp")
+                            ?: Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com"))
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "WhatsApp ওপেন করা যায়নি", Toast.LENGTH_SHORT).show()
+                }
             }
         }
 

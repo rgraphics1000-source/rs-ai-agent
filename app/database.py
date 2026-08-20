@@ -209,49 +209,69 @@ def init_db():
             VALUES (?, ?, ?, ?, ?, ?)
         """, initial_rules)
 
-    # Seed Real Products if none exist
-    cursor.execute("SELECT COUNT(*) FROM products")
-    if cursor.fetchone()[0] == 0:
-        id_card_imgs = [f'/static/uploads/id_card/{f.name}' for f in (settings.UPLOADS_DIR / 'id_card').glob('*.jpg')] if (settings.UPLOADS_DIR / 'id_card').exists() else []
-        fita_imgs = [f'/static/uploads/fita/{f.name}' for f in (settings.UPLOADS_DIR / 'fita').glob('*.jpg')] if (settings.UPLOADS_DIR / 'fita').exists() else []
-        cover_imgs = [f'/static/uploads/cover/{f.name}' for f in (settings.UPLOADS_DIR / 'cover').glob('*.jpg')] if (settings.UPLOADS_DIR / 'cover').exists() else []
-        pkg_imgs = [f'/static/uploads/pakage/{f.name}' for f in (settings.UPLOADS_DIR / 'pakage').glob('*.jpg')] if (settings.UPLOADS_DIR / 'pakage').exists() else []
+    # Seed/Update Real Products with Individual Variation Prices
+    pkg_variations = [
+        {"url": "/static/uploads/pakage/IMG-20260113-WA0002.jpg", "title": "প্যাকেজ ০১ (UV কার্ড + ১.৫ সেমি ফিতা + স্বচ্ছ প্লাস্টিক কভার)", "price": 70, "code": "PKG-01"},
+        {"url": "/static/uploads/pakage/IMG-20260113-WA0003.jpg", "title": "প্যাকেজ ০২ (UV কার্ড + ১.৫ সেমি ফিতা + কালারফুল কভার)", "price": 70, "code": "PKG-02"},
+        {"url": "/static/uploads/pakage/IMG-20260113-WA0006.jpg", "title": "প্যাকেজ ০৩ (UV কার্ড + ২ সেমি ফিতা + প্রিমিয়াম হার্ড প্লাস্টিক কভার)", "price": 83, "code": "PKG-03"},
+        {"url": "/static/uploads/pakage/IMG-20260114-WA0057.jpg", "title": "প্যাকেজ ০৭ (UV কার্ড + ২ সেমি ফিতা + মেটাল লক প্রিমিয়াম কভার সেট)", "price": 91, "code": "PKG-07"},
+        {"url": "/static/uploads/pakage/IMG-20260117-WA0023.jpg", "title": "প্যাকেজ ০৪ (স্পেশাল ফিতা ও কভার কম্বো)", "price": 75, "code": "PKG-04"},
+        {"url": "/static/uploads/pakage/IMG-20260118-WA0045.jpg", "title": "প্যাকেজ ০৫ (ডাবল সাইডেড কার্ড ও ফিতা সেট)", "price": 80, "code": "PKG-05"},
+        {"url": "/static/uploads/pakage/IMG-20260121-WA0081.jpg", "title": "প্যাকেজ ০৬ (ডিলাক্স মেটাল প্যাকেজ)", "price": 85, "code": "PKG-06"}
+    ]
 
+    id_card_imgs = [
+        {"url": f'/static/uploads/id_card/{f.name}', "title": "জাপানি মেশিনের অরজিনাল UV কালার প্রিন্ট PVC আইডি কার্ড", "price": 30}
+        for f in (settings.UPLOADS_DIR / 'id_card').glob('*.jpg')
+    ] if (settings.UPLOADS_DIR / 'id_card').exists() else []
+
+    fita_imgs = [
+        {"url": f'/static/uploads/fita/{f.name}', "title": "ডিজিটাল মাল্টিকালর সাবলিমেশন ফিতা (১.৫ ও ২ সেমি)", "price": 20}
+        for f in (settings.UPLOADS_DIR / 'fita').glob('*.jpg')
+    ] if (settings.UPLOADS_DIR / 'fita').exists() else []
+
+    cover_imgs = [
+        {"url": f'/static/uploads/cover/{f.name}', "title": "আইডি কার্ড কভার ও প্লাস্টিক/হার্ড হোল্ডার", "price": 12}
+        for f in (settings.UPLOADS_DIR / 'cover').glob('*.jpg')
+    ] if (settings.UPLOADS_DIR / 'cover').exists() else []
+
+    cursor.execute("SELECT COUNT(*) FROM products WHERE code = 'PKG-COMBO'")
+    if cursor.fetchone()[0] == 0:
         real_products = [
             (
                 'আইডি কার্ড (জাপানি মেশিনের UV PRINT)',
                 'IDC-01',
-                'জাপানি মেশিনের অরজিনাল হাই-কোয়ালিটি UV কালার প্রিন্ট, ১০০% ওয়াটারপ্রুফ এবং প্রিমিয়াম ফ্লেক্সিবল PVC ফিনিশিং।',
+                'জাপানি মেশিনের অরজিনাল হাই-কোয়ালিটি UV কালার প্রিন্ট, ১০০% ওয়াটারপ্রুফ এবং প্রিমিয়াম ফ্লেক্সিবল PVC ফিনিশিং। রেগুলার ৩৫ টাকা, অফার মূল্য ৩০ টাকা।',
                 35.0, 30.0, 1000, 'আইডি কার্ড',
-                id_card_imgs[0] if id_card_imgs else '',
+                id_card_imgs[0]["url"] if id_card_imgs else '',
                 json.dumps(id_card_imgs),
                 'id card, uv print, pvc card'
             ),
             (
                 'ডিজিটাল সাবলিমেশন ফিতা (Lanyards / Ribbons)',
                 'FITA-02',
-                'ডিজিটাল মাল্টিকালর সাবলিমেশন প্রিন্ট, প্রিমিয়াম সাটিন ফেব্রিক ও হেভি ডিউটি হুক। স্কুল, কলেজ ও মাদ্রাসার কাস্টমাইজড নাম ও লোগো সহ প্রস্তুত করা হয়।',
+                'ডিজিটাল মাল্টিকালর সাবলিমেশন প্রিন্ট, প্রিমিয়াম সাটিন ফেব্রিক ও হেভি ডিউটি হুক। ১.৫ সেমি ২০৳, ২ সেমি ৩০৳।',
                 25.0, 20.0, 1000, 'ফিতা ও লেইনিয়ার্ড',
-                fita_imgs[0] if fita_imgs else '',
+                fita_imgs[0]["url"] if fita_imgs else '',
                 json.dumps(fita_imgs),
                 'fita, lanyard, ribbon'
             ),
             (
                 'আইডি কার্ড হোল্ডার ও কভার (Card Holders)',
                 'COV-03',
-                'স্বচ্ছ প্লাস্টিক কভার, কালারফুল বর্ডার ও প্রিমিয়াম হার্ড প্লাস্টিক ডাবল সাইডেড হোল্ডার।',
+                'স্বচ্ছ প্লাস্টিক কভার (১০৳), কালারফুল বর্ডার (১২৳) ও প্রিমিয়াম হার্ড প্লাস্টিক ডাবল সাইডেড হোল্ডার (১৫৳)।',
                 15.0, 12.0, 1000, 'কভার ও হোল্ডার',
-                cover_imgs[0] if cover_imgs else '',
+                cover_imgs[0]["url"] if cover_imgs else '',
                 json.dumps(cover_imgs),
                 'holder, cover, card holder'
             ),
             (
                 'আইডি কার্ড সম্পূর্ণ কম্বো প্যাকেজ (কার্ড + ফিতা + কভার)',
                 'PKG-COMBO',
-                'জাপানি মেশিনের UV প্রিন্ট কার্ড + ডিজিটাল প্রিন্ট ফিতা (১.৫/২ সেমি) + কভার। প্যাকেজ ০১ (৭০৳), প্যাকেজ ০২ (৭০৳), প্যাকেজ ০৩ (৮৩৳), প্যাকেজ ০৭ (৯১৳) ইত্যাদি। (১০০+ অর্ডারে স্পেশাল রেট)',
+                'জাপানি UV প্রিন্ট কার্ড + ডিজিটাল প্রিন্ট ফিতা + কভার। প্যাকেজ ০১ (৭০৳), প্যাকেজ ০২ (৭০৳), প্যাকেজ ০৩ (৮৩৳), প্যাকেজ ০৭ (৯১৳), প্যাকেজ ০৪ (৭৫৳), প্যাকেজ ০৫ (৮০৳), প্যাকেজ ০৬ (৮৫৳)। (১০০+ অর্ডারে স্পেশাল রেট)',
                 85.0, 70.0, 1000, 'প্যাকেজ সমূহ',
-                pkg_imgs[0] if pkg_imgs else '',
-                json.dumps(pkg_imgs),
+                pkg_variations[0]["url"],
+                json.dumps(pkg_variations),
                 'package, combo, full set'
             )
         ]
@@ -259,6 +279,18 @@ def init_db():
             INSERT INTO products (name, code, description, price, discount_price, stock, category, image_url, gallery_images, tags, is_active)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         """, real_products)
+    else:
+        # Update existing PKG-COMBO with exact structured variation prices
+        cursor.execute("UPDATE products SET gallery_images = ?, description = ? WHERE code = 'PKG-COMBO'", (
+            json.dumps(pkg_variations),
+            'জাপানি UV প্রিন্ট কার্ড + ডিজিটাল প্রিন্ট ফিতা + কভার। প্যাকেজ ০১ (৭০৳), প্যাকেজ ০২ (৭০৳), প্যাকেজ ০৩ (৮৩৳), প্যাকেজ ০৭ (৯১৳), প্যাকেজ ০৪ (৭৫৳), প্যাকেজ ০৫ (৮০৳), প্যাকেজ ০৬ (৮৫৳)। (১০০+ অর্ডারে স্পেশাল রেট)'
+        ))
+        if id_card_imgs:
+            cursor.execute("UPDATE products SET gallery_images = ? WHERE code = 'IDC-01'", (json.dumps(id_card_imgs),))
+        if fita_imgs:
+            cursor.execute("UPDATE products SET gallery_images = ? WHERE code = 'FITA-02'", (json.dumps(fita_imgs),))
+        if cover_imgs:
+            cursor.execute("UPDATE products SET gallery_images = ? WHERE code = 'COV-03'", (json.dumps(cover_imgs),))
 
     # Clean up old demo products if present
     cursor.execute("DELETE FROM products WHERE code IN ('PJ-101', 'TP-202', 'CB-303')")
@@ -454,6 +486,68 @@ def toggle_conversation_ai(conversation_id: int, status: int = None) -> bool:
     conn.commit()
     conn.close()
     return True
+
+def get_muted_numbers() -> list:
+    raw = get_setting("blacklisted_ai_numbers", "")
+    if not raw:
+        return []
+    items = [x.strip() for x in raw.replace("\n", ",").split(",") if x.strip()]
+    seen = set()
+    res = []
+    for it in items:
+        if it not in seen:
+            seen.add(it)
+            res.append(it)
+    return res
+
+def add_muted_number(phone: str) -> list:
+    phone = str(phone).strip()
+    if not phone:
+        return get_muted_numbers()
+    current = get_muted_numbers()
+    if phone not in current:
+        current.append(phone)
+        set_setting("blacklisted_ai_numbers", ", ".join(current))
+    return current
+
+def remove_muted_number(phone: str) -> list:
+    phone = str(phone).strip()
+    current = get_muted_numbers()
+    clean_target = "".join([c for c in phone if c.isdigit()])
+    updated = [x for x in current if x != phone and "".join([c for c in x if c.isdigit()]) != clean_target]
+    set_setting("blacklisted_ai_numbers", ", ".join(updated))
+    return updated
+
+def get_muted_contacts_detailed() -> list:
+    muted_list = get_muted_numbers()
+    if not muted_list:
+        return []
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    detailed = []
+    for raw_phone in muted_list:
+        clean_num = "".join([c for c in raw_phone if c.isdigit()])
+        customer_name = "কাস্টমার"
+        if clean_num:
+            cursor.execute("SELECT customer_name FROM conversations WHERE sender_id LIKE ? AND customer_name IS NOT NULL LIMIT 1", (f"%{clean_num}%",))
+            crow = cursor.fetchone()
+            if crow and crow["customer_name"]:
+                customer_name = crow["customer_name"]
+            else:
+                cursor.execute("SELECT customer_name FROM orders WHERE customer_phone LIKE ? AND customer_name IS NOT NULL LIMIT 1", (f"%{clean_num}%",))
+                orow = cursor.fetchone()
+                if orow and orow["customer_name"]:
+                    customer_name = orow["customer_name"]
+        
+        detailed.append({
+            "phone": raw_phone,
+            "name": customer_name,
+            "is_muted": True
+        })
+    conn.close()
+    return detailed
 
 def is_conversation_ai_active(sender_id: str = None, conversation_id: int = None) -> bool:
     """Returns True if AI is allowed to auto-reply to this customer."""

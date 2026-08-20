@@ -17,7 +17,8 @@ from app.database import (
     init_db, get_db_connection, get_setting, set_setting, get_all_settings,
     get_all_training_rules, create_training_rule, update_training_rule,
     delete_training_rule, toggle_training_rule, get_saved_media,
-    create_saved_media, delete_saved_media, toggle_conversation_ai
+    create_saved_media, delete_saved_media, toggle_conversation_ai,
+    get_muted_contacts_detailed, get_muted_numbers, add_muted_number, remove_muted_number
 )
 from app.ai_agent.gemini_brain import process_customer_message
 from app.ai_agent.voice_engine import generate_bangla_voice, list_available_voices
@@ -40,7 +41,7 @@ from app.channels.whatsapp import (
 )
 from app.channels.omnichat import (
     get_all_conversations, 
-    get_conversation_history, 
+    get_conversation_messages,
     record_conversation_message,
     send_whatsapp_media,
     send_whatsapp_audio as send_omnichat_wa_audio,
@@ -328,9 +329,16 @@ async def api_edit_product(
                 contents = await file_obj.read()
                 with open(save_path, "wb") as f:
                     f.write(contents)
-                current_images.append(f"/static/uploads/{unique_name}")
+                current_images.append({
+                    "url": f"/static/uploads/{unique_name}",
+                    "title": f"ভ্যারিয়েশন {len(current_images) + 1}",
+                    "price": price
+                })
 
-    primary_image_url = current_images[0] if current_images else ""
+    primary_image_url = ""
+    if current_images:
+        first_img = current_images[0]
+        primary_image_url = first_img["url"] if isinstance(first_img, dict) else str(first_img)
     gallery_images_json = json.dumps(current_images)
 
     conn = get_db_connection()
@@ -428,6 +436,93 @@ async def api_delete_faq(faq_id: int):
     conn.commit()
     conn.close()
     return {"success": True, "message": "FAQ deleted"}
+
+# ==========================================
+# 5.1.1 AI TRAINING RULES APIS
+# ==========================================
+@app.get("/api/training/rules")
+async def api_get_training_rules():
+    rules = get_all_training_rules()
+    return {"success": True, "rules": rules}
+
+@app.post("/api/training/rules")
+async def api_create_training_rule(request: Request):
+    data = await request.json()
+    title = data.get("title", "").strip()
+    rule_content = data.get("response_or_rule", "").strip()
+    rule_type = data.get("rule_type", "qa")
+    trigger = data.get("question_or_trigger", "").strip()
+    category = data.get("category", "General")
+    
+    if not title or not rule_content:
+        raise HTTPException(status_code=400, detail="Title and rule content are required")
+        
+    rule_id = create_training_rule(
+        title=title,
+        response_or_rule=rule_content,
+        rule_type=rule_type,
+        question_or_trigger=trigger,
+        category=category
+    )
+    return {"success": True, "id": rule_id}
+
+@app.post("/api/training/rules/{rule_id}/toggle")
+async def api_toggle_training_rule(rule_id: int):
+    toggle_training_rule(rule_id)
+    return {"success": True}
+
+@app.delete("/api/training/rules/{rule_id}")
+async def api_delete_training_rule(rule_id: int):
+    delete_training_rule(rule_id)
+    return {"success": True}
+
+# ==========================================
+# 5.1.2 SAVED MEDIA LIBRARY (VOICE & VIDEOS) APIS
+# ==========================================
+@app.get("/api/saved-media")
+async def api_get_saved_media(media_type: Optional[str] = None):
+    media = get_saved_media(media_type)
+    return {"success": True, "media": media}
+
+@app.post("/api/saved-media/upload")
+async def api_upload_saved_media(
+    title: str = Form(...),
+    media_type: str = Form(...),
+    description: str = Form(""),
+    file: UploadFile = File(...)
+):
+    media_dir = settings.STATIC_DIR / "uploads" / "media"
+    media_dir.mkdir(parents=True, exist_ok=True)
+    
+    ext = Path(file.filename).suffix.lower() if file.filename else ""
+    if not ext:
+        if media_type == "voice":
+            ext = ".mp3"
+        elif media_type == "video":
+            ext = ".mp4"
+        else:
+            ext = ".jpg"
+            
+    filename = f"{media_type}_{uuid.uuid4().hex[:10]}{ext}"
+    dest_path = media_dir / filename
+    
+    contents = await file.read()
+    with open(dest_path, "wb") as f:
+        f.write(contents)
+        
+    file_url = f"/static/uploads/media/{filename}"
+    media_id = create_saved_media(
+        title=title.strip(),
+        media_type=media_type.strip().lower(),
+        file_url=file_url,
+        description=description.strip()
+    )
+    return {"success": True, "id": media_id, "file_url": file_url}
+
+@app.delete("/api/saved-media/{media_id}")
+async def api_delete_saved_media(media_id: int):
+    delete_saved_media(media_id)
+    return {"success": True}
 
 # ==========================================
 # 5.2 OMNICHAT (INBOX) APIS
@@ -702,6 +797,28 @@ async def api_send_saved_media(request: Request):
     conn.close()
     return {"success": True}
 
+# ==========================================
+# OMNICHAT & CONVERSATIONS APIS
+# ==========================================
+@app.get("/api/conversations")
+@app.get("/api/omnichat/conversations")
+async def api_get_all_conversations():
+    convs = get_all_conversations()
+    return {"success": True, "conversations": convs}
+
+@app.get("/api/omnichat/messages/{conversation_id}")
+async def api_get_conv_messages(conversation_id: int):
+    messages = get_conversation_messages(conversation_id)
+    return {"success": True, "messages": messages}
+
+@app.post("/api/omnichat/toggle-ai")
+async def api_toggle_chat_ai(request: Request):
+    data = await request.json()
+    cid = data.get("conversation_id")
+    if cid:
+        toggle_conversation_ai(cid)
+    return {"success": True}
+
 # PWA Web App Manifest Endpoint
 @app.get("/manifest.json")
 async def get_pwa_manifest():
@@ -733,6 +850,8 @@ async def get_pwa_manifest():
 @app.get("/api/settings")
 async def api_get_settings():
     all_s = get_all_settings(masked=True)
+    if "blacklisted_ai_numbers" not in all_s:
+        all_s["blacklisted_ai_numbers"] = get_setting("blacklisted_ai_numbers", "")
     voices = list_available_voices()
     return {"settings": all_s, "voices": voices}
 
@@ -742,6 +861,29 @@ async def api_save_settings(request: Request):
     for k, v in data.items():
         set_setting(k, str(v))
     return {"success": True, "message": "Settings updated successfully"}
+
+# Dedicated Muted / Blacklisted Contacts Endpoints
+@app.get("/api/muted-contacts")
+async def api_get_muted_contacts():
+    contacts = get_muted_contacts_detailed()
+    raw_numbers = get_muted_numbers()
+    return {"success": True, "contacts": contacts, "numbers": raw_numbers}
+
+@app.post("/api/muted-contacts/add")
+async def api_add_muted_contact(request: Request):
+    data = await request.json()
+    phone = data.get("phone", "")
+    updated_numbers = add_muted_number(phone)
+    contacts = get_muted_contacts_detailed()
+    return {"success": True, "message": f"{phone} মিউট লিস্টে যুক্ত হয়েছে", "contacts": contacts, "numbers": updated_numbers}
+
+@app.post("/api/muted-contacts/remove")
+async def api_remove_muted_contact(request: Request):
+    data = await request.json()
+    phone = data.get("phone", "")
+    updated_numbers = remove_muted_number(phone)
+    contacts = get_muted_contacts_detailed()
+    return {"success": True, "message": f"{phone} আন-মিউট করা হয়েছে", "contacts": contacts, "numbers": updated_numbers}
 
 @app.get("/api/whatsapp/embedded-config")
 async def api_whatsapp_embedded_config():

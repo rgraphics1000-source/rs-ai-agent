@@ -267,6 +267,20 @@ async def handle_facebook_webhook_event(data: dict):
                         record_conversation_message("facebook", sender_id, customer_name, "bot", "", full_img_url)
                         time.sleep(0.3)
 
+                    # Send video demo if requested
+                    matched_video = ai_result.get("video_url", "")
+                    if matched_video:
+                        print(f"[Facebook Messenger Sending Video]: {matched_video} to {sender_id}")
+                        send_fb_video_message(sender_id, matched_video)
+                        record_conversation_message("facebook", sender_id, customer_name, "bot", "[Video Demo]", matched_video)
+
+                    # Send voice note if requested / generated
+                    voice_url = ai_result.get("voice_url", "")
+                    if voice_url:
+                        print(f"[Facebook Messenger Sending Audio]: {voice_url} to {sender_id}")
+                        send_fb_audio_message(sender_id, voice_url)
+                        record_conversation_message("facebook", sender_id, customer_name, "bot", "[Voice Note]", voice_url)
+
             # 2. Handle Feed Comments (Auto Comment Reply & Private Inbox Message)
             if "changes" in entry:
                 for change in entry["changes"]:

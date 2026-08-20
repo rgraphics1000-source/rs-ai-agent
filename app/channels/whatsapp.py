@@ -319,7 +319,23 @@ async def handle_whatsapp_webhook_event(data: dict):
                                 img_ok = send_whatsapp_image(sender_phone, img_path)
                                 if img_ok:
                                     record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "", img_path)
-                                time.sleep(0.3) # Brief delay between batch attachments
+                                time.sleep(0.3)
+
+                        # Send video demo if requested
+                        matched_video = ai_result.get("video_url", "")
+                        if matched_video:
+                            print(f"[WhatsApp Video] Sending video demo to {sender_phone}...")
+                            v_ok = send_whatsapp_video(sender_phone, matched_video)
+                            if v_ok:
+                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "[Video Demo]", matched_video)
+
+                        # Send voice note if requested / generated
+                        voice_url = ai_result.get("voice_url", "")
+                        if voice_url:
+                            print(f"[WhatsApp Voice] Sending voice note to {sender_phone}...")
+                            a_ok = send_whatsapp_audio(sender_phone, voice_url)
+                            if a_ok:
+                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "[Voice Note]", voice_url)
 
     except Exception as e:
         print(f"[WhatsApp Webhook Handler Error]: {e}")

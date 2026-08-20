@@ -438,78 +438,83 @@ function renderEditProductPreviews() {
     if (!container) return;
     container.innerHTML = "";
 
-    // Render existing images
-    editProductExistingImages.forEach((url, idx) => {
-        const item = document.createElement("div");
-        item.style.position = "relative";
-        item.style.width = "70px";
-        item.style.height = "70px";
-        item.style.borderRadius = "6px";
-        item.style.overflow = "hidden";
-        item.style.border = idx === 0 ? "2px solid #ea580c" : "1px solid var(--border-glass)";
+    // Render existing images with individual variation title & price
+    editProductExistingImages.forEach((item, idx) => {
+        const url = typeof item === 'object' ? item.url : item;
+        const title = (typeof item === 'object' ? item.title : '') || `ছবি #${idx + 1}`;
+        const price = (typeof item === 'object' ? item.price : '') || '';
+
+        const card = document.createElement("div");
+        card.style.cssText = "display: flex; gap: 10px; align-items: center; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px; margin-bottom: 8px; width: 100%;";
 
         const img = document.createElement("img");
         img.src = url;
-        img.style.width = "100%";
-        img.style.height = "100%";
-        img.style.objectFit = "cover";
+        img.style.cssText = "width: 55px; height: 55px; object-fit: cover; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);";
+
+        const fields = document.createElement("div");
+        fields.style.cssText = "flex: 1; display: grid; grid-template-columns: 1.5fr 1fr; gap: 8px;";
+
+        const titleInput = document.createElement("input");
+        titleInput.type = "text";
+        titleInput.className = "form-control";
+        titleInput.style.fontSize = "12px";
+        titleInput.placeholder = "ভ্যারিয়েশন / প্যাকেজের নাম";
+        titleInput.value = title;
+        titleInput.oninput = (e) => {
+            if (typeof editProductExistingImages[idx] !== 'object') {
+                editProductExistingImages[idx] = { url: url, title: e.target.value, price: price };
+            } else {
+                editProductExistingImages[idx].title = e.target.value;
+            }
+        };
+
+        const priceInput = document.createElement("input");
+        priceInput.type = "number";
+        priceInput.className = "form-control";
+        priceInput.style.fontSize = "12px";
+        priceInput.placeholder = "আলাদা দাম (৳)";
+        priceInput.value = price;
+        priceInput.oninput = (e) => {
+            const val = parseFloat(e.target.value) || 0;
+            if (typeof editProductExistingImages[idx] !== 'object') {
+                editProductExistingImages[idx] = { url: url, title: title, price: val };
+            } else {
+                editProductExistingImages[idx].price = val;
+            }
+        };
+
+        fields.appendChild(titleInput);
+        fields.appendChild(priceInput);
 
         const delBtn = document.createElement("button");
-        delBtn.innerHTML = "&times;";
         delBtn.type = "button";
-        delBtn.style.position = "absolute";
-        delBtn.style.top = "2px";
-        delBtn.style.right = "2px";
-        delBtn.style.background = "rgba(239, 68, 68, 0.9)";
-        delBtn.style.color = "#fff";
-        delBtn.style.border = "none";
-        delBtn.style.borderRadius = "50%";
-        delBtn.style.width = "18px";
-        delBtn.style.height = "18px";
-        delBtn.style.cursor = "pointer";
-        delBtn.style.fontSize = "12px";
-        delBtn.style.lineHeight = "1";
+        delBtn.className = "btn btn-danger";
+        delBtn.style.cssText = "padding: 6px 10px; font-size: 11px; align-self: center;";
+        delBtn.innerHTML = '<i class="fas fa-trash"></i>';
         delBtn.onclick = () => {
             editProductExistingImages.splice(idx, 1);
             renderEditProductPreviews();
         };
 
-        item.appendChild(img);
-        item.appendChild(delBtn);
-        container.appendChild(item);
+        card.appendChild(img);
+        card.appendChild(fields);
+        card.appendChild(delBtn);
+        container.appendChild(card);
     });
 
     // Render newly selected files
     editProductNewFiles.forEach((file, idx) => {
         const item = document.createElement("div");
-        item.style.position = "relative";
-        item.style.width = "70px";
-        item.style.height = "70px";
-        item.style.borderRadius = "6px";
-        item.style.overflow = "hidden";
-        item.style.border = "1px dashed #34d399";
+        item.style.cssText = "position: relative; width: 60px; height: 60px; border-radius: 6px; overflow: hidden; border: 1px dashed #34d399;";
 
         const img = document.createElement("img");
         img.src = URL.createObjectURL(file);
-        img.style.width = "100%";
-        img.style.height = "100%";
-        img.style.objectFit = "cover";
+        img.style.cssText = "width: 100%; height: 100%; object-fit: cover;";
 
         const delBtn = document.createElement("button");
         delBtn.innerHTML = "&times;";
         delBtn.type = "button";
-        delBtn.style.position = "absolute";
-        delBtn.style.top = "2px";
-        delBtn.style.right = "2px";
-        delBtn.style.background = "rgba(239, 68, 68, 0.9)";
-        delBtn.style.color = "#fff";
-        delBtn.style.border = "none";
-        delBtn.style.borderRadius = "50%";
-        delBtn.style.width = "18px";
-        delBtn.style.height = "18px";
-        delBtn.style.cursor = "pointer";
-        delBtn.style.fontSize = "12px";
-        delBtn.style.lineHeight = "1";
+        delBtn.style.cssText = "position: absolute; top: 2px; right: 2px; background: rgba(239, 68, 68, 0.9); color: #fff; border: none; border-radius: 50%; width: 18px; height: 18px; cursor: pointer; font-size: 12px; line-height: 1;";
         delBtn.onclick = () => {
             editProductNewFiles.splice(idx, 1);
             renderEditProductPreviews();
@@ -661,7 +666,22 @@ function openEditProductModal(productId) {
     document.getElementById("edit-prod-stock").value = p.stock || "10";
     document.getElementById("edit-prod-description").value = p.description || "";
 
-    editProductExistingImages = (p.gallery_images && p.gallery_images.length > 0) ? [...p.gallery_images] : (p.image_url ? [p.image_url] : []);
+    const rawGallery = (p.gallery_images && p.gallery_images.length > 0) ? p.gallery_images : (p.image_url ? [p.image_url] : []);
+    editProductExistingImages = rawGallery.map((item, idx) => {
+        if (typeof item === 'object' && item !== null) {
+            return {
+                url: item.url || '',
+                title: item.title || `ভ্যারিয়েশন #${idx + 1}`,
+                price: item.price || p.discount_price || p.price
+            };
+        }
+        return {
+            url: item,
+            title: `ছবি #${idx + 1}`,
+            price: p.discount_price || p.price
+        };
+    });
+
     editProductNewFiles = [];
     renderEditProductPreviews();
 
@@ -705,28 +725,51 @@ function openProductGallery(productId) {
     const p = cachedProductsList.find(item => item.id === productId);
     if (!p) return;
 
-    const gallery = (p.gallery_images && p.gallery_images.length > 0) ? p.gallery_images : (p.image_url ? [p.image_url] : ["/static/uploads/sample_panjabi.jpg"]);
+    const rawGallery = (p.gallery_images && p.gallery_images.length > 0) ? p.gallery_images : (p.image_url ? [p.image_url] : ["/static/uploads/id_card/IMG-20241009-WA0005.jpg"]);
+    
+    // Normalize gallery items into objects
+    const gallery = rawGallery.map((item, idx) => {
+        if (typeof item === 'object' && item !== null) {
+            return {
+                url: item.url || '',
+                title: item.title || `ভ্যারিয়েশন #${idx + 1}`,
+                price: item.price || p.discount_price || p.price
+            };
+        }
+        return {
+            url: item,
+            title: `ছবি #${idx + 1}`,
+            price: p.discount_price || p.price
+        };
+    });
+
     const title = document.getElementById("gallery-modal-title");
     const body = document.getElementById("gallery-modal-body");
     if (!title || !body) return;
 
-    title.innerHTML = `<i class="fas fa-images" style="color:var(--primary-light);"></i> ${p.name} (${gallery.length} Photos)`;
+    title.innerHTML = `<i class="fas fa-images" style="color:var(--primary-light);"></i> ${p.name} (${gallery.length} Photos & Prices)`;
+
+    const firstItem = gallery[0];
 
     body.innerHTML = `
-        <div style="margin-bottom: 12px;">
-            <img id="gallery-main-view" src="${gallery[0]}" style="width: 100%; max-height: 380px; object-fit: contain; border-radius: 8px; background: rgba(0,0,0,0.4);">
+        <div style="margin-bottom: 12px; position: relative;">
+            <img id="gallery-main-view" src="${firstItem.url}" style="width: 100%; max-height: 360px; object-fit: contain; border-radius: 8px; background: rgba(0,0,0,0.5);">
+            <div id="gallery-main-caption" style="position: absolute; bottom: 8px; left: 8px; right: 8px; background: rgba(10,13,20,0.85); backdrop-filter: blur(8px); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+                <span id="gallery-current-title" style="color: #fff; font-weight: 600; font-size: 13px;">${firstItem.title}</span>
+                <span id="gallery-current-price" style="color: #34d399; font-weight: 700; font-size: 14px;">৳${firstItem.price}</span>
+            </div>
         </div>
-        <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; max-height: 100px; overflow-y: auto; padding: 6px;">
-            ${gallery.map((url, idx) => `
-                <img src="${url}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 6px; cursor: pointer; border: ${idx === 0 ? '2px solid #ea580c' : '1px solid var(--border-glass)'};" onclick="document.getElementById('gallery-main-view').src='${url}'; this.parentElement.querySelectorAll('img').forEach(i => i.style.border='1px solid var(--border-glass)'); this.style.border='2px solid #ea580c';">
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; max-height: 180px; overflow-y: auto; padding: 6px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+            ${gallery.map((g, idx) => `
+                <div style="position: relative; cursor: pointer; border-radius: 6px; overflow: hidden; border: ${idx === 0 ? '2px solid #ea580c' : '1px solid var(--border-glass)'}; background: rgba(255,255,255,0.03);" onclick="document.getElementById('gallery-main-view').src='${g.url}'; document.getElementById('gallery-current-title').innerText='${g.title}'; document.getElementById('gallery-current-price').innerText='৳${g.price}'; this.parentElement.querySelectorAll('div').forEach(i => i.style.border='1px solid var(--border-glass)'); this.style.border='2px solid #ea580c';">
+                    <img src="${g.url}" style="width: 100%; height: 70px; object-fit: cover;">
+                    <div style="padding: 4px; font-size: 10px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #cbd5e1;">${g.title}</div>
+                    <div style="font-size: 11px; font-weight: 700; color: #34d399; text-align: center; padding-bottom: 2px;">৳${g.price}</div>
+                </div>
             `).join('')}
         </div>
-        <div style="margin-top: 14px; text-align: left; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px;">
-            <div style="display: flex; justify-content: space-between;">
-                <span style="font-weight: 600; font-size: 15px;">${p.name}</span>
-                <span style="color: #34d399; font-weight: 700;">৳${p.discount_price || p.price}</span>
-            </div>
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">${p.description || ''}</p>
+        <div style="margin-top: 12px; text-align: left; background: rgba(255,255,255,0.03); padding: 10px 12px; border-radius: 8px;">
+            <p style="font-size: 12px; color: var(--text-muted); margin: 0;">${p.description || ''}</p>
         </div>
     `;
 
@@ -2296,76 +2339,134 @@ async function loadAllSettings() {
 
         setVal("setting-shop-name", "shop_name", "আমার ই-কমার্স শপ");
         setVal("setting-shop-phone", "shop_phone", "01700000000");
-        setVal("setting-delivery-inside", "delivery_charge_inside", 70);
-        setVal("setting-delivery-outside", "delivery_charge_outside", 130);
+        setVal("setting-delivery-inside", "delivery_inside_dhaka", 70);
+        setVal("setting-delivery-outside", "delivery_outside_dhaka", 130);
         setVal("setting-blacklisted-numbers", "blacklisted_ai_numbers", "");
-        renderMutedContactsChips();
+        
+        await loadMutedContacts();
     } catch (e) {
         console.error("loadAllSettings error:", e);
     }
 }
 
-function getMutedNumbersList() {
-    const input = document.getElementById("setting-blacklisted-numbers");
-    if (!input || !input.value) return [];
-    return input.value.split(",").map(s => s.trim()).filter(s => s.length > 0);
-}
+// ------------------------------------------
+// MUTED / BLACKLISTED CONTACTS MANAGER
+// ------------------------------------------
+let cachedMutedContacts = [];
 
-function setMutedNumbersList(list) {
-    const input = document.getElementById("setting-blacklisted-numbers");
-    if (input) {
-        // Unique numbers
-        const unique = Array.from(new Set(list));
-        input.value = unique.join(", ");
-    }
-    renderMutedContactsChips();
-}
-
-function renderMutedContactsChips() {
-    const container = document.getElementById("muted-contacts-chips-container");
+async function loadMutedContacts() {
+    const listContainer = document.getElementById("muted-contacts-list-container");
     const dashContainer = document.getElementById("dash-muted-contacts-chips");
+    const countBadge = document.getElementById("muted-count-badge");
+    const hiddenInput = document.getElementById("setting-blacklisted-numbers");
 
-    const list = getMutedNumbersList();
-    const emptyHtml = `<span style="color: var(--text-dim); font-size: 12px;"><i class="fas fa-info-circle"></i> এখনো কোনো নম্বর মিউট করা হয়নি। উপরের বাটন দিয়ে সিলেক্ট করুন।</span>`;
+    try {
+        const res = await fetch("/api/muted-contacts");
+        const data = await res.json();
+        cachedMutedContacts = data.contacts || [];
+        const rawNumbers = data.numbers || [];
 
-    if (list.length === 0) {
-        if (container) container.innerHTML = emptyHtml;
-        if (dashContainer) dashContainer.innerHTML = emptyHtml;
-        return;
+        if (hiddenInput) hiddenInput.value = rawNumbers.join(", ");
+        if (countBadge) countBadge.innerText = `${cachedMutedContacts.length}টি নম্বর`;
+
+        const emptyListHtml = `
+            <div style="background: rgba(10, 14, 23, 0.7); border: 1px dashed rgba(255,255,255,0.15); border-radius: 8px; padding: 16px; text-align: center; color: var(--text-dim); font-size: 12.5px;">
+                <i class="fas fa-info-circle" style="margin-right: 4px;"></i> এখনো কোনো নম্বর মিউট করা হয়নি। উপরের বাটন বা নিচের ইনপুট দিয়ে নম্বর যোগ করুন।
+            </div>
+        `;
+
+        if (cachedMutedContacts.length === 0) {
+            if (listContainer) listContainer.innerHTML = emptyListHtml;
+            if (dashContainer) dashContainer.innerHTML = `<span style="color: var(--text-dim); font-size: 12px;"><i class="fas fa-info-circle"></i> কোনো নম্বর মিউট করা নেই</span>`;
+            return;
+        }
+
+        // Render Settings Detailed List
+        if (listContainer) {
+            listContainer.innerHTML = cachedMutedContacts.map(c => `
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; transition: var(--transition);">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(239,68,68,0.15); display: flex; align-items: center; justify-content: center; color: #f87171; font-size: 14px; flex-shrink: 0;">
+                            <i class="fas fa-phone-slash"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: #fff; font-size: 13.5px; display: flex; align-items: center; gap: 6px;">
+                                <span>${c.name || 'কাস্টমার'}</span>
+                                <span class="badge" style="background: rgba(239,68,68,0.2); color: #f87171; font-size: 10px;">🚫 এআই বন্ধ</span>
+                            </div>
+                            <div style="font-size: 12.5px; color: #fca5a5; font-family: monospace; letter-spacing: 0.5px; margin-top: 2px;">
+                                ${c.phone}
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button type="button" class="btn btn-sm" style="background: rgba(16,185,129,0.18); border: 1px solid #10b981; color: #34d399; font-size: 11.5px; font-weight: 600; padding: 6px 12px; border-radius: 6px; display: inline-flex; align-items: center; gap: 5px;" onclick="unmuteContact('${c.phone}')" title="এআই উত্তর পুনরায় চালু করুন">
+                            <i class="fas fa-unlock"></i> আনব্লক করুন
+                        </button>
+                        <button type="button" class="btn btn-sm" style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; padding: 6px 9px; border-radius: 6px;" onclick="unmuteContact('${c.phone}')" title="লিস্ট থেকে মুছে ফেলুন">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Render Dashboard Compact Chips
+        if (dashContainer) {
+            dashContainer.innerHTML = cachedMutedContacts.map(c => `
+                <span style="display: inline-flex; align-items: center; gap: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #fca5a5; padding: 4px 10px; border-radius: 16px; font-size: 12px; font-weight: 500;">
+                    <i class="fas fa-phone-slash" style="font-size: 10px;"></i>
+                    <span>${c.name && c.name !== 'কাস্টমার' ? c.name + ' (' + c.phone + ')' : c.phone}</span>
+                    <i class="fas fa-times" style="cursor: pointer; margin-left: 4px; color: #f87171;" onclick="unmuteContact('${c.phone}')" title="আনব্লক করুন"></i>
+                </span>
+            `).join('');
+        }
+
+    } catch (e) {
+        console.error("loadMutedContacts error:", e);
     }
-
-    const html = list.map(num => `
-        <span style="display: inline-flex; align-items: center; gap: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #fca5a5; padding: 4px 10px; border-radius: 16px; font-size: 12px; font-weight: 500;">
-            <i class="fas fa-phone-slash" style="font-size: 10px;"></i>
-            <span>${num}</span>
-            <i class="fas fa-times" style="cursor: pointer; margin-left: 4px; color: #f87171;" onclick="removeMutedContact('${num}')"></i>
-        </span>
-    `).join('');
-
-    if (container) container.innerHTML = html;
-    if (dashContainer) dashContainer.innerHTML = html;
 }
 
-function removeMutedContact(num) {
-    const list = getMutedNumbersList().filter(n => n !== num);
-    setMutedNumbersList(list);
-    saveAllSettings();
-    showToast(`নম্বর ${num} আন-মিউট করা হয়েছে`, "info");
-}
-
-function handleManualAddMute() {
+async function handleManualAddMute() {
     const input = document.getElementById("manual-mute-phone-input");
     if (!input || !input.value.trim()) return;
 
     const clean = input.value.trim();
-    const list = getMutedNumbersList();
-    if (!list.includes(clean)) {
-        list.push(clean);
-        setMutedNumbersList(list);
-        saveAllSettings();
-        showToast(`✅ ${clean} এআই মিউট লিস্টে যুক্ত হয়েছে!`, "success");
+    try {
+        const res = await fetch("/api/muted-contacts/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone: clean })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`✅ ${clean} এআই মিউট লিস্টে যুক্ত হয়েছে!`, "success");
+            input.value = "";
+            await loadMutedContacts();
+        }
+    } catch (e) {
+        console.error("handleManualAddMute error:", e);
+        showToast("মিউট করতে সমস্যা হয়েছে", "danger");
     }
-    input.value = "";
+}
+
+async function unmuteContact(phone) {
+    if (!phone) return;
+    try {
+        const res = await fetch("/api/muted-contacts/remove", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone: phone })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`🔓 ${phone} সফলভাবে আনব্লক করা হয়েছে!`, "info");
+            await loadMutedContacts();
+        }
+    } catch (e) {
+        console.error("unmuteContact error:", e);
+        showToast("আনব্লক করতে সমস্যা হয়েছে", "danger");
+    }
 }
 
 // 1. Native Android & Web Contact Picker Trigger
@@ -2387,22 +2488,24 @@ async function pickPhoneOrWhatsAppContact() {
             const opts = { multiple: true };
             const contacts = await navigator.contacts.select(props, opts);
             if (contacts && contacts.length > 0) {
-                const list = getMutedNumbersList();
                 let addedCount = 0;
-                contacts.forEach(c => {
+                for (const c of contacts) {
                     if (c.tel && c.tel.length > 0) {
-                        c.tel.forEach(t => {
+                        for (const t of c.tel) {
                             const clean = t.replace(/\s+/g, "").replace(/-/g, "");
-                            if (clean && !list.includes(clean)) {
-                                list.push(clean);
+                            if (clean) {
+                                await fetch("/api/muted-contacts/add", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ phone: clean })
+                                });
                                 addedCount++;
                             }
-                        });
+                        }
                     }
-                });
+                }
                 if (addedCount > 0) {
-                    setMutedNumbersList(list);
-                    saveAllSettings();
+                    await loadMutedContacts();
                     showToast(`🎉 ${addedCount}টি কন্টাক্ট এআই মিউট লিস্টে যুক্ত হয়েছে!`, "success");
                 }
                 return;
@@ -2417,15 +2520,22 @@ async function pickPhoneOrWhatsAppContact() {
 }
 
 // Callback invoked by Android Native App
-window.onNativeContactPicked = function(name, phone) {
+window.onNativeContactPicked = async function(name, phone) {
     if (!phone) return;
     const clean = phone.replace(/\s+/g, "").replace(/-/g, "");
-    const list = getMutedNumbersList();
-    if (!list.includes(clean)) {
-        list.push(clean);
-        setMutedNumbersList(list);
-        saveAllSettings();
-        showToast(`✅ ${name ? name + ' (' + clean + ')' : clean} এআই মিউট লিস্টে যুক্ত হয়েছে!`, "success");
+    try {
+        const res = await fetch("/api/muted-contacts/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone: clean })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`✅ ${name ? name + ' (' + clean + ')' : clean} এআই মিউট লিস্টে যুক্ত হয়েছে!`, "success");
+            await loadMutedContacts();
+        }
+    } catch (e) {
+        console.error("onNativeContactPicked error:", e);
     }
 };
 
@@ -2459,11 +2569,11 @@ function renderMuteChatSelectorList(convs) {
         return;
     }
 
-    const currentMuted = getMutedNumbersList();
+    const currentMutedNumbers = cachedMutedContacts.map(c => c.phone);
 
     container.innerHTML = convs.map(c => {
         const sender = c.sender_id || "";
-        const isChecked = currentMuted.some(m => sender.includes(m) || m.includes(sender));
+        const isChecked = currentMutedNumbers.some(m => sender.includes(m) || m.includes(sender));
         const channelIcon = c.channel === "whatsapp" ? "fab fa-whatsapp" : "fab fa-facebook-messenger";
         const channelColor = c.channel === "whatsapp" ? "#25d366" : "#0084ff";
 
@@ -2492,7 +2602,7 @@ function filterMuteChatSelectorList() {
     renderMuteChatSelectorList(filtered);
 }
 
-function confirmChatSelectorMute() {
+async function confirmChatSelectorMute() {
     const checkboxes = document.querySelectorAll(".mute-chat-checkbox");
     const selected = [];
     checkboxes.forEach(cb => {
@@ -2501,10 +2611,19 @@ function confirmChatSelectorMute() {
         }
     });
 
-    setMutedNumbersList(selected);
-    saveAllSettings();
-    closeModal("modal-select-chats-to-mute");
-    showToast(`✅ ${selected.length}টি কাস্টমার নম্বর এআই মিউট লিস্টে আপডেট হয়েছে!`, "success");
+    try {
+        // Save full selected list
+        const res = await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ blacklisted_ai_numbers: selected.join(", ") })
+        });
+        await loadMutedContacts();
+        closeModal("modal-select-chats-to-mute");
+        showToast(`✅ ${selected.length}টি কাস্টমার নম্বর এআই মিউট লিস্টে আপডেট হয়েছে!`, "success");
+    } catch (e) {
+        console.error("confirmChatSelectorMute error:", e);
+    }
 }
 
 async function saveAllSettings() {
@@ -2516,8 +2635,8 @@ async function saveAllSettings() {
     const payload = {
         shop_name: getVal("setting-shop-name"),
         shop_phone: getVal("setting-shop-phone"),
-        delivery_charge_inside: getVal("setting-delivery-inside"),
-        delivery_charge_outside: getVal("setting-delivery-outside"),
+        delivery_inside_dhaka: getVal("setting-delivery-inside"),
+        delivery_outside_dhaka: getVal("setting-delivery-outside"),
         blacklisted_ai_numbers: getVal("setting-blacklisted-numbers")
     };
 
@@ -2529,13 +2648,28 @@ async function saveAllSettings() {
         });
         const data = await res.json();
         if (data.success) {
-            showToast("✅ সেটিংস এবং মিউট করা নম্বর সফলভাবে সেভ হয়েছে!", "success");
+            showToast("✅ সেটিংস সফলভাবে সেভ হয়েছে!", "success");
+            await loadMutedContacts();
         } else {
             showToast("সেটিংস সেভ করতে সমস্যা হয়েছে", "danger");
         }
     } catch (e) {
         console.error("saveAllSettings error:", e);
         showToast("সার্ভার এরর", "danger");
+    }
+}
+
+// Direct WhatsApp App Opener (Native or Web Intent)
+function openWhatsAppAppDirectly(phone = "") {
+    if (window.AndroidBridge && typeof window.AndroidBridge.openWhatsApp === "function") {
+        window.AndroidBridge.openWhatsApp(phone);
+        return;
+    }
+    const clean = phone.replace("+", "").replace(/\s+/g, "").replace(/-/g, "");
+    if (clean) {
+        window.open(`https://api.whatsapp.com/send?phone=${clean}`, "_blank");
+    } else {
+        window.open("https://web.whatsapp.com", "_blank");
     }
 }
 
