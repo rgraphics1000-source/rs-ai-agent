@@ -11,7 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadSavedMediaList();
     loadFaqs();
     loadCommentLogs();
-    loadSettings();
+    loadAllSettings();
     loadOmnichatConversations();
     initSmartphoneSimulator();
     initModals();
@@ -1836,59 +1836,10 @@ async function saveWhatsAppSettings() {
         const data = await res.json();
         if (data.success) {
             showToast("✅ WhatsApp Settings সফলভাবে সংরক্ষিত হয়েছে!", "success");
-            loadSettings();
+            loadAllSettings();
         }
     } catch (e) {
         showToast("Failed to save WhatsApp settings", "danger");
-    }
-}
-
-async function saveAllSettings(e) {
-    if (e) e.preventDefault();
-    const payload = {
-        shop_name: document.getElementById("setting-shop-name") ? document.getElementById("setting-shop-name").value : "আমার ই-কমার্স শপ",
-        shop_phone: document.getElementById("setting-shop-phone") ? document.getElementById("setting-shop-phone").value : "01700000000",
-        delivery_inside_dhaka: document.getElementById("setting-delivery-inside") ? document.getElementById("setting-delivery-inside").value : "70",
-        delivery_outside_dhaka: document.getElementById("setting-delivery-outside") ? document.getElementById("setting-delivery-outside").value : "130"
-    };
-
-    try {
-        const res = await fetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (data.success) {
-            showToast("Settings saved successfully!", "success");
-        }
-    } catch (e) {
-        showToast("Failed to save settings", "danger");
-    }
-}
-
-async function saveArenaSettings() {
-    const payload = {
-        shop_name: document.getElementById("arena-shop-name").value,
-        gemini_api_key: document.getElementById("arena-gemini-key").value,
-        ai_system_prompt: document.getElementById("arena-system-prompt").value
-    };
-
-    try {
-        const res = await fetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (data.success) {
-            showToast("AI Brain synchronized & updated!", "success");
-            if (document.getElementById("phone-header-shop-name")) {
-                document.getElementById("phone-header-shop-name").innerText = payload.shop_name;
-            }
-        }
-    } catch (e) {
-        showToast("Sync failed", "danger");
     }
 }
 
