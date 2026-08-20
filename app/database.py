@@ -394,7 +394,7 @@ def init_db():
         print(f"[Auto-Migration] Existing Page 1 ('{p1_name}', Page ID: {p1_id}) initialized in connected_pages.")
 
     # Safe Automatic Migration for Existing WhatsApp Account 1 into whatsapp_accounts
-    target_wa_phone_id = str(settings.WHATSAPP_PHONE_NUMBER_ID or "418451426636680").strip()
+    target_wa_phone_id = str(settings.WHATSAPP_PHONE_NUMBER_ID or "4184514263660680").strip()
     target_waba_id = str(settings.WHATSAPP_WABA_ID or "27905447135785944").strip()
     target_wa_display = str(settings.WHATSAPP_DISPLAY_PHONE_NUMBER or "+8801816504097").strip()
     target_wa_token = str(settings.WHATSAPP_ACCESS_TOKEN or settings.META_SYSTEM_USER_ACCESS_TOKEN or "").strip()

@@ -2,8 +2,8 @@
 """
 Tests for WhatsApp Webhook Routing Fix & Workspace Isolation.
 Tests A through J:
-- A: RS Graphics phone_number_id (418451426636680) resolves correctly
-- B: phone_number_id 418451426636680 resolves correctly as configured Meta number
+- A: RS Graphics phone_number_id (4184514263660680) resolves correctly
+- B: phone_number_id 4184514263660680 resolves correctly as configured Meta number
 - C: Unknown phone_number_id is dropped without fallback
 - D: Workspace 1 WhatsApp message uses Workspace 1 credentials
 - E: Workspace 2 WhatsApp message uses Workspace 2 credentials
@@ -48,9 +48,9 @@ class TestWhatsAppRoutingFix(unittest.TestCase):
         init_db()
 
     def test_a_b_rs_graphics_phone_id_resolves(self):
-        """Test A & B: 418451426636680 resolves to Workspace 1 / RS Graphics."""
-        acc = get_whatsapp_account_by_phone_id("418451426636680")
-        self.assertIsNotNone(acc, "Failed to resolve WhatsApp account for phone_id 418451426636680")
+        """Test A & B: 4184514263660680 resolves to Workspace 1 / RS Graphics."""
+        acc = get_whatsapp_account_by_phone_id("4184514263660680")
+        self.assertIsNotNone(acc, "Failed to resolve WhatsApp account for phone_id 4184514263660680")
         self.assertEqual(acc["workspace_id"], 1, f"Expected workspace_id 1, got {acc['workspace_id']}")
         self.assertIn("01816504097", acc["display_phone_number"], f"Expected 01816504097 in display number, got {acc['display_phone_number']}")
 
@@ -110,10 +110,10 @@ class TestWhatsAppRoutingFix(unittest.TestCase):
         # Test resolution for Workspace 1
         w1_acc = get_whatsapp_account_by_workspace_id(1)
         self.assertIsNotNone(w1_acc)
-        self.assertEqual(w1_acc["phone_number_id"], "418451426636680")
+        self.assertEqual(w1_acc["phone_number_id"], "4184514263660680")
 
         p1_id, tok1 = get_whatsapp_credentials(workspace_id=1)
-        self.assertEqual(p1_id, "418451426636680")
+        self.assertEqual(p1_id, "4184514263660680")
 
         # Test resolution for Workspace 2
         w2_acc = get_whatsapp_account_by_workspace_id(2)
@@ -222,7 +222,7 @@ class TestWhatsAppRoutingFix(unittest.TestCase):
         
         # Ensure primary account has verified ID
         w1_acc = get_whatsapp_account_by_workspace_id(1)
-        self.assertEqual(w1_acc["phone_number_id"], "418451426636680")
+        self.assertEqual(w1_acc["phone_number_id"], "4184514263660680")
 
 
 if __name__ == "__main__":
