@@ -1,3 +1,4 @@
+import os
 import sys
 import io
 
@@ -25,11 +26,14 @@ def main():
     # Initialize DB
     init_db()
     
-    print("\n📍 Server running locally at: http://localhost:8000")
-    print("🌐 Open http://localhost:8000 in your browser to access the Admin Dashboard.")
+    port = int(os.getenv("PORT", 8000))
+    host = os.getenv("HOST", "0.0.0.0")
+    
+    print(f"\n📍 Server running at: http://{host}:{port}")
+    print(f"🌐 Open http://localhost:{port} in your browser to access the Admin Dashboard.")
     print("=" * 60 + "\n")
     
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=False)
+    uvicorn.run("app.main:app", host=host, port=port, reload=False)
 
 if __name__ == "__main__":
     main()
