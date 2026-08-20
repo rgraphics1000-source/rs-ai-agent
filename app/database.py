@@ -394,7 +394,7 @@ def init_db():
         print(f"[Auto-Migration] Existing Page 1 ('{p1_name}', Page ID: {p1_id}) initialized in connected_pages.")
 
     # Safe Automatic Migration for Existing WhatsApp Account 1 into whatsapp_accounts
-    target_wa_phone_id = str(settings.WHATSAPP_PHONE_NUMBER_ID or "4184514263660680").strip()
+    target_wa_phone_id = str(settings.WHATSAPP_PHONE_NUMBER_ID or "418451426636680").strip()
     target_waba_id = str(settings.WHATSAPP_WABA_ID or "27905447135785944").strip()
     target_wa_display = str(settings.WHATSAPP_DISPLAY_PHONE_NUMBER or "+8801816504097").strip()
     target_wa_token = str(settings.WHATSAPP_ACCESS_TOKEN or settings.META_SYSTEM_USER_ACCESS_TOKEN or "").strip()
@@ -438,20 +438,15 @@ def init_db():
         # Idempotent upgrade for Workspace 1: ensure phone_number_id has verified Meta Cloud API ID
         cursor.execute("SELECT id, phone_number_id, display_phone_number FROM whatsapp_accounts WHERE workspace_id = 1 ORDER BY id ASC")
         w1_wa_rows = cursor.fetchall()
-        for w1_acc in w1_wa_rows:
-            curr_pid = str(w1_acc["phone_number_id"] or "").strip()
-            if curr_pid in ["8801816504097_wa", "", None] or (w1_acc["display_phone_number"] and "01816504097" in str(w1_acc["display_phone_number"]) and curr_pid != target_wa_phone_id):
-                # Check if target_wa_phone_id already exists in another row
-                cursor.execute("SELECT id FROM whatsapp_accounts WHERE phone_number_id = ? AND id != ?", (target_wa_phone_id, w1_acc["id"]))
-                existing_target = cursor.fetchone()
-                if existing_target:
-                    cursor.execute("DELETE FROM whatsapp_accounts WHERE id = ?", (w1_acc["id"],))
-                else:
-                    cursor.execute("UPDATE whatsapp_accounts SET phone_number_id = ?, display_phone_number = '+8801816504097', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (target_wa_phone_id, w1_acc["id"]))
-                print(f"[Auto-Migration] Updated Workspace 1 WhatsApp Account (ID: {w1_acc['id']}) phone_number_id to '{target_wa_phone_id}'.")
+        if w1_wa_rows:
+            primary_acc = w1_wa_rows[0]
+            # Delete any other row with target_wa_phone_id to prevent UNIQUE constraint violation
+            cursor.execute("DELETE FROM whatsapp_accounts WHERE phone_number_id = ? AND id != ?", (target_wa_phone_id, primary_acc["id"]))
+            cursor.execute("UPDATE whatsapp_accounts SET phone_number_id = ?, display_phone_number = '+8801816504097', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (target_wa_phone_id, primary_acc["id"]))
+            print(f"[Auto-Migration] Updated Workspace 1 WhatsApp Account (ID: {primary_acc['id']}) phone_number_id to '{target_wa_phone_id}'.")
 
     # Update settings table key whatsapp_phone_number_id
-    cursor.execute("UPDATE settings SET value = ? WHERE key = 'whatsapp_phone_number_id' AND (value = '' OR value = '8801816504097_wa' OR value IS NULL)", (target_wa_phone_id,))
+    cursor.execute("UPDATE settings SET value = ? WHERE key = 'whatsapp_phone_number_id'", (target_wa_phone_id,))
 
     # Scope legacy conversations and comment_logs to primary Page 1
     cursor.execute("SELECT page_id FROM connected_pages ORDER BY id ASC LIMIT 1")

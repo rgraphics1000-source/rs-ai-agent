@@ -256,29 +256,63 @@ async def handle_whatsapp_webhook_event(data: dict):
                 # 1. Resolve specific WhatsApp account by phone_number_id
                 wa_account = get_whatsapp_account_by_phone_id(meta_phone_id)
 
-                # 2. If not found by phone_number_id, check if display_phone_number or known primary phone_id matches Workspace 1
+                # 2. If not found by phone_number_id, check if display_phone_number or meta_phone_id matches any registered account or Workspace 1
                 if not wa_account and meta_phone_id:
-                    primary_phone_id = str(get_setting("whatsapp_phone_number_id") or settings.WHATSAPP_PHONE_NUMBER_ID or "").strip()
-                    primary_display = str(get_setting("whatsapp_display_phone_number") or settings.WHATSAPP_DISPLAY_PHONE_NUMBER or "").strip()
+                    norm_incoming_display = normalize_whatsapp_phone_number(display_phone_number)
+                    
+                    conn = None
+                    try:
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        
+                        # Find candidate account in whatsapp_accounts matching incoming display number
+                        cursor.execute("SELECT id, workspace_id, display_phone_number, phone_number_id FROM whatsapp_accounts ORDER BY id ASC")
+                        all_wa_rows = cursor.fetchall()
+                        
+                        matched_acc_id = None
+                        for row in all_wa_rows:
+                            acc_display = normalize_whatsapp_phone_number(row["display_phone_number"])
+                            if norm_incoming_display and acc_display and norm_incoming_display == acc_display:
+                                matched_acc_id = row["id"]
+                                break
+                        
+                        # Fallback: check if incoming display or phone_id matches Workspace 1 primary setting / known RS Graphics ID
+                        if not matched_acc_id:
+                            primary_display = normalize_whatsapp_phone_number(get_setting("whatsapp_display_phone_number") or settings.WHATSAPP_DISPLAY_PHONE_NUMBER or "+8801816504097")
+                            primary_phone_id = str(get_setting("whatsapp_phone_number_id") or settings.WHATSAPP_PHONE_NUMBER_ID or "").strip()
+                            
+                            is_primary = (
+                                (norm_incoming_display and primary_display and norm_incoming_display == primary_display) or
+                                (primary_phone_id and meta_phone_id == primary_phone_id) or
+                                (meta_phone_id in ["418451426636680", "4184514263660680"])
+                            )
+                            if is_primary:
+                                cursor.execute("SELECT id FROM whatsapp_accounts WHERE workspace_id = 1 ORDER BY id ASC LIMIT 1")
+                                w1_row = cursor.fetchone()
+                                if w1_row:
+                                    matched_acc_id = w1_row["id"]
+                                else:
+                                    cursor.execute("""
+                                        INSERT INTO whatsapp_accounts (workspace_id, phone_number_id, display_phone_number, connection_mode, connection_status, coexistence_active)
+                                        VALUES (1, ?, ?, 'business_app_coexistence', 'connected', 1)
+                                    """, (meta_phone_id, display_phone_number or "+8801816504097"))
+                                    matched_acc_id = cursor.lastrowid
 
-                    is_primary_match = (
-                        (primary_phone_id and meta_phone_id == primary_phone_id) or
-                        (meta_phone_id == "4184514263660680") or
-                        (display_phone_number and primary_display and normalize_whatsapp_phone_number(display_phone_number) == normalize_whatsapp_phone_number(primary_display))
-                    )
-
-                    if is_primary_match:
-                        # Auto-heal / link the live phone_number_id to Workspace 1
-                        try:
-                            conn = get_db_connection()
-                            cursor = conn.cursor()
-                            cursor.execute("UPDATE whatsapp_accounts SET phone_number_id = ?, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = 1", (meta_phone_id,))
+                        if matched_acc_id:
+                            # Safe update targeting only matched_acc_id by primary key
+                            cursor.execute("DELETE FROM whatsapp_accounts WHERE phone_number_id = ? AND id != ?", (meta_phone_id, matched_acc_id))
+                            cursor.execute("UPDATE whatsapp_accounts SET phone_number_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (meta_phone_id, matched_acc_id))
                             cursor.execute("UPDATE settings SET value = ? WHERE key = 'whatsapp_phone_number_id'", (meta_phone_id,))
                             conn.commit()
+                            
+                        conn.close()
+                        conn = None
+                        wa_account = get_whatsapp_account_by_phone_id(meta_phone_id)
+                    except Exception as sync_err:
+                        print(f"[WhatsApp Webhook Auto-Sync Error]: {sync_err}")
+                    finally:
+                        if conn:
                             conn.close()
-                            wa_account = get_whatsapp_account_by_phone_id(meta_phone_id)
-                        except Exception as sync_err:
-                            print(f"[WhatsApp Webhook Auto-Sync Error]: {sync_err}")
 
                 if wa_account:
                     effective_phone_id = wa_account.get("phone_number_id") or meta_phone_id

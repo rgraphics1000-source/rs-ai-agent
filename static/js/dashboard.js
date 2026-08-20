@@ -668,7 +668,8 @@ async function loadProducts() {
             const card = document.createElement("div");
             card.className = "product-card";
             const gallery = (p.gallery_images && p.gallery_images.length > 0) ? p.gallery_images : (p.image_url ? [p.image_url] : ["/static/uploads/sample_panjabi.jpg"]);
-            const coverImg = gallery[0];
+            const rawCover = gallery[0];
+            const coverImg = (typeof rawCover === 'object' && rawCover !== null) ? (rawCover.url || rawCover.link || '/static/uploads/sample_panjabi.jpg') : (rawCover || '/static/uploads/sample_panjabi.jpg');
             const priceHtml = p.discount_price 
                 ? `<span>৳${p.discount_price}</span> <span class="product-old-price">৳${p.price}</span>` 
                 : `<span>৳${p.price}</span>`;
@@ -693,7 +694,10 @@ async function loadProducts() {
                     
                     ${gallery.length > 1 ? `
                     <div style="display:flex; gap: 4px; margin: 8px 0; overflow-x: auto;">
-                        ${gallery.slice(0, 4).map(u => `<img src="${u}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-glass);" onclick="openProductGallery(${p.id})">`).join('')}
+                        ${gallery.slice(0, 4).map(u => {
+                            const uSrc = (typeof u === 'object' && u !== null) ? (u.url || u.link || '') : u;
+                            return `<img src="${uSrc}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-glass);" onclick="openProductGallery(${p.id})">`;
+                        }).join('')}
                         ${gallery.length > 4 ? `<span style="font-size: 10px; align-self: center; color: var(--text-muted);">+${gallery.length - 4}</span>` : ''}
                     </div>` : ''}
 
