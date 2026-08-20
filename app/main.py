@@ -102,7 +102,7 @@ async def download_android_apk():
 # ==========================================
 @app.get("/", response_class=HTMLResponse)
 async def dashboard_home(request: Request):
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="index.html",
         context={
@@ -110,6 +110,10 @@ async def dashboard_home(request: Request):
             "version": settings.VERSION
         }
     )
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 # ==========================================
 # 2. OVERVIEW & ANALYTICS STATS API
