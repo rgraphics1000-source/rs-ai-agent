@@ -18,7 +18,10 @@ from app.database import (
     get_all_training_rules, create_training_rule, update_training_rule,
     delete_training_rule, toggle_training_rule, get_saved_media,
     create_saved_media, delete_saved_media, toggle_conversation_ai,
-    get_muted_contacts_detailed, get_muted_numbers, add_muted_number, remove_muted_number
+    get_muted_contacts_detailed, get_muted_numbers, add_muted_number, remove_muted_number,
+    get_all_connected_pages, get_connected_page, save_connected_page, delete_connected_page,
+    get_all_whatsapp_accounts, get_whatsapp_account_by_phone_id, get_whatsapp_account_by_page_id,
+    save_whatsapp_account, delete_whatsapp_account, get_page_ai_config
 )
 from app.ai_agent.gemini_brain import process_customer_message
 from app.ai_agent.voice_engine import generate_bangla_voice, list_available_voices
@@ -761,6 +764,7 @@ async def api_send_saved_media(request: Request):
     
     channel = conv["channel"]
     sender_id = conv["sender_id"]
+    page_id = conv["page_id"] if "page_id" in conv.keys() else ""
     m_type = med["media_type"]
     m_url = med["file_url"]
     m_title = med["title"]
@@ -768,18 +772,18 @@ async def api_send_saved_media(request: Request):
     send_ok = False
     if channel == "whatsapp":
         if m_type in ["voice", "audio"]:
-            send_ok = send_whatsapp_audio(sender_id, m_url)
+            send_ok = send_whatsapp_audio(sender_id, m_url, page_id=page_id)
         elif m_type == "video":
-            send_ok = send_whatsapp_video(sender_id, m_url, caption=m_title)
+            send_ok = send_whatsapp_video(sender_id, m_url, caption=m_title, page_id=page_id)
         else:
-            send_ok = send_whatsapp_image(sender_id, m_url, caption=m_title)
+            send_ok = send_whatsapp_image(sender_id, m_url, caption=m_title, page_id=page_id)
     elif channel == "facebook":
         if m_type in ["voice", "audio"]:
-            send_ok = send_fb_audio_message(sender_id, m_url)
+            send_ok = send_fb_audio_message(sender_id, m_url, page_id=page_id)
         elif m_type == "video":
-            send_ok = send_fb_video_message(sender_id, m_url)
+            send_ok = send_fb_video_message(sender_id, m_url, page_id=page_id)
         else:
-            send_fb_media_message(sender_id, "image", m_url)
+            send_ok = send_fb_media_message(sender_id, "image", m_url, page_id=page_id)
             send_ok = True
     else:
         send_ok = True
@@ -798,18 +802,64 @@ async def api_send_saved_media(request: Request):
     return {"success": True}
 
 # ==========================================
-# OMNICHAT & CONVERSATIONS APIS
+# OMNICHAT & CONVERSATIONS APIS (MULTI-PAGE AWARE)
 # ==========================================
 @app.get("/api/conversations")
 @app.get("/api/omnichat/conversations")
-async def api_get_all_conversations():
-    convs = get_all_conversations()
+async def api_get_all_conversations(page_id: Optional[str] = Query(None), channel: Optional[str] = Query(None)):
+    convs = get_all_conversations(page_id=page_id, channel=channel)
     return {"success": True, "conversations": convs}
 
 @app.get("/api/omnichat/messages/{conversation_id}")
 async def api_get_conv_messages(conversation_id: int):
     messages = get_conversation_messages(conversation_id)
     return {"success": True, "messages": messages}
+
+@app.post("/api/omnichat/reply")
+@app.post("/api/omnichat/send")
+@app.post("/api/conversations/reply")
+async def api_admin_send_reply(request: Request):
+    """Sends an admin manual reply through the exact Page/account the conversation belongs to."""
+    data = await request.json()
+    cid = data.get("conversation_id")
+    reply_text = (data.get("message") or data.get("content") or "").strip()
+    
+    if not cid or not reply_text:
+        raise HTTPException(status_code=400, detail="conversation_id and message are required")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM conversations WHERE id = ?", (cid,))
+    conv = cursor.fetchone()
+    
+    if not conv:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    channel = conv["channel"]
+    sender_id = conv["sender_id"]
+    page_id = conv["page_id"] if "page_id" in conv.keys() else ""
+
+    send_ok = False
+    if channel == "whatsapp":
+        send_ok = send_whatsapp_message(sender_id, reply_text, page_id=page_id)
+    elif channel == "facebook":
+        send_ok = send_fb_text_message(sender_id, reply_text, page_id=page_id)
+    else:
+        send_ok = True
+
+    if not send_ok:
+        conn.close()
+        return JSONResponse(status_code=500, content={"success": False, "error": f"Failed to send manual message via {channel} (Page ID: {page_id or 'default'})"})
+
+    cursor.execute("""
+        INSERT INTO messages (conversation_id, sender_type, message_type, content)
+        VALUES (?, 'admin', 'text', ?)
+    """, (cid, reply_text))
+    cursor.execute("UPDATE conversations SET last_message = ?, human_takeover = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (reply_text, cid))
+    conn.commit()
+    conn.close()
+    return {"success": True, "message": "Reply delivered successfully"}
 
 @app.post("/api/omnichat/toggle-ai")
 async def api_toggle_chat_ai(request: Request):
@@ -818,6 +868,100 @@ async def api_toggle_chat_ai(request: Request):
     if cid:
         toggle_conversation_ai(cid)
     return {"success": True}
+
+# ==========================================
+# MULTI-PAGE MANAGEMENT APIS
+# ==========================================
+@app.get("/api/pages")
+async def api_get_connected_pages():
+    """Lists all connected Facebook Pages with their linked WhatsApp status."""
+    pages = get_all_connected_pages()
+    return {"success": True, "pages": pages}
+
+@app.post("/api/pages/connect")
+async def api_connect_page(request: Request):
+    """Adds or updates a connected Facebook Page record."""
+    data = await request.json()
+    page_id = data.get("page_id", "").strip()
+    page_name = data.get("page_name", "").strip() or "Facebook Page"
+    page_token = data.get("page_access_token", "").strip()
+
+    if not page_id or not page_token:
+        raise HTTPException(status_code=400, detail="page_id and page_access_token are required")
+
+    page_pk = save_connected_page(data)
+    
+    # Also optionally connect WhatsApp number if provided
+    wa_phone_id = data.get("whatsapp_phone_number_id", "").strip()
+    if wa_phone_id:
+        save_whatsapp_account({
+            "connected_page_id": page_pk,
+            "waba_id": data.get("whatsapp_waba_id", ""),
+            "phone_number_id": wa_phone_id,
+            "display_phone_number": data.get("whatsapp_display_phone_number", ""),
+            "access_token": data.get("whatsapp_access_token", "") or page_token,
+            "connection_status": "connected",
+            "coexistence_active": 1
+        })
+
+    return {"success": True, "message": f"Page '{page_name}' connected successfully!", "id": page_pk}
+
+@app.post("/api/pages/{page_id}/edit")
+async def api_edit_page(page_id: str, request: Request):
+    """Updates page-level AI settings, shop name, delivery fees, and prompt."""
+    data = await request.json()
+    data["page_id"] = page_id
+    page_pk = save_connected_page(data)
+    return {"success": True, "message": "Page settings updated successfully", "id": page_pk}
+
+@app.delete("/api/pages/{page_id}")
+async def api_disconnect_page(page_id: str):
+    """Disconnects a page connection safely without removing conversation history."""
+    ok = delete_connected_page(page_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Page not found")
+    return {"success": True, "message": "Page disconnected successfully"}
+
+@app.get("/api/pages/{page_id}/whatsapp")
+async def api_get_page_whatsapp(page_id: str):
+    """Gets WhatsApp connection status for a specific Page."""
+    wa_acc = get_whatsapp_account_by_page_id(page_id)
+    return {"success": True, "whatsapp": wa_acc}
+
+@app.post("/api/pages/{page_id}/whatsapp/connect")
+async def api_connect_page_whatsapp(page_id: str, request: Request):
+    """Links or saves WhatsApp Business credentials for a specific Page."""
+    data = await request.json()
+    data["page_id"] = page_id
+    wa_pk = save_whatsapp_account(data)
+    return {"success": True, "message": "WhatsApp Business connected to page successfully", "id": wa_pk}
+
+@app.post("/api/pages/{page_id}/whatsapp/disconnect")
+async def api_disconnect_page_whatsapp(page_id: str):
+    """Unlinks WhatsApp Business account from a specific Page."""
+    wa_acc = get_whatsapp_account_by_page_id(page_id)
+    if wa_acc:
+        delete_whatsapp_account(wa_acc["phone_number_id"])
+    return {"success": True, "message": "WhatsApp Business disconnected from page"}
+
+@app.post("/api/meta/user-pages")
+async def api_fetch_meta_user_pages(request: Request):
+    """Fetches user managed Pages via Meta Graph API using user access token for 1-click Page selection."""
+    data = await request.json()
+    user_token = data.get("user_access_token", "").strip()
+    if not user_token:
+        raise HTTPException(status_code=400, detail="user_access_token is required")
+
+    try:
+        url = "https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token,category,tasks"
+        r = requests.get(url, params={"access_token": user_token}, timeout=10)
+        if r.status_code == 200:
+            pages = r.json().get("data", [])
+            return {"success": True, "pages": pages}
+        else:
+            return JSONResponse(status_code=r.status_code, content={"success": False, "error": r.text})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 # PWA Web App Manifest Endpoint
 @app.get("/manifest.json")

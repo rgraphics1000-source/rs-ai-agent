@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import json
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from app.config import settings
 
@@ -151,6 +152,60 @@ def init_db():
     );
     """)
 
+    # 10. Connected Facebook Pages Table (Multi-Page Architecture)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS connected_pages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        page_id TEXT UNIQUE NOT NULL,
+        page_name TEXT NOT NULL,
+        page_access_token TEXT NOT NULL,
+        page_status TEXT DEFAULT 'connected',
+        messenger_enabled INTEGER DEFAULT 1,
+        comments_enabled INTEGER DEFAULT 1,
+        ai_enabled INTEGER DEFAULT 1,
+        ai_system_prompt TEXT,
+        shop_name TEXT,
+        shop_phone TEXT,
+        shop_address TEXT,
+        delivery_inside_dhaka REAL DEFAULT 70.0,
+        delivery_outside_dhaka REAL DEFAULT 130.0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # 11. WhatsApp Accounts Table (Multi-WhatsApp Account Architecture)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS whatsapp_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        connected_page_id INTEGER,
+        waba_id TEXT,
+        phone_number_id TEXT UNIQUE NOT NULL,
+        display_phone_number TEXT,
+        access_token TEXT,
+        connection_mode TEXT DEFAULT 'business_app_coexistence',
+        connection_status TEXT DEFAULT 'connected',
+        coexistence_active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (connected_page_id) REFERENCES connected_pages(id) ON DELETE SET NULL
+    );
+    """)
+
+    # Auto-migration columns for conversations & comment_logs
+    try:
+        cursor.execute("ALTER TABLE conversations ADD COLUMN page_id TEXT DEFAULT ''")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE conversations ADD COLUMN page_connection_id INTEGER")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE comment_logs ADD COLUMN page_id TEXT DEFAULT ''")
+    except Exception:
+        pass
+
     # Seed default settings if not exists
     default_settings = {
         "shop_name": settings.SHOP_NAME,
@@ -199,6 +254,84 @@ def init_db():
 
     # Migration: update sample photos training rule to send immediately without asking permission
     cursor.execute("UPDATE ai_training_rules SET response_or_rule = 'কাস্টমার ছবি বা স্যাম্পল দেখতে চাইলে কালবিলম্ব না করে সরাসরি অমায়িক ভাষায় বলবে জি ভাইয়া, অবশ্যই দেওয়া যাবে। নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো পাঠানো হলো। এবং সাথে সাথে সবগুলো স্যাম্পল ছবি পাঠাবে।' WHERE title LIKE '%স্যাম্পল%'")
+
+    # Safe Automatic Migration for Existing Page 1 into connected_pages
+    cursor.execute("SELECT COUNT(*) FROM connected_pages")
+    page_count = cursor.fetchone()[0]
+    p1_id = None
+    if page_count == 0:
+        cursor.execute("SELECT value FROM settings WHERE key = 'fb_page_id'")
+        p_id_row = cursor.fetchone()
+        p1_id = p_id_row["value"] if (p_id_row and p_id_row["value"]) else (settings.FB_PAGE_ID or "rs_graphics_page_1")
+        
+        cursor.execute("SELECT value FROM settings WHERE key = 'fb_page_access_token'")
+        p_tok_row = cursor.fetchone()
+        p1_token = p_tok_row["value"] if (p_tok_row and p_tok_row["value"]) else (settings.FB_PAGE_ACCESS_TOKEN or "")
+
+        cursor.execute("SELECT value FROM settings WHERE key = 'shop_name'")
+        p_name_row = cursor.fetchone()
+        p1_name = p_name_row["value"] if (p_name_row and p_name_row["value"]) else "RS Graphics (আরএস গ্রাফিক্স)"
+
+        cursor.execute("SELECT value FROM settings WHERE key = 'shop_phone'")
+        p_phone_row = cursor.fetchone()
+        p1_phone = p_phone_row["value"] if (p_phone_row and p_phone_row["value"]) else "01816504097"
+
+        cursor.execute("SELECT value FROM settings WHERE key = 'ai_system_prompt'")
+        p_prompt_row = cursor.fetchone()
+        p1_prompt = p_prompt_row["value"] if (p_prompt_row and p_prompt_row["value"]) else ""
+
+        cursor.execute("""
+            INSERT OR IGNORE INTO connected_pages (
+                page_id, page_name, page_access_token, page_status,
+                messenger_enabled, comments_enabled, ai_enabled, ai_system_prompt,
+                shop_name, shop_phone, shop_address, delivery_inside_dhaka, delivery_outside_dhaka
+            ) VALUES (?, ?, ?, 'connected', 1, 1, 1, ?, ?, ?, 'ঢাকা, বাংলাদেশ', 70.0, 130.0)
+        """, (p1_id, p1_name, p1_token, p1_prompt, p1_name, p1_phone))
+        print(f"[Auto-Migration] Existing Page 1 ('{p1_name}', Page ID: {p1_id}) initialized in connected_pages.")
+
+    # Safe Automatic Migration for Existing WhatsApp Account 1 into whatsapp_accounts
+    cursor.execute("SELECT COUNT(*) FROM whatsapp_accounts")
+    wa_count = cursor.fetchone()[0]
+    if wa_count == 0:
+        cursor.execute("SELECT value FROM settings WHERE key = 'whatsapp_phone_number_id'")
+        wa_p_row = cursor.fetchone()
+        wa_phone_id = wa_p_row["value"] if (wa_p_row and wa_p_row["value"]) else (settings.WHATSAPP_PHONE_NUMBER_ID or "8801816504097_wa")
+
+        cursor.execute("SELECT value FROM settings WHERE key = 'whatsapp_waba_id'")
+        wa_w_row = cursor.fetchone()
+        wa_waba_id = wa_w_row["value"] if (wa_w_row and wa_w_row["value"]) else settings.WHATSAPP_WABA_ID
+
+        cursor.execute("SELECT value FROM settings WHERE key = 'whatsapp_display_phone_number'")
+        wa_d_row = cursor.fetchone()
+        wa_display = wa_d_row["value"] if (wa_d_row and wa_d_row["value"]) else "+8801816504097"
+
+        cursor.execute("SELECT value FROM settings WHERE key = 'whatsapp_access_token'")
+        wa_t_row = cursor.fetchone()
+        wa_token = wa_t_row["value"] if (wa_t_row and wa_t_row["value"]) else settings.WHATSAPP_ACCESS_TOKEN
+        if not wa_token:
+            cursor.execute("SELECT value FROM settings WHERE key = 'meta_system_user_access_token'")
+            ms_row = cursor.fetchone()
+            wa_token = ms_row["value"] if (ms_row and ms_row["value"]) else ""
+
+        # Find primary connected page ID
+        cursor.execute("SELECT id, page_id FROM connected_pages ORDER BY id ASC LIMIT 1")
+        primary_cp = cursor.fetchone()
+        primary_cp_id = primary_cp["id"] if primary_cp else 1
+
+        cursor.execute("""
+            INSERT OR IGNORE INTO whatsapp_accounts (
+                connected_page_id, waba_id, phone_number_id, display_phone_number, access_token,
+                connection_mode, connection_status, coexistence_active
+            ) VALUES (?, ?, ?, ?, ?, 'business_app_coexistence', 'connected', 1)
+        """, (primary_cp_id, wa_waba_id, wa_phone_id, wa_display, wa_token))
+        print(f"[Auto-Migration] Existing WhatsApp Account ({wa_display}, Phone ID: {wa_phone_id}) initialized in whatsapp_accounts.")
+
+    # Scope legacy conversations and comment_logs to primary Page 1
+    cursor.execute("SELECT page_id FROM connected_pages ORDER BY id ASC LIMIT 1")
+    first_page = cursor.fetchone()
+    if first_page and first_page["page_id"]:
+        cursor.execute("UPDATE conversations SET page_id = ? WHERE page_id IS NULL OR page_id = ''", (first_page["page_id"],))
+        cursor.execute("UPDATE comment_logs SET page_id = ? WHERE page_id IS NULL OR page_id = ''", (first_page["page_id"],))
 
     # Seed initial AI Training Rules if none exist
     cursor.execute("SELECT COUNT(*) FROM ai_training_rules")
@@ -639,3 +772,315 @@ def is_conversation_ai_active(sender_id: str = None, conversation_id: int = None
     if row and row["human_takeover"] == 1:
         return False
     return True
+
+# ============================================================
+# MULTI-PAGE & MULTI-WHATSAPP ARCHITECTURE DATABASE HELPERS
+# ============================================================
+
+def get_all_connected_pages() -> list:
+    """Returns list of all connected Facebook Pages with their linked WhatsApp status."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT cp.*, wa.phone_number_id as wa_phone_id, wa.display_phone_number as wa_display_phone,
+                   wa.connection_status as wa_status, wa.coexistence_active as wa_coexistence
+            FROM connected_pages cp
+            LEFT JOIN whatsapp_accounts wa ON cp.id = wa.connected_page_id
+            ORDER BY cp.id ASC
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"[DB get_all_connected_pages Error]: {e}")
+        return []
+
+def get_connected_page(page_id_or_id) -> Optional[dict]:
+    """Retrieves a single connected page record by page_id (string) or internal id (integer)."""
+    if not page_id_or_id:
+        return None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if str(page_id_or_id).isdigit() and len(str(page_id_or_id)) < 8:
+            cursor.execute("SELECT * FROM connected_pages WHERE id = ? OR page_id = ?", (int(page_id_or_id), str(page_id_or_id)))
+        else:
+            cursor.execute("SELECT * FROM connected_pages WHERE page_id = ?", (str(page_id_or_id),))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_connected_page Error]: {e}")
+        return None
+
+def save_connected_page(data: dict) -> int:
+    """Inserts or updates a connected Facebook Page record."""
+    page_id = str(data.get("page_id", "")).strip()
+    page_name = str(data.get("page_name", "")).strip() or "Facebook Page"
+    page_token = str(data.get("page_access_token", "")).strip()
+    
+    if not page_id or not page_token:
+        raise ValueError("page_id and page_access_token are required")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT id FROM connected_pages WHERE page_id = ?", (page_id,))
+    existing = cursor.fetchone()
+    
+    if existing:
+        page_pk = existing["id"]
+        cursor.execute("""
+            UPDATE connected_pages SET
+                page_name = COALESCE(?, page_name),
+                page_access_token = COALESCE(?, page_access_token),
+                page_status = COALESCE(?, page_status),
+                messenger_enabled = COALESCE(?, messenger_enabled),
+                comments_enabled = COALESCE(?, comments_enabled),
+                ai_enabled = COALESCE(?, ai_enabled),
+                ai_system_prompt = COALESCE(?, ai_system_prompt),
+                shop_name = COALESCE(?, shop_name),
+                shop_phone = COALESCE(?, shop_phone),
+                shop_address = COALESCE(?, shop_address),
+                delivery_inside_dhaka = COALESCE(?, delivery_inside_dhaka),
+                delivery_outside_dhaka = COALESCE(?, delivery_outside_dhaka),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (
+            page_name, page_token,
+            data.get("page_status", "connected"),
+            data.get("messenger_enabled", 1),
+            data.get("comments_enabled", 1),
+            data.get("ai_enabled", 1),
+            data.get("ai_system_prompt"),
+            data.get("shop_name"),
+            data.get("shop_phone"),
+            data.get("shop_address"),
+            data.get("delivery_inside_dhaka"),
+            data.get("delivery_outside_dhaka"),
+            page_pk
+        ))
+    else:
+        cursor.execute("""
+            INSERT INTO connected_pages (
+                page_id, page_name, page_access_token, page_status,
+                messenger_enabled, comments_enabled, ai_enabled, ai_system_prompt,
+                shop_name, shop_phone, shop_address, delivery_inside_dhaka, delivery_outside_dhaka
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            page_id, page_name, page_token,
+            data.get("page_status", "connected"),
+            data.get("messenger_enabled", 1),
+            data.get("comments_enabled", 1),
+            data.get("ai_enabled", 1),
+            data.get("ai_system_prompt", ""),
+            data.get("shop_name", page_name),
+            data.get("shop_phone", ""),
+            data.get("shop_address", "ঢাকা, বাংলাদেশ"),
+            data.get("delivery_inside_dhaka", 70.0),
+            data.get("delivery_outside_dhaka", 130.0)
+        ))
+        page_pk = cursor.lastrowid
+
+    conn.commit()
+    conn.close()
+    return page_pk
+
+def delete_connected_page(page_id: str) -> bool:
+    """Disconnects a page and unlinks associated WhatsApp account without deleting conversations."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM connected_pages WHERE page_id = ?", (str(page_id),))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return False
+        
+        page_pk = row["id"]
+        cursor.execute("UPDATE whatsapp_accounts SET connected_page_id = NULL WHERE connected_page_id = ?", (page_pk,))
+        cursor.execute("DELETE FROM connected_pages WHERE id = ?", (page_pk,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[DB delete_connected_page Error]: {e}")
+        return False
+
+def get_all_whatsapp_accounts() -> list:
+    """Returns all configured WhatsApp Business accounts."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT wa.*, cp.page_id, cp.page_name, cp.shop_name
+            FROM whatsapp_accounts wa
+            LEFT JOIN connected_pages cp ON wa.connected_page_id = cp.id
+            ORDER BY wa.id ASC
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"[DB get_all_whatsapp_accounts Error]: {e}")
+        return []
+
+def get_whatsapp_account_by_phone_id(phone_number_id: str) -> Optional[dict]:
+    """Finds a WhatsApp account record by its Meta phone_number_id."""
+    if not phone_number_id:
+        return None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT wa.*, cp.page_id, cp.page_name, cp.shop_name, cp.ai_enabled as page_ai_enabled,
+                   cp.ai_system_prompt as page_ai_prompt, cp.delivery_inside_dhaka, cp.delivery_outside_dhaka
+            FROM whatsapp_accounts wa
+            LEFT JOIN connected_pages cp ON wa.connected_page_id = cp.id
+            WHERE wa.phone_number_id = ?
+        """, (str(phone_number_id),))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_whatsapp_account_by_phone_id Error]: {e}")
+        return None
+
+def get_whatsapp_account_by_page_id(page_id: str) -> Optional[dict]:
+    """Finds the WhatsApp account linked to a specific connected Facebook Page."""
+    if not page_id:
+        return None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT wa.*, cp.page_id, cp.page_name
+            FROM whatsapp_accounts wa
+            JOIN connected_pages cp ON wa.connected_page_id = cp.id
+            WHERE cp.page_id = ?
+            ORDER BY wa.id ASC LIMIT 1
+        """, (str(page_id),))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_whatsapp_account_by_page_id Error]: {e}")
+        return None
+
+def save_whatsapp_account(data: dict) -> int:
+    """Inserts or updates a WhatsApp Business account record."""
+    phone_id = str(data.get("phone_number_id", "")).strip()
+    if not phone_id:
+        raise ValueError("phone_number_id is required")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM whatsapp_accounts WHERE phone_number_id = ?", (phone_id,))
+    existing = cursor.fetchone()
+
+    connected_page_pk = data.get("connected_page_id")
+    if not connected_page_pk and data.get("page_id"):
+        cursor.execute("SELECT id FROM connected_pages WHERE page_id = ?", (str(data.get("page_id")),))
+        cp = cursor.fetchone()
+        if cp:
+            connected_page_pk = cp["id"]
+
+    if existing:
+        wa_pk = existing["id"]
+        cursor.execute("""
+            UPDATE whatsapp_accounts SET
+                connected_page_id = COALESCE(?, connected_page_id),
+                waba_id = COALESCE(?, waba_id),
+                display_phone_number = COALESCE(?, display_phone_number),
+                access_token = COALESCE(?, access_token),
+                connection_mode = COALESCE(?, connection_mode),
+                connection_status = COALESCE(?, connection_status),
+                coexistence_active = COALESCE(?, coexistence_active),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (
+            connected_page_pk,
+            data.get("waba_id"),
+            data.get("display_phone_number"),
+            data.get("access_token"),
+            data.get("connection_mode", "business_app_coexistence"),
+            data.get("connection_status", "connected"),
+            data.get("coexistence_active", 1),
+            wa_pk
+        ))
+    else:
+        cursor.execute("""
+            INSERT INTO whatsapp_accounts (
+                connected_page_id, waba_id, phone_number_id, display_phone_number,
+                access_token, connection_mode, connection_status, coexistence_active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            connected_page_pk,
+            data.get("waba_id", ""),
+            phone_id,
+            data.get("display_phone_number", ""),
+            data.get("access_token", ""),
+            data.get("connection_mode", "business_app_coexistence"),
+            data.get("connection_status", "connected"),
+            data.get("coexistence_active", 1)
+        ))
+        wa_pk = cursor.lastrowid
+
+    conn.commit()
+    conn.close()
+    return wa_pk
+
+def delete_whatsapp_account(phone_number_id: str) -> bool:
+    """Removes a WhatsApp account connection."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM whatsapp_accounts WHERE phone_number_id = ?", (str(phone_number_id),))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[DB delete_whatsapp_account Error]: {e}")
+        return False
+
+def get_page_ai_config(page_id: str = "") -> dict:
+    """
+    Resolves page-level AI and shop configuration.
+    Falls back seamlessly to global database settings and .env.
+    """
+    global_settings = get_all_settings(masked=False)
+    
+    config = {
+        "shop_name": global_settings.get("shop_name", "RS Graphics (আরএস গ্রাফিক্স)"),
+        "shop_phone": global_settings.get("shop_phone", "01816504097"),
+        "shop_address": global_settings.get("shop_address", "ঢাকা, বাংলাদেশ"),
+        "delivery_inside_dhaka": global_settings.get("delivery_inside_dhaka", "70"),
+        "delivery_outside_dhaka": global_settings.get("delivery_outside_dhaka", "130"),
+        "ai_system_prompt": global_settings.get("ai_system_prompt", ""),
+        "ai_enabled": global_settings.get("ai_enabled", "true").lower() == "true",
+        "page_name": "RS Graphics",
+        "page_id": page_id
+    }
+    
+    if page_id:
+        page_conn = get_connected_page(page_id)
+        if page_conn:
+            if page_conn.get("shop_name"):
+                config["shop_name"] = page_conn["shop_name"]
+            if page_conn.get("page_name"):
+                config["page_name"] = page_conn["page_name"]
+            if page_conn.get("shop_phone"):
+                config["shop_phone"] = page_conn["shop_phone"]
+            if page_conn.get("shop_address"):
+                config["shop_address"] = page_conn["shop_address"]
+            if page_conn.get("delivery_inside_dhaka") is not None:
+                config["delivery_inside_dhaka"] = str(page_conn["delivery_inside_dhaka"])
+            if page_conn.get("delivery_outside_dhaka") is not None:
+                config["delivery_outside_dhaka"] = str(page_conn["delivery_outside_dhaka"])
+            if page_conn.get("ai_system_prompt"):
+                config["ai_system_prompt"] = page_conn["ai_system_prompt"]
+            if page_conn.get("ai_enabled") is not None:
+                config["ai_enabled"] = bool(page_conn["ai_enabled"])
+
+    return config

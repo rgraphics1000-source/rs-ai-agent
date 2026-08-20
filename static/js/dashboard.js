@@ -117,8 +117,9 @@ function refreshCurrentTab(target) {
     if (target === "orders") loadOrders();
     if (target === "products") loadProducts();
     if (target === "content") { loadFaqs(); loadCommentLogs(); }
-    if (target === "omnichat") loadOmnichatConversations();
-    if (target === "settings" || target === "test-arena") loadSettings();
+    if (target === "omnichat") { loadOmnichatConversations(); loadConnectedPages(); }
+    if (target === "integrations") { loadConnectedPages(); loadSettings(); }
+    if (target === "settings" || target === "test-arena") { loadSettings(); loadConnectedPages(); }
 }
 
 // ==========================================
@@ -1254,12 +1255,21 @@ async function loadOmnichatConversations() {
     if (!container) return;
 
     try {
-        const res = await fetch("/api/omnichat/conversations");
+        const pageFilter = document.getElementById("omnichat-page-filter")?.value || "";
+        const channelFilter = document.getElementById("omnichat-channel-filter")?.value || "";
+
+        let url = "/api/omnichat/conversations";
+        const params = new URLSearchParams();
+        if (pageFilter) params.append("page_id", pageFilter);
+        if (channelFilter) params.append("channel", channelFilter);
+        if (params.toString()) url += `?${params.toString()}`;
+
+        const res = await fetch(url);
         const data = await res.json();
 
         container.innerHTML = "";
         if (!data.conversations || data.conversations.length === 0) {
-            container.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--text-dim);">No active conversations.</div>`;
+            container.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--text-dim);">No active conversations found.</div>`;
             return;
         }
 
@@ -1278,6 +1288,10 @@ async function loadOmnichatConversations() {
                 ? `<span class="badge" style="background: rgba(37, 211, 102, 0.2); color: #25d366; font-size: 10px; font-weight: 600;"><i class="fab fa-whatsapp"></i> WhatsApp</span>`
                 : `<span class="badge" style="background: rgba(24, 119, 242, 0.2); color: #60a5fa; font-size: 10px; font-weight: 600;"><i class="fab fa-facebook-messenger"></i> Messenger</span>`;
 
+            const pageBadge = c.page_name 
+                ? `<span class="badge" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; font-size: 9.5px; padding: 2px 6px; margin-left: 4px;">${c.page_name}</span>`
+                : '';
+
             const aiStatusIcon = c.human_takeover === 1 
                 ? `<span title="AI Paused for this customer" style="color: #f59e0b; font-size: 10px; margin-left: 6px;"><i class="fas fa-pause-circle"></i> Owner Mode</span>` 
                 : `<span title="AI Auto-Reply Active" style="color: #10b981; font-size: 10px; margin-left: 6px;"><i class="fas fa-robot"></i> AI Active</span>`;
@@ -1285,7 +1299,7 @@ async function loadOmnichatConversations() {
             item.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <strong style="color: #fff; font-size: 13.5px;">${c.customer_name || 'Customer'}</strong>
-                    <div>${channelBadge}</div>
+                    <div style="display: flex; align-items: center; gap: 4px;">${pageBadge} ${channelBadge}</div>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-muted);">
                     <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px;">${c.last_message || ''}</span>
@@ -2722,8 +2736,347 @@ function openWhatsAppAppDirectly(phone = "") {
     }
 }
 
+// ==========================================
+// MULTI-PAGE & MULTI-WHATSAPP MANAGEMENT
+// ==========================================
+let globalConnectedPages = [];
+
+async function loadConnectedPages() {
+    const container = document.getElementById("connected-pages-list");
+    if (!container) return;
+
+    try {
+        const res = await fetch("/api/pages");
+        const data = await res.json();
+        if (data.success) {
+            globalConnectedPages = data.pages || [];
+            renderConnectedPages(globalConnectedPages);
+            populateOmnichatPageFilter(globalConnectedPages);
+        }
+    } catch (e) {
+        console.error("Load connected pages error:", e);
+    }
+}
+
+function renderConnectedPages(pages) {
+    const container = document.getElementById("connected-pages-list");
+    if (!container) return;
+
+    if (!pages || pages.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 25px; color: var(--text-muted); background: rgba(0,0,0,0.2); border-radius: 10px;">
+                <i class="fab fa-facebook" style="font-size: 32px; opacity: 0.3; margin-bottom: 8px; display: block;"></i>
+                No connected pages found. Click "+ Connect Another Facebook Page" to add Page 1 or Page 2.
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = "";
+    pages.forEach((p, idx) => {
+        const card = document.createElement("div");
+        card.style.cssText = "background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;";
+
+        const hasWA = p.whatsapp && p.whatsapp.phone_number_id;
+        const waNumber = hasWA ? (p.whatsapp.display_phone_number || p.whatsapp.phone_number_id) : 'Not Linked';
+
+        card.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(24, 119, 242, 0.15); display: flex; align-items: center; justify-content: center; color: #60a5fa; font-size: 18px;">
+                        <i class="fab fa-facebook-messenger"></i>
+                    </div>
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <strong style="color: #fff; font-size: 14px;">${p.page_name || 'Facebook Page'}</strong>
+                            ${idx === 0 ? '<span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 9.5px;">Primary Page 1</span>' : '<span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; font-size: 9.5px;">Page ' + (idx + 1) + '</span>'}
+                        </div>
+                        <small style="color: var(--text-muted); font-size: 11px;">Page ID: ${p.page_id} | Shop: ${p.shop_name || 'RS Graphics'}</small>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span class="badge badge-confirmed" style="font-size: 10px;"><i class="fas fa-check-circle"></i> Messenger Connected</span>
+                    <span class="badge badge-confirmed" style="font-size: 10px;"><i class="fas fa-comments"></i> Auto Comments</span>
+                </div>
+            </div>
+
+            <!-- Page Details & WhatsApp Status Row -->
+            <div style="background: rgba(0,0,0,0.25); border-radius: 8px; padding: 10px 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; font-size: 12px;">
+                <div>
+                    <span style="color: var(--text-muted); display: block; font-size: 10.5px;">Linked WhatsApp Business</span>
+                    <strong style="color: ${hasWA ? '#34d399' : 'var(--text-dim)'};">
+                        <i class="fab fa-whatsapp" style="color: #25d366;"></i> ${waNumber}
+                    </strong>
+                </div>
+                <div>
+                    <span style="color: var(--text-muted); display: block; font-size: 10.5px;">Delivery Charges</span>
+                    <strong style="color: #e2e8f0;">৳${p.delivery_inside_dhaka || 70} (Inside) / ৳${p.delivery_outside_dhaka || 130} (Outside)</strong>
+                </div>
+                <div>
+                    <span style="color: var(--text-muted); display: block; font-size: 10.5px;">AI Custom Persona</span>
+                    <strong style="color: ${p.ai_system_prompt ? '#a78bfa' : '#64748b'};">
+                        ${p.ai_system_prompt ? 'Custom Prompt Active' : 'Default RS AI Brain'}
+                    </strong>
+                </div>
+            </div>
+
+            <!-- Actions Bar -->
+            <div style="display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;">
+                <button class="btn btn-secondary" style="font-size: 11px; padding: 5px 10px;" onclick="openPageWhatsAppModal('${p.page_id}')">
+                    <i class="fab fa-whatsapp" style="color: #25d366;"></i> ${hasWA ? 'Manage WhatsApp' : 'Link WhatsApp'}
+                </button>
+                <button class="btn btn-secondary" style="font-size: 11px; padding: 5px 10px;" onclick="openManagePageModal('${p.page_id}')">
+                    <i class="fas fa-sliders-h" style="color: var(--primary-light);"></i> Manage Store & AI
+                </button>
+                ${idx !== 0 ? `
+                    <button class="btn btn-secondary" style="font-size: 11px; padding: 5px 10px; color: #ef4444;" onclick="disconnectPageDirectly('${p.page_id}')">
+                        <i class="fas fa-trash-alt"></i> Disconnect
+                    </button>
+                ` : ''}
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+function populateOmnichatPageFilter(pages) {
+    const select = document.getElementById("omnichat-page-filter");
+    if (!select) return;
+
+    const currentVal = select.value;
+    select.innerHTML = '<option value="">All Pages & WA</option>';
+
+    pages.forEach(p => {
+        const opt = document.createElement("option");
+        opt.value = p.page_id;
+        opt.innerText = p.page_name || p.shop_name || `Page (${p.page_id})`;
+        select.appendChild(opt);
+    });
+
+    if (currentVal) select.value = currentVal;
+}
+
+function openConnectPageModal() {
+    document.getElementById("form-connect-page")?.reset();
+    openModal("modal-connect-page");
+}
+
+async function handleConnectPageSubmit(e) {
+    e.preventDefault();
+    const pageId = document.getElementById("new-page-id")?.value.trim();
+    const pageName = document.getElementById("new-page-name")?.value.trim();
+    const phone = document.getElementById("new-page-phone")?.value.trim();
+    const token = document.getElementById("new-page-token")?.value.trim();
+    const waPhoneId = document.getElementById("new-page-wa-phone-id")?.value.trim();
+    const waDisplayPhone = document.getElementById("new-page-wa-display-phone")?.value.trim();
+    const waWabaId = document.getElementById("new-page-wa-waba-id")?.value.trim();
+
+    if (!pageId || !token) {
+        showToast("Page ID and Access Token are required", "danger");
+        return;
+    }
+
+    try {
+        showToast("Connecting Facebook Page...", "info");
+        const res = await fetch("/api/pages/connect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                page_id: pageId,
+                page_name: pageName,
+                shop_name: pageName,
+                shop_phone: phone,
+                page_access_token: token,
+                whatsapp_phone_number_id: waPhoneId,
+                whatsapp_display_phone_number: waDisplayPhone,
+                whatsapp_waba_id: waWabaId
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(data.message || "Page connected successfully!", "success");
+            closeModal("modal-connect-page");
+            loadConnectedPages();
+            loadOmnichatConversations();
+        } else {
+            showToast(data.error || "Failed to connect page", "danger");
+        }
+    } catch (e) {
+        showToast("Connection error: Server failure", "danger");
+    }
+}
+
+let activeManagingPageId = null;
+
+function openManagePageModal(pageId) {
+    const p = globalConnectedPages.find(x => x.page_id === String(pageId));
+    if (!p) return;
+
+    activeManagingPageId = pageId;
+    document.getElementById("edit-page-id").value = p.page_id;
+    document.getElementById("edit-page-name").value = p.page_name || p.shop_name || '';
+    document.getElementById("edit-page-phone").value = p.shop_phone || '';
+    document.getElementById("edit-page-delivery-inside").value = p.delivery_inside_dhaka || 70;
+    document.getElementById("edit-page-delivery-outside").value = p.delivery_outside_dhaka || 130;
+    document.getElementById("edit-page-prompt").value = p.ai_system_prompt || '';
+    document.getElementById("edit-page-token").value = '';
+
+    openModal("modal-manage-page");
+}
+
+async function handleManagePageSubmit(e) {
+    e.preventDefault();
+    const pageId = document.getElementById("edit-page-id")?.value;
+    const pageName = document.getElementById("edit-page-name")?.value.trim();
+    const phone = document.getElementById("edit-page-phone")?.value.trim();
+    const inside = document.getElementById("edit-page-delivery-inside")?.value;
+    const outside = document.getElementById("edit-page-delivery-outside")?.value;
+    const prompt = document.getElementById("edit-page-prompt")?.value.trim();
+    const token = document.getElementById("edit-page-token")?.value.trim();
+
+    if (!pageId) return;
+
+    const payload = {
+        page_name: pageName,
+        shop_name: pageName,
+        shop_phone: phone,
+        delivery_inside_dhaka: parseInt(inside) || 70,
+        delivery_outside_dhaka: parseInt(outside) || 130,
+        ai_system_prompt: prompt
+    };
+    if (token) payload.page_access_token = token;
+
+    try {
+        const res = await fetch(`/api/pages/${pageId}/edit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("পেইজের সেটিংস সফলভাবে আপডেট হয়েছে!", "success");
+            closeModal("modal-manage-page");
+            loadConnectedPages();
+        } else {
+            showToast(data.error || "Update failed", "danger");
+        }
+    } catch (e) {
+        showToast("Update error", "danger");
+    }
+}
+
+async function confirmDisconnectCurrentPage() {
+    if (!activeManagingPageId) return;
+    if (!confirm("আপনি কি নিশ্চিত এই ফেসবুক পেইজের কানেকশন বিচ্ছিন্ন করতে চান?")) return;
+
+    try {
+        const res = await fetch(`/api/pages/${activeManagingPageId}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.success) {
+            showToast("পেইজ ডিসকানেক্ট করা হয়েছে", "success");
+            closeModal("modal-manage-page");
+            loadConnectedPages();
+            loadOmnichatConversations();
+        } else {
+            showToast(data.error || "Disconnect failed", "danger");
+        }
+    } catch (e) {
+        showToast("Disconnect error", "danger");
+    }
+}
+
+async function disconnectPageDirectly(pageId) {
+    if (!confirm("আপনি কি নিশ্চিত এই ফেসবুক পেইজের কানেকশন বিচ্ছিন্ন করতে চান?")) return;
+
+    try {
+        const res = await fetch(`/api/pages/${pageId}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.success) {
+            showToast("পেইজ ডিসকানেক্ট করা হয়েছে", "success");
+            loadConnectedPages();
+            loadOmnichatConversations();
+        } else {
+            showToast(data.error || "Disconnect failed", "danger");
+        }
+    } catch (e) {
+        showToast("Disconnect error", "danger");
+    }
+}
+
+function openPageWhatsAppModal(pageId) {
+    const p = globalConnectedPages.find(x => x.page_id === String(pageId));
+    if (!p) return;
+
+    document.getElementById("wa-modal-page-id").value = pageId;
+    const wa = p.whatsapp || {};
+    document.getElementById("wa-modal-display-phone").value = wa.display_phone_number || '';
+    document.getElementById("wa-modal-phone-id").value = wa.phone_number_id || '';
+    document.getElementById("wa-modal-waba-id").value = wa.waba_id || '';
+    document.getElementById("wa-modal-access-token").value = '';
+
+    openModal("modal-page-whatsapp");
+}
+
+async function handlePageWhatsAppSubmit(e) {
+    e.preventDefault();
+    const pageId = document.getElementById("wa-modal-page-id")?.value;
+    const displayPhone = document.getElementById("wa-modal-display-phone")?.value.trim();
+    const phoneId = document.getElementById("wa-modal-phone-id")?.value.trim();
+    const wabaId = document.getElementById("wa-modal-waba-id")?.value.trim();
+    const token = document.getElementById("wa-modal-access-token")?.value.trim();
+
+    if (!pageId || !phoneId) {
+        showToast("Phone Number ID is required", "danger");
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/pages/${pageId}/whatsapp/connect`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                phone_number_id: phoneId,
+                display_phone_number: displayPhone,
+                waba_id: wabaId,
+                access_token: token
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("হোয়াটসঅ্যাপ অ্যাকাউন্ট সফলভাবে পেইজের সাথে যুক্ত হয়েছে!", "success");
+            closeModal("modal-page-whatsapp");
+            loadConnectedPages();
+        } else {
+            showToast(data.error || "Failed to link WhatsApp", "danger");
+        }
+    } catch (e) {
+        showToast("Server error", "danger");
+    }
+}
+
+async function disconnectPageWhatsAppAction() {
+    const pageId = document.getElementById("wa-modal-page-id")?.value;
+    if (!pageId) return;
+    if (!confirm("আপনি কি নিশ্চিত এই পেইজের হোয়াটসঅ্যাপ অ্যাকাউন্ট ডিসকানেক্ট করতে চান?")) return;
+
+    try {
+        const res = await fetch(`/api/pages/${pageId}/whatsapp/disconnect`, { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+            showToast("হোয়াটসঅ্যাপ ডিসকানেক্ট করা হয়েছে", "success");
+            closeModal("modal-page-whatsapp");
+            loadConnectedPages();
+        }
+    } catch (e) {
+        showToast("Disconnect error", "danger");
+    }
+}
+
+// Initial Data Loading on DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
-    loadAllSettings();
+    loadSettings();
+    loadConnectedPages();
+    loadOmnichatConversations();
 });
 
 
