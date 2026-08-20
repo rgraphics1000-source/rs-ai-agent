@@ -29,16 +29,14 @@ from app.channels.facebook import (
     send_fb_media_message,
     send_fb_audio_message,
     send_fb_video_message,
-    handle_facebook_webhook_event, 
-    handle_facebook_feed_comment
+    handle_facebook_webhook_event
 )
 from app.channels.whatsapp import (
     send_whatsapp_message,
     send_whatsapp_image,
     send_whatsapp_audio,
     send_whatsapp_video,
-    handle_whatsapp_webhook_event, 
-    sync_embedded_signup_phone
+    handle_whatsapp_webhook_event
 )
 from app.channels.omnichat import (
     get_all_conversations, 
