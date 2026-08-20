@@ -4,14 +4,17 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.ContactsContract
 import android.view.KeyEvent
 import android.view.View
 import android.webkit.*
 import android.widget.FrameLayout
 import android.widget.ProgressBar
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
@@ -30,6 +33,46 @@ class MainActivity : ComponentActivity() {
             val results = WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
             fileUploadCallback?.onReceiveValue(results)
             fileUploadCallback = null
+        }
+    }
+
+    private val contactPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            val contactUri: Uri? = result.data?.data
+            if (contactUri != null) {
+                var phone = ""
+                var name = ""
+                val projection = arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.NUMBER,
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
+                )
+                try {
+                    val cursor: Cursor? = contentResolver.query(contactUri, projection, null, null, null)
+                    cursor?.use {
+                        if (it.moveToFirst()) {
+                            val numberIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                            val nameIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                            if (numberIdx != -1) phone = it.getString(numberIdx) ?: ""
+                            if (nameIdx != -1) name = it.getString(nameIdx) ?: ""
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                if (phone.isNotEmpty()) {
+                    val safePhone = phone.replace("'", "\\'").trim()
+                    val safeName = name.replace("'", "\\'").trim()
+                    webView.post {
+                        webView.evaluateJavascript(
+                            "window.onNativeContactPicked && window.onNativeContactPicked('$safeName', '$safePhone');",
+                            null
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -83,6 +126,9 @@ class MainActivity : ComponentActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             userAgentString = userAgentString + " RSAIAgentApp/1.0 (Android)"
         }
+
+        // Add JavaScript Interface for Native Android Features
+        webView.addJavascriptInterface(AndroidNativeBridge(), "AndroidBridge")
 
         // Request audio & storage permissions
         checkAndRequestPermissions()
@@ -152,9 +198,29 @@ class MainActivity : ComponentActivity() {
         webView.loadUrl("https://rs-ai-agent.onrender.com")
     }
 
+    inner class AndroidNativeBridge {
+        @JavascriptInterface
+        fun openContactPicker() {
+            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.READ_CONTACTS), 102)
+                return
+            }
+            try {
+                val intent = Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+                contactPickerLauncher.launch(intent)
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "Contact picker not supported", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        @JavascriptInterface
+        fun isNativeAndroid(): Boolean = true
+    }
+
     private fun checkAndRequestPermissions() {
         val permissions = mutableListOf(
-            Manifest.permission.RECORD_AUDIO
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.READ_CONTACTS
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
@@ -181,3 +247,4 @@ class MainActivity : ComponentActivity() {
         return super.onKeyDown(keyCode, event)
     }
 }
+

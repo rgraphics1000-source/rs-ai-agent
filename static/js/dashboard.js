@@ -2291,9 +2291,206 @@ async function loadAllSettings() {
         setVal("setting-delivery-inside", "delivery_charge_inside", 70);
         setVal("setting-delivery-outside", "delivery_charge_outside", 130);
         setVal("setting-blacklisted-numbers", "blacklisted_ai_numbers", "");
+        renderMutedContactsChips();
     } catch (e) {
         console.error("loadAllSettings error:", e);
     }
+}
+
+function getMutedNumbersList() {
+    const input = document.getElementById("setting-blacklisted-numbers");
+    if (!input || !input.value) return [];
+    return input.value.split(",").map(s => s.trim()).filter(s => s.length > 0);
+}
+
+function setMutedNumbersList(list) {
+    const input = document.getElementById("setting-blacklisted-numbers");
+    if (input) {
+        // Unique numbers
+        const unique = Array.from(new Set(list));
+        input.value = unique.join(", ");
+    }
+    renderMutedContactsChips();
+}
+
+function renderMutedContactsChips() {
+    const container = document.getElementById("muted-contacts-chips-container");
+    if (!container) return;
+
+    const list = getMutedNumbersList();
+    if (list.length === 0) {
+        container.innerHTML = `<span style="color: var(--text-dim); font-size: 12px;"><i class="fas fa-info-circle"></i> এখনো কোনো নম্বর মিউট করা হয়নি। উপরের বাটন দিয়ে সিলেক্ট করুন।</span>`;
+        return;
+    }
+
+    container.innerHTML = list.map(num => `
+        <span style="display: inline-flex; align-items: center; gap: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #fca5a5; padding: 4px 10px; border-radius: 16px; font-size: 12px; font-weight: 500;">
+            <i class="fas fa-phone-slash" style="font-size: 10px;"></i>
+            <span>${num}</span>
+            <i class="fas fa-times" style="cursor: pointer; margin-left: 4px; color: #f87171;" onclick="removeMutedContact('${num}')"></i>
+        </span>
+    `).join('');
+}
+
+function removeMutedContact(num) {
+    const list = getMutedNumbersList().filter(n => n !== num);
+    setMutedNumbersList(list);
+    saveAllSettings();
+    showToast(`নম্বর ${num} আন-মিউট করা হয়েছে`, "info");
+}
+
+function handleManualAddMute() {
+    const input = document.getElementById("manual-mute-phone-input");
+    if (!input || !input.value.trim()) return;
+
+    const clean = input.value.trim();
+    const list = getMutedNumbersList();
+    if (!list.includes(clean)) {
+        list.push(clean);
+        setMutedNumbersList(list);
+        saveAllSettings();
+        showToast(`✅ ${clean} এআই মিউট লিস্টে যুক্ত হয়েছে!`, "success");
+    }
+    input.value = "";
+}
+
+// 1. Native Android & Web Contact Picker Trigger
+async function pickPhoneOrWhatsAppContact() {
+    // Check if running inside Android Native App Wrapper
+    if (window.AndroidBridge && typeof window.AndroidBridge.openContactPicker === "function") {
+        try {
+            window.AndroidBridge.openContactPicker();
+            return;
+        } catch (e) {
+            console.error("AndroidBridge error:", e);
+        }
+    }
+
+    // Web Contact Picker API (Chrome on Android)
+    if ("contacts" in navigator && "select" in navigator.contacts) {
+        try {
+            const props = ["name", "tel"];
+            const opts = { multiple: true };
+            const contacts = await navigator.contacts.select(props, opts);
+            if (contacts && contacts.length > 0) {
+                const list = getMutedNumbersList();
+                let addedCount = 0;
+                contacts.forEach(c => {
+                    if (c.tel && c.tel.length > 0) {
+                        c.tel.forEach(t => {
+                            const clean = t.replace(/\s+/g, "").replace(/-/g, "");
+                            if (clean && !list.includes(clean)) {
+                                list.push(clean);
+                                addedCount++;
+                            }
+                        });
+                    }
+                });
+                if (addedCount > 0) {
+                    setMutedNumbersList(list);
+                    saveAllSettings();
+                    showToast(`🎉 ${addedCount}টি কন্টাক্ট এআই মিউট লিস্টে যুক্ত হয়েছে!`, "success");
+                }
+                return;
+            }
+        } catch (e) {
+            console.log("Web Contact Picker cancelled or not supported, opening Chat selector modal:", e);
+        }
+    }
+
+    // Fallback: Open Chat Selector Modal
+    openChatSelectorModal();
+}
+
+// Callback invoked by Android Native App
+window.onNativeContactPicked = function(name, phone) {
+    if (!phone) return;
+    const clean = phone.replace(/\s+/g, "").replace(/-/g, "");
+    const list = getMutedNumbersList();
+    if (!list.includes(clean)) {
+        list.push(clean);
+        setMutedNumbersList(list);
+        saveAllSettings();
+        showToast(`✅ ${name ? name + ' (' + clean + ')' : clean} এআই মিউট লিস্টে যুক্ত হয়েছে!`, "success");
+    }
+};
+
+// 2. Chat Selector Modal (WhatsApp & Messenger Chats)
+let cachedConversationsForMute = [];
+
+async function openChatSelectorModal() {
+    openModal("modal-select-chats-to-mute");
+    const container = document.getElementById("chat-selector-list-container");
+    if (container) {
+        container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 20px;"><i class="fas fa-spinner fa-spin"></i> চ্যাট লিস্ট লোড হচ্ছে...</div>`;
+    }
+
+    try {
+        const res = await fetch("/api/conversations");
+        const data = await res.json();
+        cachedConversationsForMute = data.conversations || [];
+        renderMuteChatSelectorList(cachedConversationsForMute);
+    } catch (e) {
+        console.error("openChatSelectorModal error:", e);
+        if (container) container.innerHTML = `<div style="color: #f87171; padding: 10px;">চ্যাট লোড করা যায়নি</div>`;
+    }
+}
+
+function renderMuteChatSelectorList(convs) {
+    const container = document.getElementById("chat-selector-list-container");
+    if (!container) return;
+
+    if (!convs || convs.length === 0) {
+        container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 20px;">কোনো সক্রিয় চ্যাট পাওয়া যায়নি।</div>`;
+        return;
+    }
+
+    const currentMuted = getMutedNumbersList();
+
+    container.innerHTML = convs.map(c => {
+        const sender = c.sender_id || "";
+        const isChecked = currentMuted.some(m => sender.includes(m) || m.includes(sender));
+        const channelIcon = c.channel === "whatsapp" ? "fab fa-whatsapp" : "fab fa-facebook-messenger";
+        const channelColor = c.channel === "whatsapp" ? "#25d366" : "#0084ff";
+
+        return `
+            <label style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,0.03); cursor: pointer; border: 1px solid rgba(255,255,255,0.06);">
+                <input type="checkbox" class="mute-chat-checkbox" value="${sender}" ${isChecked ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: #ef4444;">
+                <div style="flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <i class="${channelIcon}" style="color: ${channelColor};"></i>
+                        <strong style="font-size: 13px; color: #fff;">${c.customer_name || 'Customer'}</strong>
+                    </div>
+                    <span style="font-size: 11.5px; color: var(--text-muted);">${c.sender_id || ''}</span>
+                </div>
+                ${isChecked ? '<span class="badge" style="background: rgba(239,68,68,0.2); color: #f87171; font-size: 10px;">Muted</span>' : ''}
+            </label>
+        `;
+    }).join('');
+}
+
+function filterMuteChatSelectorList() {
+    const search = document.getElementById("chat-selector-search-input")?.value.toLowerCase() || "";
+    const filtered = cachedConversationsForMute.filter(c => 
+        (c.customer_name && c.customer_name.toLowerCase().includes(search)) ||
+        (c.sender_id && c.sender_id.toLowerCase().includes(search))
+    );
+    renderMuteChatSelectorList(filtered);
+}
+
+function confirmChatSelectorMute() {
+    const checkboxes = document.querySelectorAll(".mute-chat-checkbox");
+    const selected = [];
+    checkboxes.forEach(cb => {
+        if (cb.checked && cb.value) {
+            selected.push(cb.value.trim());
+        }
+    });
+
+    setMutedNumbersList(selected);
+    saveAllSettings();
+    closeModal("modal-select-chats-to-mute");
+    showToast(`✅ ${selected.length}টি কাস্টমার নম্বর এআই মিউট লিস্টে আপডেট হয়েছে!`, "success");
 }
 
 async function saveAllSettings() {
@@ -2331,5 +2528,6 @@ async function saveAllSettings() {
 document.addEventListener("DOMContentLoaded", () => {
     loadAllSettings();
 });
+
 
 
