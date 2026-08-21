@@ -454,7 +454,28 @@ async def process_customer_message(
     """
     api_key = get_setting("gemini_api_key", settings.GEMINI_API_KEY)
     ws_id = int(workspace_id or 1)
-    
+
+    # 0. HIGHEST-PRIORITY: Deterministic Google Form Creation Workflow
+    try:
+        workflow_res = resolve_google_form_workflow(
+            user_message=message_text,
+            conversation_history=conversation_history,
+            customer_phone=sender_id,
+            customer_name=customer_name,
+            workspace_id=ws_id
+        )
+        if workflow_res and workflow_res.get("reply"):
+            return {
+                "reply_text": workflow_res["reply"],
+                "voice_url": "",
+                "video_url": "",
+                "order_created": None,
+                "matched_images": [],
+                "google_form_workflow": workflow_res
+            }
+    except Exception as e:
+        print(f"[Google Form Workflow Early Resolution Error]: {e}")
+
     # Check if API key is provided
     if not api_key:
         fallback_reply = generate_smart_fallback_reply(message_text, customer_name, workspace_id=ws_id, page_id=page_id)

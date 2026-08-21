@@ -108,7 +108,7 @@ class TestGoogleAIToolAndWhatsApp(unittest.TestCase):
             "institution_mobile": "01712345678"
         }
 
-        user_message = "জামিয়া রাহমানিয়া আরাবিয়ার জন্য ID Card Form বানাও, তথ্য লাগবে নাম ও ছবি"
+        user_message = "জামিয়া রাহমানিয়া আরাবিয়া, মোবাইল: 01712345678, এর জন্য ID Card Form বানাও, তথ্য লাগবে নাম ও ছবি"
         res = asyncio.run(
             process_customer_message(
                 message_text=user_message,

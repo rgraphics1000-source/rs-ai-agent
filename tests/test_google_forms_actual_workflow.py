@@ -139,8 +139,9 @@ class TestGoogleFormsActualWorkflow(unittest.TestCase):
     @patch("app.google_integration.form_manager.create_institution_response_sheet")
     @patch("app.google_integration.form_manager.save_generated_form")
     @patch("app.google_integration.form_manager.save_institution")
+    @patch("app.google_integration.form_manager.get_generated_form_by_institution", return_value=None)
     def test_create_institution_form_end_to_end_naming_conventions(
-        self, mock_save_inst, mock_save_form, mock_sheet, mock_custom, mock_copy,
+        self, mock_get_exist, mock_save_inst, mock_save_form, mock_sheet, mock_custom, mock_copy,
         mock_inst_folder, mock_root_folder, mock_conn
     ):
         mock_conn.return_value = {

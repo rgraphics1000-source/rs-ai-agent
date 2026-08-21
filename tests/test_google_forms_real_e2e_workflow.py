@@ -1,4 +1,5 @@
 import unittest
+import asyncio
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 import json
@@ -15,6 +16,7 @@ from app.google_integration.ai_tool import (
 )
 from app.google_integration.form_manager import create_institution_form
 from app.google_integration.crypto import encrypt_token
+from app.ai_agent.gemini_brain import process_customer_message
 
 class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
     @classmethod
@@ -382,6 +384,79 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
                     self.assertNotEqual(del_idx, 3, "File upload photo question was erroneously queued for deletion!")
 
         print("✓ Test 5 Passed: Question pruning safely removed unselected questions while preserving File Upload student photo.")
+
+    # 6. Test Gemini Brain Early Priority & Zero Generic Fallback
+    @patch("app.google_integration.ai_tool.create_institution_form")
+    def test_06_gemini_brain_e2e_priority_no_generic_fallback(self, mock_create):
+        mock_create.return_value = {
+            "success": True,
+            "form_id": "form_e2e_test",
+            "form_title": "মদিনাতুল উলুম মাদরাসা - 01712345678 - ID Card Form",
+            "sheet_title": "মদিনাতুল উলুম মাদরাসা - 01712345678 - ID Card Responses",
+            "responder_url": "https://docs.google.com/forms/d/e/1FAIpQLSc_madina_e2e/viewform",
+            "sheet_url": "https://docs.google.com/spreadsheets/d/sheet_madina_e2e/edit",
+            "selected_fields": ["student_name", "father_name", "dob", "class_name", "roll", "address", "student_photo"]
+        }
+
+        # Turn 1:
+        res1 = asyncio.run(process_customer_message(
+            message_text="আমার প্রতিষ্ঠানের জন্য গুগল ফর্ম বানিয়ে দাও",
+            conversation_history=[],
+            sender_id="8801816504097",
+            customer_name="মাওলানা মাহমুদ",
+            workspace_id=self.workspace_id
+        ))
+        reply1 = res1.get("reply_text")
+        self.assertIn("প্রতিষ্ঠানের নামটি দিন", reply1)
+        self.assertNotIn("টিম যোগাযোগ করবে", reply1)
+
+        # Turn 2:
+        h2 = [
+            {"sender_type": "user", "content": "আমার প্রতিষ্ঠানের জন্য গুগল ফর্ম বানিয়ে দাও"},
+            {"sender_type": "bot", "content": reply1}
+        ]
+        res2 = asyncio.run(process_customer_message(
+            message_text="মদিনাতুল উলুম মাদরাসা",
+            conversation_history=h2,
+            sender_id="8801816504097",
+            customer_name="মাওলানা মাহমুদ",
+            workspace_id=self.workspace_id
+        ))
+        reply2 = res2.get("reply_text")
+        self.assertIn("মোবাইল নম্বর", reply2)
+
+        # Turn 3:
+        h3 = h2 + [
+            {"sender_type": "user", "content": "মদিনাতুল উলুম মাদরাসা"},
+            {"sender_type": "bot", "content": reply2}
+        ]
+        res3 = asyncio.run(process_customer_message(
+            message_text="01712345678",
+            conversation_history=h3,
+            sender_id="8801816504097",
+            customer_name="মাওলানা মাহমুদ",
+            workspace_id=self.workspace_id
+        ))
+        reply3 = res3.get("reply_text")
+        self.assertTrue("কোন কোন তথ্য" in reply3 or "তথ্য বা ফিল্ড" in reply3 or "তথ্য রাখতে চান" in reply3)
+
+        # Turn 4:
+        h4 = h3 + [
+            {"sender_type": "user", "content": "01712345678"},
+            {"sender_type": "bot", "content": reply3}
+        ]
+        res4 = asyncio.run(process_customer_message(
+            message_text="নাম, পিতার নাম, শ্রেণি, রোল, জন্মতারিখ, ঠিকানা এবং ছবি",
+            conversation_history=h4,
+            sender_id="8801816504097",
+            customer_name="মাওলানা মাহমুদ",
+            workspace_id=self.workspace_id
+        ))
+        reply4 = res4.get("reply_text")
+        self.assertIn("https://docs.google.com/forms/d/e/1FAIpQLSc_madina_e2e/viewform", reply4)
+        self.assertIn("https://docs.google.com/spreadsheets/d/sheet_madina_e2e/edit", reply4)
+        mock_create.assert_called_once()
+        print("✓ Test 6 Passed: Full 4-turn WhatsApp flow executes with early priority and zero generic fallback.")
 
 if __name__ == "__main__":
     unittest.main()

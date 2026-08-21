@@ -353,10 +353,14 @@ def resolve_google_form_workflow(
     flat_history = []
     if conversation_history:
         for m in conversation_history:
-            role = m.get("role") or ("user" if m.get("sender") == "customer" else "assistant")
-            content = m.get("content") or m.get("message") or m.get("text") or ""
+            st = str(m.get("sender_type") or m.get("sender") or m.get("role") or "").lower()
+            is_user = st in ("user", "customer")
+            content = m.get("content") or m.get("message") or m.get("text") or m.get("body") or ""
             if isinstance(content, str) and content.strip():
-                flat_history.append({"role": "user" if role in ("user", "customer") else "assistant", "text": content.strip()})
+                flat_history.append({
+                    "role": "user" if is_user else "assistant",
+                    "text": content.strip()
+                })
 
     # Append current user message
     if user_message and user_message.strip():
@@ -365,41 +369,56 @@ def resolve_google_form_workflow(
     if not flat_history:
         return None
 
-    form_keywords = [
-        "id card form", "google form", "ফর্ম বানাও", "ফর্ম তৈরি", "ফর্ম বানিয়ে", "ফর্ম বানিয়ে",
-        "ফর্ম বানিয়ে দাও", "ফর্ম বানিয়ে দিন", "ফর্ম বানিয়ে দিন", "বানিয়ে দিন", "বানিয়ে দিন",
-        "ফর্ম লিঙ্ক", "ফর্ম লিংক", "তথ্য নেওয়ার ফর্ম", "ছাত্রদের ফর্ম", "আইডি কার্ড ফর্ম",
-        "id card ফর্ম", "ফর্ম দাও", "ফর্ম পাঠান", "create form", "make form", "গুগল ফর্ম",
-        "আইডি কার্ডের ফর্ম", "আইডি কার্ড"
+    form_intent_patterns = [
+        r'ফর্ম',
+        r'form',
+        r'গুগল\s*ফর্ম',
+        r'google\s*form',
+        r'id\s*card\s*(?:এর\s*)?form',
+        r'id\s*card\s*(?:এর\s*)?ফর্ম',
+        r'আইডি\s*কার্ড(?:ের)?\s*(?:জন্য\s*)?(?:একটি\s*|একটা\s*)?ফর্ম',
+        r'আইডি\s*কার্ড(?:ের)?\s*ফর্ম',
+        r'আইডি\s*কার্ডের\s*জন্য\s*ফর্ম',
+        r'আইডি\s*কার্ড',
+        r'তথ্য\s*নেওয়ার\s*জন্য',
+        r'create\s*form|make\s*form',
     ]
 
     has_form_intent = False
     for m in flat_history:
-        txt_lower = m["text"].lower()
-        if any(kw in txt_lower for kw in form_keywords):
+        txt = m["text"]
+        txt_lower = txt.lower()
+        if any(re.search(p, txt_lower, re.IGNORECASE) for p in form_intent_patterns):
             has_form_intent = True
             break
-        if m["role"] == "assistant" and any(q in m["text"] for q in ["প্রতিষ্ঠানের নাম", "মোবাইল নম্বর", "কী কী তথ্য লাগবে", "কোন কোন তথ্য লাগবে"]):
+        if any(kw in txt_lower for kw in ["ফর্ম", "ফর্মে", "form", "গুগল ফর্ম", "google form", "আইডি কার্ড ফর্ম", "id card form", "আইডি কার্ড"]):
+            has_form_intent = True
+            break
+        if m["role"] == "assistant" and any(q in txt for q in [
+            "প্রতিষ্ঠানের নাম", "প্রতিষ্ঠানের নামটি দিন", "মোবাইল নম্বর",
+            "কোন কোন তথ্য", "তথ্য রাখতে চান", "কী কী তথ্য লাগবে"
+        ]):
             has_form_intent = True
             break
 
     if not has_form_intent:
         return None
 
+    print(f"[GOOGLE_FORM_WORKFLOW] Incoming message detected: {user_message[:60] if user_message else ''}")
+    print(f"[GOOGLE_FORM_WORKFLOW] Intent detected = TRUE")
+
     phone_pattern = r'(?:\+?880|880|0)?1[3-9]\d{2}[-\s]?\d{6}'
 
-    # 1. Extract Institution Mobile Number
+    # 1. Extract Institution Mobile Number explicitly from user text messages
     inst_mobile = ""
     for m in reversed(flat_history):
         if m["role"] == "user":
             match = re.search(phone_pattern, m["text"])
             if match:
-                inst_mobile = normalize_bd_mobile(match.group(0))
-                if inst_mobile:
+                norm = normalize_bd_mobile(match.group(0))
+                if norm:
+                    inst_mobile = norm
                     break
-
-    if not inst_mobile and customer_phone:
-        inst_mobile = normalize_bd_mobile(customer_phone)
 
     # 2. Extract Institution Name
     inst_name = ""
@@ -455,7 +474,7 @@ def resolve_google_form_workflow(
         for idx in range(len(flat_history) - 1):
             prev = flat_history[idx]
             curr = flat_history[idx + 1]
-            if prev["role"] == "assistant" and any(q in prev["text"] for q in ["প্রতিষ্ঠানের নাম কী", "প্রতিষ্ঠানের নাম বলুন", "প্রতিষ্ঠানের নাম"]):
+            if prev["role"] == "assistant" and any(q in prev["text"] for q in ["প্রতিষ্ঠানের নাম", "প্রতিষ্ঠানের নামটি দিন", "প্রতিষ্ঠানের নাম বলুন", "প্রতিষ্ঠানের নাম কী"]):
                 if curr["role"] == "user":
                     cand = curr["text"].strip().split("\n")[0].split(",")[0].split("।")[0].strip()
                     cand = re.sub(phone_pattern, '', cand).strip()
@@ -478,34 +497,40 @@ def resolve_google_form_workflow(
                     all_detected_fields.append(f)
 
     # 4. Evaluate conversation state
-    hon = "স্যার"
-
     if not inst_name:
+        print(f"[GOOGLE_FORM_WORKFLOW] State = NEED_INSTITUTION_NAME")
+        print(f"[GOOGLE_FORM_WORKFLOW] Returning deterministic response (Gemini LLM bypassed)")
         return {
             "status": "need_name",
             "institution_name": "",
             "institution_mobile": inst_mobile,
             "selected_fields": all_detected_fields,
-            "reply": f"অবশ্যই {hon}! আপনার প্রতিষ্ঠানের নাম কী? (যেমন: আল-আমিন মাদ্রাসা বা ABC School)"
+            "reply": "অবশ্যই স্যার। ফর্ম তৈরি করার জন্য প্রথমে আপনার প্রতিষ্ঠানের নামটি দিন।"
         }
 
     if not inst_mobile:
+        print(f"[GOOGLE_FORM_WORKFLOW] State = NEED_INSTITUTION_MOBILE")
+        print(f"[GOOGLE_FORM_WORKFLOW] Returning deterministic response (Gemini LLM bypassed)")
         return {
             "status": "need_mobile",
             "institution_name": inst_name,
             "institution_mobile": "",
             "selected_fields": all_detected_fields,
-            "reply": f"জি {hon}, প্রতিষ্ঠানের যোগাযোগের মোবাইল নম্বরটি প্রদান করুন (যেমন: 017xxxxxxxx)।"
+            "reply": "ধন্যবাদ স্যার। এখন প্রতিষ্ঠানের মোবাইল নম্বরটি দিন।"
         }
 
     if not all_detected_fields:
+        print(f"[GOOGLE_FORM_WORKFLOW] State = NEED_FIELDS")
+        print(f"[GOOGLE_FORM_WORKFLOW] Returning deterministic response (Gemini LLM bypassed)")
         return {
             "status": "need_fields",
             "institution_name": inst_name,
             "institution_mobile": inst_mobile,
             "selected_fields": [],
-            "reply": f"জি {hon}, *{inst_name}*-এর গুগল ফর্মে শিক্ষার্থীদের কোন কোন তথ্য বা ফিল্ড লাগবে? (যেমন: শিক্ষার্থীর নাম, পিতার নাম, মাতার নাম, শ্রেণি, রোল, জন্মতারিখ, রক্তের গ্রুপ, ঠিকানা, ছবি ইত্যাদি লিখে জানান)"
+            "reply": "ধন্যবাদ স্যার। এবার বলুন, শিক্ষার্থীদের ফর্মে কোন কোন তথ্য রাখতে চান?\nযেমন: নাম, পিতার নাম, মাতার নাম, জন্মতারিখ, শ্রেণি, রোল, ঠিকানা, ছবি ইত্যাদি।"
         }
+
+    print(f"[GOOGLE_FORM_WORKFLOW] State = READY_TO_CREATE")
 
     # All 3 required components are collected: CREATE FORM!
     selected_keys = [f["key"] for f in all_detected_fields]
@@ -520,14 +545,14 @@ def resolve_google_form_workflow(
 
         form_url = create_res.get("responder_url") or create_res.get("form_url") or ""
         sheet_url = create_res.get("sheet_url") or ""
-        field_labels_str = ", ".join([f["label"] for f in all_detected_fields])
 
         success_reply = (
-            f"জি {hon}, *{inst_name}*-এর আইডি কার্ড তথ্য ও ছবি সংগ্রহের Google Form প্রস্তুত করা হয়েছে! 🎉\n\n"
-            f"📝 গুগল ফর্ম লিংক (শিক্ষার্থীদের পূরণের জন্য):\n{form_url}\n\n"
-            f"📊 গুগল শিট লিংক (ডাটা দেখার জন্য):\n{sheet_url}\n\n"
-            f"📌 ফর্মে অন্তর্ভুক্ত ফিল্ডসমূহ: {field_labels_str}\n\n"
-            f"শিক্ষার্থীদের এই ফর্ম লিংকটি প্রদান করলে তারা পূরণ করে সরাসরি ছবি ও তথ্য জমা দিতে পারবে।"
+            f"আলহামদুলিল্লাহ স্যার, আপনার প্রতিষ্ঠানের জন্য Google Form তৈরি হয়ে গেছে।\n\n"
+            f"🏫 প্রতিষ্ঠান: {inst_name}\n"
+            f"📱 মোবাইল: {inst_mobile}\n\n"
+            f"📋 ফর্ম:\n{form_url}\n\n"
+            f"📊 Google Sheet:\n{sheet_url}\n\n"
+            f"আপনি চাইলে এখনই এই লিংকটি ব্যবহার করতে পারেন।"
         )
 
         return {
@@ -551,5 +576,5 @@ def resolve_google_form_workflow(
             "error": str(e),
             "institution_name": inst_name,
             "institution_mobile": inst_mobile,
-            "reply": f"জি {hon}, গুগল ফর্ম তৈরিতে একটি সমস্যা হয়েছে: {str(e)}"
+            "reply": f"জি স্যার, গুগল ফর্ম তৈরিতে একটি সমস্যা হয়েছে: {str(e)}"
         }

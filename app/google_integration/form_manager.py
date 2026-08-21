@@ -60,6 +60,7 @@ def create_institution_form(
             "institution_mobile": canonical_mobile,
             "form_id": existing_form["form_id"],
             "form_title": existing_form.get("form_title") or f"{clean_inst_name} - {canonical_mobile} - ID Card Form",
+            "sheet_title": existing_form.get("sheet_title") or f"{clean_inst_name} - {canonical_mobile} - ID Card Responses",
             "form_url": existing_form["form_url"],
             "responder_url": existing_form.get("responder_uri") or existing_form["form_url"],
             "edit_url": existing_form.get("edit_url"),
