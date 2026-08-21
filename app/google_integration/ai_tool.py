@@ -394,7 +394,7 @@ def resolve_google_form_workflow(
 
     # Check for explicit form creation command in current user message
     form_explicit_triggers = [
-        r'গুগল\s*ফর্ম|গুগল\s*ফরম|google\s*form|gform|g-form',
+        r'গুগল\s*ফর্ম|গুগল\s*ফরম|google\s*for[mn]|google\s*from|gform|g-form',
         r'id\s*card\s*(?:এর\s*)?(?:form|ফর্ম|ফরম)',
         r'(?:আইডি\s*কার্ড(?:ের)?\s*(?:জন্য\s*)?)?(?:ফর্ম|ফরম|form)\s*(?:বানাও|বানিয়ে|বানিয়ে|বানাতে|তৈরি|করতে|create|make|দিন|দাও|পাঠান|লিংক|লিঙ্ক|দেন|চাই|হবে|লাগবে)',
         r'(?:তথ্য|ডাটা)\s*(?:নেওয়ার|দেওয়ার|কালেক্ট\s*করার)\s*(?:জন্য\s*)?(?:গুগল\s*)?(?:ফর্ম|ফরম|form)',
