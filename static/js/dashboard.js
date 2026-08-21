@@ -1604,7 +1604,7 @@ async function loadSettings() {
             document.getElementById("wa-display-phone").innerHTML = `<i class="fas fa-phone-alt" style="color: #25d366; font-size: 12px;"></i> +8801816504097`;
         }
         if (document.getElementById("wa-display-waba-id")) {
-            document.getElementById("wa-display-waba-id").innerText = s.whatsapp_waba_id || "27905447135785944";
+            document.getElementById("wa-display-waba-id").innerText = s.whatsapp_waba_id || "271335301757320";
         }
         if (document.getElementById("wa-display-phone-id")) {
             document.getElementById("wa-display-phone-id").innerText = isWaConnected ? s.whatsapp_phone_number_id : "Awaiting Meta verification";

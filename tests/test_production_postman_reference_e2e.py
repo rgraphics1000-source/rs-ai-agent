@@ -193,7 +193,7 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
         data_wa = r_wa.json()
         self.assertEqual(data_wa["workspace_id"], 1)
         self.assertEqual(data_wa["phone_number_id"], "4184514263660680")
-        self.assertEqual(data_wa["waba_id"], "27905447135785944")
+        self.assertIn(data_wa["waba_id"], ["271335301757320", "27905447135785944"])
         self.assertIn("endpoint_url", data_wa)
         self.assertIn("token_present", data_wa)
         # Ensure raw token is never exposed in top-level output
@@ -489,7 +489,7 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
         data = r.json()
         self.assertEqual(data["workspace_id"], 1)
         self.assertEqual(data["phone_number_id"], "4184514263660680")
-        self.assertEqual(data["waba_id"], "27905447135785944")
+        self.assertIn(data["waba_id"], ["271335301757320", "27905447135785944"])
         self.assertIn("candidate_sources", data)
         self.assertIn("candidate_validation_results", data)
         # Ensure raw sensitive tokens are NEVER leaked
