@@ -417,18 +417,20 @@ def resolve_google_form_workflow(
     is_question = bool(re.search(question_pattern, msg_lower))
 
     # DETERMINISTIC: Data collection questions → always mention Google Form + offer to create
-    # Catches: "তথ্য কিভাবে দিব", "তথ্য কিভাবে নেন", "ছবি কিভাবে পাঠাব", "ডাটা কিভাবে দিব",
-    #          "আইডি কার্ডের তথ্য এবং ছবি আম্রা কিভাবে দিব আপনাদেরকে?" etc.
-    data_collection_pattern = r'(?:তথ্য|ছবি|ডাটা|data|photo|ইনফরমেশন|ইনফো)(?:\s*(?:এবং|ও|আর|and)\s*(?:ছবি|তথ্য|ডাটা))?\s*(?:আম্রা\s*|আমরা\s*|আমি\s*)?(?:কিভাবে|কীভাবে|কেমনে|কেমন\s*করে)\s*(?:দিব|দেবো|দিবো|দিতে\s*হবে|নেন|নেবেন|নিবেন|পাঠাব|পাঠাবো|পাঠাই|দেই|সংগ্রহ|কালেক্ট|জমা|submit|send|collect)'
-    data_collection_pattern2 = r'(?:কিভাবে|কীভাবে|কেমনে|কেমন\s*করে)\s*(?:তথ্য|ছবি|ডাটা|data|photo|ইনফরমেশন|ইনফো)(?:\s*(?:এবং|ও|আর|and)\s*(?:ছবি|তথ্য|ডাটা))?\s*(?:দিব|দেবো|দিবো|দিতে\s*হবে|নেন|নেবেন|নিবেন|পাঠাব|পাঠাবো|পাঠাই|দেই|সংগ্রহ|কালেক্ট|জমা|submit|send|collect)'
-    if (re.search(data_collection_pattern, msg_lower) or re.search(data_collection_pattern2, msg_lower)) and not has_explicit_form_intent:
+    data_collection_patterns = [
+        r'(?:তথ্য|ছবি|ডাটা|data|photo|ইনফরমেশন|ইনফো).*(?:কিভাবে|কীভাবে|কেমনে|কেমন\s*করে|কোথায়|কোনো\s*উপায়|কোন\s*ভাবে).*(?:দিব|দেবো|দিবো|দিতে|নেন|নেবেন|নিবেন|পাঠাব|পাঠাবো|পাঠাই|দেই|সংগ্রহ|কালেক্ট|জমা|submit|send|collect)',
+        r'(?:কিভাবে|কীভাবে|কেমনে|কেমন\s*করে|কোথায়).*(?:তথ্য|ছবি|ডাটা|data|photo|ইনফরমেশন|ইনফো).*(?:দিব|দেবো|দিবো|দিতে|নেন|নেবেন|নিবেন|পাঠাব|পাঠাবো|পাঠাই|দেই|সংগ্রহ|কালেক্ট|জমা|submit|send|collect)',
+        r'(?:তথ্য|ছবি|ডাটা|data|photo).*(?:দেওয়ার|নেওয়ার|পাঠানোর|জমার|সংগ্রহের).*(?:নিয়ম|পদ্ধতি|উপায়|সিস্টেম|মাধ্যম)',
+        r'(?:তথ্য|ছবি|ডাটা).*(?:পাঠাতে|দিতে|জমা\s*দিতে).*(?:চাই|হবে|কি|কী|কেমনে)'
+    ]
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in data_collection_patterns) and not has_explicit_form_intent:
         return {
             "reply": (
-                "জি স্যার, আইডি কার্ডের তথ্য ও ছবি সংগ্রহের জন্য আমাদের সবচেয়ে সহজ ব্যবস্থা হলো **গুগল ফর্ম (Google Form)**। "
-                "আপনার প্রতিষ্ঠানের নামে আমরা একটি কাস্টমাইজড গুগল ফর্ম তৈরি করে দিই, "
-                "যেখানে শিক্ষার্থী/স্টাফরা নিজেরাই নাম, পিতার নাম, ছবি সহ সব তথ্য সুন্দরভাবে জমা দিতে পারেন।\n\n"
-                "এছাড়াও আপনি চাইলে সরাসরি এই হোয়াটসঅ্যাপে এক্সেল/ওয়ার্ড ফাইল বা ছবি পাঠিয়েও দিতে পারেন।\n\n"
-                "আপনার প্রতিষ্ঠানের জন্য কি একটি গুগল ফর্ম বানিয়ে দেব স্যার?"
+                "জি স্যার/ম্যাম, আইডি কার্ডের তথ্য ও ছবি সংগ্রহের জন্য আমাদের প্রধান এবং সবচেয়ে সহজ মাধ্যম হলো **গুগল ফর্ম (Google Form)**।\n\n"
+                "আমরা আপনার প্রতিষ্ঠানের নামে একটি কাস্টমাইজড গুগল ফর্ম তৈরি করে দেব, "
+                "যেখানে শিক্ষার্থী বা স্টাফরা নিজেরাই নাম, পিতার নাম, শ্রেণি, রোল ও ছবি সুন্দরভাবে জমা দিতে পারবেন।\n\n"
+                "আর গুগল ফর্মে দেওয়া কারো কাছে কঠিন মনে হলে, আপনারা সরাসরি এই হোয়াটসঅ্যাপে বা এক্সেল/ওয়ার্ড ফাইলে তালিকা এবং ছবি পাঠিয়ে দিতে পারবেন।\n\n"
+                "আপনার প্রতিষ্ঠানের জন্য কি একটি গুগল ফর্ম বানিয়ে দেব স্যার/ম্যাম?"
             ),
             "action": "data_collection_offer",
             "step": "offered_google_form"
@@ -559,16 +561,25 @@ def resolve_google_form_workflow(
                     all_detected_fields.append(f)
 
     # 5. Check if form already exists in database for this institution/mobile
-    from app.database import get_generated_form_by_institution, get_generated_forms_by_mobile
+    from app.database import get_generated_form_by_institution, get_generated_forms_by_mobile, get_google_connection
     existing_form = None
-    if inst_mobile:
-        existing_form = get_generated_form_by_institution(workspace_id=int(workspace_id or 1), institution_name=inst_name or "", institution_mobile=inst_mobile)
-        if not existing_form:
-            mobile_forms = get_generated_forms_by_mobile(workspace_id=int(workspace_id or 1), mobile=inst_mobile)
-            if mobile_forms:
-                existing_form = mobile_forms[0]
-    elif inst_name:
-        existing_form = get_generated_form_by_institution(workspace_id=int(workspace_id or 1), institution_name=inst_name)
+    conn_data = get_google_connection(workspace_id=int(workspace_id or 1))
+    master_form_id = conn_data.get("master_form_id") if conn_data else None
+
+    if inst_name and inst_mobile:
+        cand = get_generated_form_by_institution(workspace_id=int(workspace_id or 1), institution_name=inst_name, institution_mobile=inst_mobile)
+        if cand and cand.get("form_id") != master_form_id:
+            existing_form = cand
+    elif inst_mobile and not inst_name and has_explicit_form_intent:
+        mobile_forms = get_generated_forms_by_mobile(workspace_id=int(workspace_id or 1), mobile=inst_mobile)
+        for mf in mobile_forms:
+            if mf.get("form_id") != master_form_id:
+                existing_form = mf
+                break
+    elif inst_name and not inst_mobile and has_explicit_form_intent:
+        cand = get_generated_form_by_institution(workspace_id=int(workspace_id or 1), institution_name=inst_name)
+        if cand and cand.get("form_id") != master_form_id:
+            existing_form = cand
 
     if existing_form and has_explicit_form_intent:
         e_form_id = existing_form.get("form_id")

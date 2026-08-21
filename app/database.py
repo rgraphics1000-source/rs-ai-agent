@@ -659,6 +659,14 @@ def init_db():
 
     # Automatically purge demo/test workspaces created during previous test sessions
     try:
+        cursor.execute("""
+            DELETE FROM generated_forms 
+            WHERE form_id IN (SELECT master_form_id FROM google_connections WHERE master_form_id IS NOT NULL AND master_form_id != '')
+        """)
+        cursor.execute("""
+            DELETE FROM generated_forms 
+            WHERE form_id IN (SELECT master_form_id FROM google_form_templates WHERE master_form_id IS NOT NULL AND master_form_id != '')
+        """)
         cursor.execute("DELETE FROM workspaces WHERE id != 1 AND (name LIKE '%SmartTech%' OR name LIKE '%Test Shop%' OR name LIKE '%Audit Shop%' OR name LIKE '%Smart Accessories%' OR name LIKE '%Page 2%')")
         cursor.execute("DELETE FROM ai_training_rules WHERE workspace_id != 1 OR title LIKE 'Unique RS Rule%' OR title LIKE 'Unique Gadget Rule%'")
         cursor.execute("DELETE FROM products WHERE workspace_id != 1")
@@ -686,6 +694,7 @@ def init_db():
         ("ক্যাশ অন ডেলিভারি ও ডেলিভারি চার্জ", "ঢাকার ভেতরে ডেলিভারি চার্জ ৭০ টাকা এবং ঢাকার বাইরে ১৩০ টাকা। সারা বাংলাদেশে ক্যাশ অন ডেলিভারি সুবিধা রয়েছে।", "qa", "ডেলিভারি চার্জ কত?", "Delivery & Payment", 1),
         ("ইউভি প্রিন্ট কোয়ালিটি", "আমরা জাপানি মেশিনের অরজিনাল UV কালার প্রিন্ট করি, যা ১০০% ওয়াটারপ্রুফ, প্রিমিয়াম ফিনিশিং এবং দীর্ঘস্থায়ী।", "qa", "কোয়ালিটি কেমন?", "Product Quality", 1),
         ("ডিসকাউন্ট পলিসি ও বাল্ক অর্ডার", "প্রথমে নিয়মিত বিক্রয়মূল্য বলবে। কাস্টমার ৫০ বা ১০০+ পিস চাইলে বা দাম বেশি বললে স্পেশাল হোলসেল রেট অফার করবে।", "price_policy", "ডিসকাউন্ট বা কম রাখা যাবে?", "Price Policy", 1),
+        ("তথ্য ও ছবি সংগ্রহের নিয়ম (গুগল ফর্ম প্রথম অগ্রাধিকার)", "কাস্টমার যদি জানতে চায় তথ্য ও ছবি কীভাবে দেবে বা আপনারা কীভাবে তথ্য নেন—তাহলে সর্বপ্রথম বলবে: 'আমাদের সবচেয়ে সহজ ও প্রধান মাধ্যম হলো গুগল ফর্ম (Google Form)। আপনার প্রতিষ্ঠানের নামে আমরা একটি কাস্টমাইজড গুগল ফর্ম বানিয়ে দেব, যাতে ছাত্র-ছাত্রী বা স্টাফরা নিজেরাই ঘরে বসে তথ্য ও ছবি সুন্দরভাবে জমা দিতে পারেন। আর গুগল ফর্মে দেওয়া কারো কাছে কঠিন মনে হলে সরাসরি এই হোয়াটসঅ্যাপে বা এক্সেলে তালিকা পাঠাতে পারেন। আপনার প্রতিষ্ঠানের জন্য কি একটি গুগল ফর্ম বানিয়ে দেব স্যার/ম্যাম?'", "instruction", "তথ্য কিভাবে দিব", "Data Collection", 1),
         ("ক্রয়মূল্য গোপন রাখা", "কাস্টমারকে কখনো আমাদের নিজস্ব উৎপাদন বা ক্রয়মূল্য বলা যাবে না। সর্বদা নির্ধারিত বিক্রয়মূল্য বলতে হবে।", "instruction", "", "Business Policy", 1),
         ("ছবি ও স্যাম্পল পাঠানোর নিয়ম", "কাস্টমার ছবি বা স্যাম্পল দেখতে চাইলে কালবিলম্ব না করে সরাসরি বলবে জি স্যার/ম্যাম, অবশ্যই দিচ্ছি। নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো পাঠানো হলো। এবং সাথে সাথে সবগুলো স্যাম্পল ছবি পাঠাবে।", "instruction", "ছবি দেখান", "Sales Protocol", 1),
         ("প্যাকেজের ছবি চাওয়ার নিয়ম", "কাস্টমার প্যাকেজ বা কম্বো প্যাকেজের ছবি চাইলে টেক্সটে কোনো লম্বা প্যাকেজ লিস্ট দেবে না। শুধুমাত্র বলবে 'জি স্যার/ম্যাম, অবশ্যই দিচ্ছি।' এবং প্যাকেজের ৭টি ছবি পাঠাবে। সব ছবি পাঠানো শেষ হলে স্বয়ংক্রিয়ভাবে বলবে 'আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন স্যার/ম্যাম।'", "instruction", "প্যাকেজের ছবি", "Sales Protocol", 1),

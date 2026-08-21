@@ -48,9 +48,19 @@ def create_institution_form(
         raise ValueError("সঠিক মোবাইল নম্বর প্রদান করুন (যেমন: 01712345678)।")
 
     # 1. Check if an institution / form with this mobile number already exists in this workspace
+    conn_data = get_google_connection(workspace_id=ws_id)
+    master_form_id = conn_data.get("master_form_id") if conn_data else None
     existing_form = get_generated_form_by_institution(workspace_id=ws_id, institution_name=clean_inst_name, institution_mobile=canonical_mobile)
 
-    if existing_form and not allow_duplicate:
+    if existing_form and existing_form.get("form_id") != master_form_id and not allow_duplicate:
+        e_form_id = existing_form["form_id"]
+        try:
+            cloned_meta = get_form_details(workspace_id=ws_id, form_id=e_form_id)
+            cloned_responder_uri = cloned_meta.get("responderUri")
+        except Exception:
+            cloned_responder_uri = None
+        canonical_resp_url = cloned_responder_uri or f"https://docs.google.com/forms/d/{e_form_id}/viewform"
+
         return {
             "success": True,
             "is_existing": True,
@@ -58,12 +68,12 @@ def create_institution_form(
             "institution_id": existing_form.get("institution_id"),
             "institution_name": clean_inst_name,
             "institution_mobile": canonical_mobile,
-            "form_id": existing_form["form_id"],
+            "form_id": e_form_id,
             "form_title": existing_form.get("form_title") or f"{clean_inst_name} - {canonical_mobile} - ID Card Form",
             "sheet_title": existing_form.get("sheet_title") or f"{clean_inst_name} - {canonical_mobile} - ID Card Responses",
-            "form_url": existing_form["form_url"],
-            "responder_url": existing_form.get("responder_uri") or existing_form["form_url"],
-            "edit_url": existing_form.get("edit_url"),
+            "form_url": canonical_resp_url,
+            "responder_url": canonical_resp_url,
+            "edit_url": existing_form.get("edit_url") or f"https://docs.google.com/forms/d/{e_form_id}/edit",
             "sheet_url": existing_form.get("response_sheet_url"),
             "drive_folder_id": existing_form.get("drive_folder_id"),
             "selected_fields": existing_form.get("selected_fields"),

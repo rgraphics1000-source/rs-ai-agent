@@ -471,7 +471,7 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
         )
         self.assertIsNotNone(q1, "Data collection question must return Google Form offer")
         self.assertIn("গুগল ফর্ম", q1.get("reply", ""))
-        self.assertIn("বানিয়ে দেব", q1.get("reply", ""))
+        self.assertTrue("বানিয়ে দেব" in q1.get("reply", "") or "বানিয়ে দেব" in q1.get("reply", ""))
         self.assertEqual(q1.get("action"), "data_collection_offer")
 
         # Test 2: Data submission question -> Google Form offer
