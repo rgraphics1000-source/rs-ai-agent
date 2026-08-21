@@ -737,9 +737,20 @@ async def api_admin_send_reply(request: Request):
 async def api_toggle_chat_ai(request: Request):
     data = await request.json()
     cid = data.get("conversation_id")
+    human_takeover = 0
     if cid:
         toggle_conversation_ai(cid)
-    return {"success": True}
+        try:
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("SELECT human_takeover FROM conversations WHERE id = ?", (cid,))
+            row = c.fetchone()
+            if row:
+                human_takeover = row["human_takeover"]
+            conn.close()
+        except Exception:
+            pass
+    return {"success": True, "human_takeover": human_takeover}
 
 # ==========================================
 # WORKSPACE / BUSINESS MANAGEMENT APIS
