@@ -21,16 +21,10 @@ def get_form_details(workspace_id: int, form_id: str) -> dict:
     return form_res
 
 def get_responder_url(workspace_id: int, form_id: str) -> str:
-    """Retrieves the official public responder URL for students and institutions."""
+    """Retrieves the official public canonical URL for students and institutions."""
     clean_id = str(form_id).strip()
-    try:
-        details = get_form_details(workspace_id, clean_id)
-        if details.get("responderUri"):
-            return details["responderUri"]
-    except Exception as e:
-        print(f"[Forms get_responder_url Warning]: {e}")
-    
-    # Fallback standard public Google Form URL
+    # Always use the specific cloned form's canonical public URL (/forms/d/{id}/viewform)
+    # Never return the master template's /d/e/1FAIpQLSc... URL which shows 'Form not published' error
     return f"https://docs.google.com/forms/d/{clean_id}/viewform"
 
 def update_form_title_and_description(

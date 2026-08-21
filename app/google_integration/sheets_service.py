@@ -58,16 +58,25 @@ def create_institution_response_sheet(
     spreadsheet_id = spreadsheet.get("spreadsheetId")
     sheet_url = spreadsheet.get("spreadsheetUrl")
 
-    # Move spreadsheet into the institution folder
-    if folder_id and spreadsheet_id:
+    # Move spreadsheet into the institution folder and ensure reader permissions
+    if spreadsheet_id:
+        if folder_id:
+            try:
+                drive_service.files().update(
+                    fileId=spreadsheet_id,
+                    addParents=folder_id,
+                    fields="id, parents"
+                ).execute()
+            except Exception as e:
+                print(f"[Sheets folder move warning]: {e}")
         try:
-            drive_service.files().update(
+            drive_service.permissions().create(
                 fileId=spreadsheet_id,
-                addParents=folder_id,
-                fields="id, parents"
+                body={"role": "reader", "type": "anyone"},
+                fields="id"
             ).execute()
-        except Exception as e:
-            print(f"[Sheets folder move warning]: {e}")
+        except Exception:
+            pass
 
     # Set up column headers
     default_headers = [

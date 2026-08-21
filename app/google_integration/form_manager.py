@@ -122,14 +122,39 @@ def create_institution_form(
     edit_url = custom_res.get("edit_url") or f"https://docs.google.com/forms/d/{cloned_form_id}/edit"
     final_selected_fields = custom_res.get("selected_fields") or selected_fields or []
 
-    # 7. Create dedicated Google Response Sheet in the institution's folder (Tagged with mobile number)
+    # 7. Create dedicated Google Response Sheet with strictly the requested fields
     sheet_data = {}
     try:
+        from app.google_integration.ai_tool import STANDARD_ID_CARD_FIELDS
+        
+        # Build dynamic column headers based strictly on final_selected_fields
+        sheet_headers = ["Submission ID", "Timestamp"]
+        for sf in final_selected_fields:
+            sf_key = sf.get("key") if isinstance(sf, dict) else str(sf)
+            sf_label = sf.get("label") if isinstance(sf, dict) else ""
+            
+            if not sf_label:
+                for std_f in STANDARD_ID_CARD_FIELDS:
+                    if std_f["key"] == sf_key:
+                        sf_label = std_f["label"]
+                        break
+            if not sf_label:
+                sf_label = sf_key
+                
+            if sf_key == "student_photo" or "photo" in sf_key or "ছবি" in sf_label:
+                header_name = "ছবির লিংক (Google Drive)"
+            else:
+                header_name = sf_label
+                
+            if header_name not in sheet_headers:
+                sheet_headers.append(header_name)
+
         sheet_data = create_institution_response_sheet(
             workspace_id=ws_id,
             institution_name=clean_inst_name,
             institution_mobile=canonical_mobile,
-            folder_id=inst_folder_id
+            folder_id=inst_folder_id,
+            column_headers=sheet_headers
         )
     except Exception as s_err:
         print(f"[Sheets creation warning for {clean_inst_name}]: {s_err}")
