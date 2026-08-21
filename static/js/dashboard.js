@@ -67,7 +67,10 @@ function renderWorkspaceDropdown() {
             if (ws.id === currentWorkspaceId) opt.selected = true;
             sel.appendChild(opt);
         });
-    });function refreshAllWorkspaceData() {
+    });
+}
+
+function refreshAllWorkspaceData() {
     loadOverview();
     loadOrders();
     loadProducts();
@@ -3228,6 +3231,9 @@ async function disconnectPageWhatsAppAction() {
             loadConnectedPages();
         }
     } catch (e) {
+        showToast("Server error", "danger");
+    }
+}
 // =========================================================
 // GOOGLE FORMS & ID CARD AUTOMATION FRONTEND LOGIC
 // =========================================================
