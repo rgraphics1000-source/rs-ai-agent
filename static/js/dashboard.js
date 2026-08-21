@@ -3414,15 +3414,88 @@ async function loadGoogleAccountStatus() {
 
 async function startGoogleOAuthConnect() {
     try {
-        const res = await fetch(`/api/google/auth/start?workspace_id=${currentWorkspaceId}`);
+        const currentOrigin = window.location.origin;
+        const redirectUri = `${currentOrigin}/api/google/auth/callback`;
+        const res = await fetch(`/api/google/auth/start?workspace_id=${currentWorkspaceId}&redirect_uri=${encodeURIComponent(redirectUri)}`);
         const data = await res.json();
         if (data.success && data.auth_url) {
             window.location.href = data.auth_url;
         } else {
-            showToast(data.error || "Failed to initiate Google OAuth", "danger");
+            showToast(data.error || data.detail || "Failed to initiate Google OAuth", "danger");
         }
     } catch (e) {
         showToast("OAuth network error", "danger");
+    }
+}
+
+async function openGoogleCredentialsModal() {
+    try {
+        const redirectEl = document.getElementById("gcred-redirect-uri");
+        const clientIdEl = document.getElementById("gcred-client-id");
+        const clientSecretEl = document.getElementById("gcred-client-secret");
+        const emailEl = document.getElementById("gcred-account-email");
+        const refreshEl = document.getElementById("gcred-refresh-token");
+
+        // Set dynamic redirect URI based on current origin
+        const currentOrigin = window.location.origin;
+        if (redirectEl) redirectEl.value = `${currentOrigin}/api/google/auth/callback`;
+
+        const res = await fetch(`/api/google/credentials?workspace_id=${currentWorkspaceId}`);
+        const data = await res.json();
+        if (data.success) {
+            if (clientIdEl && data.client_id) clientIdEl.value = data.client_id;
+            if (clientSecretEl && data.has_client_secret) clientSecretEl.placeholder = "•••••••••••••••• (Configured)";
+            if (emailEl && data.account_email) emailEl.value = data.account_email;
+            if (refreshEl && data.has_refresh_token) refreshEl.placeholder = "•••••••••••••••• (Configured & Saved)";
+        }
+        openModal("modal-google-credentials");
+    } catch (e) {
+        console.error("openGoogleCredentialsModal error:", e);
+        openModal("modal-google-credentials");
+    }
+}
+
+function copyGoogleRedirectUri() {
+    const redirectEl = document.getElementById("gcred-redirect-uri");
+    if (redirectEl && redirectEl.value) {
+        navigator.clipboard.writeText(redirectEl.value);
+        showToast("Redirect URI কপি করা হয়েছে!", "success");
+    }
+}
+
+async function handleSaveGoogleCredentials(e) {
+    e.preventDefault();
+    const clientId = (document.getElementById("gcred-client-id")?.value || "").trim();
+    const clientSecret = (document.getElementById("gcred-client-secret")?.value || "").trim();
+    const accountEmail = (document.getElementById("gcred-account-email")?.value || "").trim();
+    const refreshToken = (document.getElementById("gcred-refresh-token")?.value || "").trim();
+    const redirectUri = (document.getElementById("gcred-redirect-uri")?.value || "").trim();
+
+    try {
+        const payload = {
+            workspace_id: currentWorkspaceId,
+            redirect_uri: redirectUri
+        };
+        if (clientId) payload.client_id = clientId;
+        if (clientSecret) payload.client_secret = clientSecret;
+        if (accountEmail) payload.account_email = accountEmail;
+        if (refreshToken) payload.refresh_token = refreshToken;
+
+        const res = await fetch("/api/google/credentials", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("Google credentials সফলভাবে সেভ হয়েছে!", "success");
+            closeModal("modal-google-credentials");
+            loadGoogleAccountStatus();
+        } else {
+            showToast(data.detail || data.error || "ক্রেডেনশিয়াল সেভ করতে ব্যর্থ হয়েছে", "danger");
+        }
+    } catch (err) {
+        showToast("Network error saving Google credentials", "danger");
     }
 }
 

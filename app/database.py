@@ -2292,14 +2292,14 @@ def save_google_connection(
                 master_form_id, master_sheet_id, status, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(workspace_id) DO UPDATE SET
-                google_account_email = excluded.google_account_email,
-                access_token_encrypted = CASE WHEN excluded.access_token_encrypted != '' THEN excluded.access_token_encrypted ELSE access_token_encrypted END,
-                refresh_token_encrypted = CASE WHEN excluded.refresh_token_encrypted != '' THEN excluded.refresh_token_encrypted ELSE refresh_token_encrypted END,
-                token_expiry = COALESCE(excluded.token_expiry, token_expiry),
-                drive_root_folder_id = COALESCE(excluded.drive_root_folder_id, drive_root_folder_id),
-                master_form_id = COALESCE(excluded.master_form_id, master_form_id),
-                master_sheet_id = COALESCE(excluded.master_sheet_id, master_sheet_id),
-                status = excluded.status,
+                google_account_email = CASE WHEN excluded.google_account_email != '' THEN excluded.google_account_email ELSE google_connections.google_account_email END,
+                access_token_encrypted = CASE WHEN excluded.access_token_encrypted != '' THEN excluded.access_token_encrypted ELSE google_connections.access_token_encrypted END,
+                refresh_token_encrypted = CASE WHEN excluded.refresh_token_encrypted != '' THEN excluded.refresh_token_encrypted ELSE google_connections.refresh_token_encrypted END,
+                token_expiry = COALESCE(excluded.token_expiry, google_connections.token_expiry),
+                drive_root_folder_id = COALESCE(excluded.drive_root_folder_id, google_connections.drive_root_folder_id),
+                master_form_id = COALESCE(excluded.master_form_id, google_connections.master_form_id),
+                master_sheet_id = COALESCE(excluded.master_sheet_id, google_connections.master_sheet_id),
+                status = CASE WHEN (excluded.access_token_encrypted != '' OR excluded.refresh_token_encrypted != '' OR google_connections.access_token_encrypted != '' OR google_connections.refresh_token_encrypted != '') THEN 'connected' ELSE excluded.status END,
                 updated_at = CURRENT_TIMESTAMP
         """, (
             ws_id,
@@ -2312,6 +2312,24 @@ def save_google_connection(
             master_sheet_id,
             status
         ))
+        
+        # Backup refresh token & email to settings table
+        if refresh_token_encrypted:
+            cursor.execute("""
+                INSERT INTO settings (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """, (f"google_refresh_token_ws_{ws_id}", refresh_token_encrypted))
+        if google_account_email:
+            cursor.execute("""
+                INSERT INTO settings (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """, (f"google_account_email_ws_{ws_id}", google_account_email))
+        if master_form_id:
+            cursor.execute("""
+                INSERT INTO settings (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """, (f"google_master_form_id_ws_{ws_id}", master_form_id))
+
         conn.commit()
         cursor.execute("SELECT * FROM google_connections WHERE workspace_id = ?", (ws_id,))
         row = cursor.fetchone()
@@ -2324,9 +2342,14 @@ def save_google_connection(
 def delete_google_connection(workspace_id: int) -> bool:
     """Disconnects and removes Google connection for a workspace."""
     try:
+        ws_id = int(workspace_id or 1)
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM google_connections WHERE workspace_id = ?", (int(workspace_id or 1),))
+        cursor.execute("DELETE FROM google_connections WHERE workspace_id = ?", (ws_id,))
+        cursor.execute("DELETE FROM settings WHERE key IN (?, ?, ?, ?)", (
+            f"google_refresh_token_ws_{ws_id}", f"google_access_token_ws_{ws_id}",
+            f"google_account_email_ws_{ws_id}", f"google_master_form_id_ws_{ws_id}"
+        ))
         conn.commit()
         conn.close()
         return True
@@ -2352,15 +2375,23 @@ def update_google_master_ids(
         cursor = conn.cursor()
         cursor.execute("SELECT workspace_id FROM google_connections WHERE workspace_id = ?", (ws_id,))
         if not cursor.fetchone():
+            # Check if we have backup email and tokens in settings
+            cursor.execute("SELECT value FROM settings WHERE key = ?", (f"google_refresh_token_ws_{ws_id}",))
+            r_row = cursor.fetchone()
+            b_ref = r_row[0] if r_row else ""
+            cursor.execute("SELECT value FROM settings WHERE key = ?", (f"google_account_email_ws_{ws_id}",))
+            e_row = cursor.fetchone()
+            b_email = e_row[0] if e_row else ""
+
             cursor.execute("""
                 INSERT INTO google_connections (
                     workspace_id, google_account_email, access_token_encrypted, refresh_token_encrypted,
                     status, master_form_id, master_sheet_id, drive_root_folder_id,
                     master_form_name, master_form_url, master_edit_url, master_sheet_url,
                     master_has_file_upload, master_verified_at, updated_at
-                ) VALUES (?, '', '', '', 'connected', ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, '', ?, 'connected', ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """, (
-                ws_id, master_form_id, master_sheet_id, drive_root_folder_id,
+                ws_id, b_email, b_ref, master_form_id, master_sheet_id, drive_root_folder_id,
                 master_form_name, master_form_url, master_edit_url, master_sheet_url,
                 master_has_file_upload
             ))
@@ -2384,6 +2415,13 @@ def update_google_master_ids(
                 master_sheet_url, master_has_file_upload,
                 ws_id
             ))
+        
+        if master_form_id:
+            cursor.execute("""
+                INSERT INTO settings (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """, (f"google_master_form_id_ws_{ws_id}", master_form_id))
+
         conn.commit()
         conn.close()
         return True

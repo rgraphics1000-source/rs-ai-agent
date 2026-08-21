@@ -875,6 +875,9 @@
                             <button id="btn-connect-google" class="btn btn-primary btn-sm" onclick="startGoogleOAuthConnect()" style="font-weight: 600;">
                                 <i class="fab fa-google"></i> Connect Google Account
                             </button>
+                            <button id="btn-google-credentials" class="btn btn-secondary btn-sm" onclick="openGoogleCredentialsModal()" style="font-size: 12px; padding: 6px 12px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8;">
+                                <i class="fas fa-key"></i> ⚙️ Credentials & Setup
+                            </button>
                             <button id="btn-disconnect-google" class="btn btn-danger btn-sm" onclick="disconnectGoogleAccount()" style="display: none;">
                                 <i class="fas fa-link-slash"></i> Disconnect
                             </button>
@@ -1718,6 +1721,73 @@
         </div>
     </div>
 
+    <!-- Modal: Google API Credentials & Permanent Connection Setup -->
+    <div id="modal-google-credentials" class="modal-overlay">
+        <div class="modal-content modal-content-flex" style="max-width: 580px;">
+            <div class="modal-header">
+                <h3><i class="fab fa-google" style="color: #38bdf8;"></i> Google API & Permanent Connection Setup</h3>
+                <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-google-credentials')">&times;</button>
+            </div>
+            <form id="form-google-credentials" onsubmit="handleSaveGoogleCredentials(event)" class="modal-form-container">
+                <div class="modal-scroll-body">
+                    <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 14px;">
+                        Google Forms ও Google Drive অটোমেশনের জন্য আপনার Google Cloud Console ক্রেডেনশিয়াল অথবা ডিরেক্ট Refresh Token সেভ করুন। এটি সার্ভার রিস্টার্ট হলেও কানেকশন টিকিয়ে রাখবে।
+                    </p>
+
+                    <!-- Redirect URI Helper -->
+                    <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px;">
+                        <label style="font-size: 11.5px; color: #38bdf8; font-weight: 600; display: block; margin-bottom: 4px;">
+                            <i class="fas fa-link"></i> Authorized Redirect URI (Google Cloud Console-এ এটি যুক্ত করুন):
+                        </label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="gcred-redirect-uri" class="form-control" style="font-size: 11.5px; font-family: monospace; background: rgba(0,0,0,0.3);" readonly>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="copyGoogleRedirectUri()" style="padding: 6px 10px; font-size: 11.5px; white-space: nowrap;">
+                                <i class="fas fa-copy"></i> কপি
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- OAuth Client ID & Secret -->
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <label style="font-size: 12px;">Google OAuth Client ID:</label>
+                        <input type="text" id="gcred-client-id" class="form-control" placeholder="e.g. 123456789-abc.apps.googleusercontent.com">
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 14px;">
+                        <label style="font-size: 12px;">Google OAuth Client Secret:</label>
+                        <input type="password" id="gcred-client-secret" class="form-control" placeholder="••••••••••••••••••••••••">
+                    </div>
+
+                    <!-- Direct Refresh Token & Email (Permanent Storage) -->
+                    <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+                        <div style="font-size: 12.5px; font-weight: 600; color: #34d399; margin-bottom: 6px;">
+                            <i class="fas fa-shield-halved"></i> Permanent Direct Refresh Token (স্থায়ী কানেকশন)
+                        </div>
+                        <p style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 8px;">
+                            রিলোড বা সার্ভার রিস্টার্টের পরেও গুগল একাউন্ট স্থায়ীভাবে কানেক্টেড রাখতে চাইলে সরাসরি Refresh Token ও ইমেইল ইনপুট করতে পারেন:
+                        </p>
+
+                        <div class="form-group" style="margin-bottom: 8px;">
+                            <label style="font-size: 11.5px;">Google Account Email:</label>
+                            <input type="email" id="gcred-account-email" class="form-control" placeholder="e.g. yourbusiness@gmail.com" style="font-size: 12px;">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="font-size: 11.5px;">Google Refresh Token (1//...):</label>
+                            <input type="password" id="gcred-refresh-token" class="form-control" placeholder="1//04..." style="font-size: 12px; font-family: monospace;">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-fixed-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-google-credentials')">বাতিল</button>
+                    <button type="submit" class="btn btn-save-modal" style="background: linear-gradient(135deg, #10b981, #059669);">
+                        <i class="fas fa-save"></i> Save & Verify Credentials
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Modal: Select Master Form from Google Drive -->
     <div id="modal-select-master-form" class="modal-overlay">
         <div class="modal-content modal-content-flex" style="max-width: 540px;">
@@ -2181,6 +2251,6 @@
     </nav>
 
     <div id="fb-root"></div>
-    <script src="/static/js/dashboard.js?v=20260821v11_google_forms_mobile"></script>
+    <script src="/static/js/dashboard.js?v=20260822v1_google_auth_permanent"></script>
 </body>
 </html>

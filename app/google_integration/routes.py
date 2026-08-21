@@ -6,13 +6,16 @@ from pydantic import BaseModel
 
 from app.database import (
     get_google_connection, update_google_master_ids, delete_google_connection,
+    save_google_connection, get_setting, set_setting,
     get_generated_forms, get_generated_form_by_id, get_google_form_fields,
     save_google_form_field, delete_google_form_field, get_form_submissions,
     get_institutions, get_whatsapp_account_by_workspace_id
 )
 from app.google_integration.oauth_service import (
-    get_oauth_authorization_url, exchange_code_for_tokens, get_google_account_status
+    get_oauth_authorization_url, exchange_code_for_tokens, get_google_account_status,
+    get_client_config, get_workspace_credentials
 )
+from app.google_integration.crypto import encrypt_token
 from app.google_integration.drive_service import (
     verify_file_accessible, get_drive_client
 )
@@ -27,6 +30,14 @@ router = APIRouter(prefix="/api/google", tags=["Google Integration"])
 # --- Request Models ---
 class DisconnectRequest(BaseModel):
     workspace_id: int = 1
+
+class SaveGoogleCredentialsRequest(BaseModel):
+    workspace_id: int = 1
+    client_id: Optional[str] = None
+    client_secret: Optional[str] = None
+    refresh_token: Optional[str] = None
+    account_email: Optional[str] = None
+    redirect_uri: Optional[str] = None
 
 class MasterFormSelectRequest(BaseModel):
     workspace_id: int = 1
@@ -70,23 +81,90 @@ def get_status(workspace_id: int = Query(1)):
     """Returns Google integration diagnostics for the specified workspace."""
     return get_google_account_status(workspace_id=workspace_id)
 
+@router.get("/credentials")
+def get_credentials_info(request: Request, workspace_id: int = Query(1)):
+    """Returns configured OAuth Client ID, Redirect URI, and status without exposing raw secrets."""
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host", request.url.netloc)
+    computed_redirect = f"{proto}://{host}/api/google/auth/callback"
+
+    client_id, client_secret, default_redirect = get_client_config()
+    conn_data = get_google_connection(workspace_id=workspace_id) or {}
+    has_token = bool(
+        conn_data.get("access_token_encrypted") 
+        or conn_data.get("refresh_token_encrypted") 
+        or get_setting(f"google_refresh_token_ws_{workspace_id}") 
+        or get_setting("google_refresh_token")
+    )
+
+    return {
+        "success": True,
+        "workspace_id": workspace_id,
+        "client_id": client_id,
+        "has_client_id": bool(client_id),
+        "has_client_secret": bool(client_secret),
+        "has_refresh_token": has_token,
+        "account_email": conn_data.get("google_account_email") or get_setting(f"google_account_email_ws_{workspace_id}") or get_setting("google_account_email"),
+        "redirect_uri": computed_redirect,
+        "default_redirect": default_redirect
+    }
+
+@router.post("/credentials")
+def save_credentials(payload: SaveGoogleCredentialsRequest):
+    """Saves Google OAuth Client ID/Secret or direct Refresh Token credentials."""
+    try:
+        ws_id = int(payload.workspace_id or 1)
+        if payload.client_id is not None:
+            set_setting("google_client_id", payload.client_id.strip())
+        if payload.client_secret is not None:
+            set_setting("google_client_secret", payload.client_secret.strip())
+        if payload.redirect_uri is not None:
+            set_setting("google_redirect_uri", payload.redirect_uri.strip())
+
+        if payload.refresh_token:
+            clean_token = payload.refresh_token.strip()
+            enc_ref = encrypt_token(clean_token)
+            email = (payload.account_email or "").strip() or "connected_admin@gmail.com"
+            save_google_connection(
+                workspace_id=ws_id,
+                google_account_email=email,
+                refresh_token_encrypted=enc_ref,
+                status="connected"
+            )
+            set_setting(f"google_refresh_token_ws_{ws_id}", enc_ref)
+            set_setting("google_refresh_token", enc_ref)
+            set_setting(f"google_account_email_ws_{ws_id}", email)
+            set_setting("google_account_email", email)
+
+        return {
+            "success": True,
+            "message": "Google credentials updated successfully.",
+            "status": get_google_account_status(workspace_id=ws_id)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @router.get("/auth/start")
-def start_oauth(workspace_id: int = Query(1), redirect_uri: Optional[str] = None):
+def start_oauth(request: Request, workspace_id: int = Query(1), redirect_uri: Optional[str] = None):
     """Generates Google OAuth 2.0 URL for connecting Google Account."""
     try:
+        if not redirect_uri:
+            proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+            host = request.headers.get("x-forwarded-host", request.url.netloc)
+            redirect_uri = f"{proto}://{host}/api/google/auth/callback"
         auth_url = get_oauth_authorization_url(workspace_id=workspace_id, redirect_uri=redirect_uri)
         return {"success": True, "auth_url": auth_url}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/auth/callback")
-def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+def oauth_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
     """Handles Google OAuth callback, exchanges code for tokens, and returns friendly HTML redirect."""
     if error:
-        return HTMLResponse(content=f"<h3>Google Authentication Failed: {error}</h3><p><a href='/'>Return to Dashboard</a></p>")
+        return HTMLResponse(content=f"<h3>Google Authentication Failed: {error}</h3><p><a href='/?tab=google-forms'>Return to Dashboard</a></p>")
 
     if not code:
-        return HTMLResponse(content="<h3>Missing authorization code.</h3><p><a href='/'>Return to Dashboard</a></p>")
+        return HTMLResponse(content="<h3>Missing authorization code.</h3><p><a href='/?tab=google-forms'>Return to Dashboard</a></p>")
 
     workspace_id = 1
     if state and state.startswith("ws_"):
@@ -95,8 +173,18 @@ def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, erro
         except Exception:
             workspace_id = 1
 
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host", request.url.netloc)
+    redirect_uri = f"{proto}://{host}/api/google/auth/callback"
+
     try:
-        res = exchange_code_for_tokens(code=code, workspace_id=workspace_id)
+        res = exchange_code_for_tokens(code=code, redirect_uri=redirect_uri, workspace_id=workspace_id)
+        if not res.get("success"):
+            # Fallback retry with default redirect URI if mismatch
+            client_id, client_secret, default_redirect = get_client_config()
+            if default_redirect != redirect_uri:
+                res = exchange_code_for_tokens(code=code, redirect_uri=default_redirect, workspace_id=workspace_id)
+
         if res.get("success"):
             return HTMLResponse(content="""
                 <html>
@@ -114,9 +202,9 @@ def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, erro
                 </html>
             """)
         else:
-            return HTMLResponse(content=f"<h3>Token Exchange Failed: {res.get('error')}</h3><p><a href='/'>Return</a></p>")
+            return HTMLResponse(content=f"<h3>Token Exchange Failed: {res.get('error')}</h3><p><a href='/?tab=google-forms'>Return</a></p>")
     except Exception as e:
-        return HTMLResponse(content=f"<h3>Exception: {str(e)}</h3><p><a href='/'>Return</a></p>")
+        return HTMLResponse(content=f"<h3>Exception: {str(e)}</h3><p><a href='/?tab=google-forms'>Return</a></p>")
 
 @router.post("/disconnect")
 def disconnect(payload: DisconnectRequest):
