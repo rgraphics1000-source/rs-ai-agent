@@ -415,6 +415,18 @@ def init_db():
         except Exception:
             pass
 
+    # Automatically purge demo/test workspaces created during previous test sessions
+    try:
+        cursor.execute("DELETE FROM workspaces WHERE id != 1 AND (name LIKE '%SmartTech%' OR name LIKE '%Test Shop%' OR name LIKE '%Audit Shop%' OR name LIKE '%Smart Accessories%' OR name LIKE '%Page 2%')")
+        cursor.execute("DELETE FROM ai_training_rules WHERE workspace_id != 1 OR title LIKE 'Unique RS Rule%' OR title LIKE 'Unique Gadget Rule%'")
+        cursor.execute("DELETE FROM products WHERE workspace_id != 1")
+        cursor.execute("DELETE FROM faqs WHERE workspace_id != 1")
+        cursor.execute("DELETE FROM saved_media WHERE workspace_id != 1")
+        cursor.execute("DELETE FROM connected_pages WHERE workspace_id != 1 AND (page_name LIKE '%SmartTech%' OR page_name LIKE '%Test%' OR page_name LIKE '%Audit%')")
+        cursor.execute("DELETE FROM whatsapp_accounts WHERE workspace_id != 1 AND (display_phone_number LIKE '%0002%' OR phone_number_id LIKE '%202%')")
+    except Exception as e:
+        print(f"[Purge Demo Workspaces Warning]: {e}")
+
     # Safe Idempotent Consistency Check for Facebook Page 1 and WhatsApp Accounts
     ensure_facebook_page_consistency(conn=conn)
     ensure_whatsapp_account_consistency(conn=conn)

@@ -819,12 +819,12 @@
                                 Connected Facebook Pages & Multi-WhatsApp Accounts
                             </div>
                             <p style="color: var(--text-muted); font-size: 12.5px; margin: 4px 0 0 0;">
-                                Manage multiple Facebook Pages & WhatsApp Business Accounts simultaneously in one unified AI engine.
+                                প্রতিটি পেজের জন্য আলাদা ফেসবুক টোকেন ও সম্পূর্ণ আলাদা হোয়াটসঅ্যাপ নম্বর যুক্ত করুন।
                             </p>
                         </div>
                         <div style="display: flex; gap: 8px;">
                             <button class="btn btn-primary" style="font-size: 12.5px; padding: 7px 14px;" onclick="openConnectPageModal()">
-                                <i class="fas fa-plus-circle"></i> Connect Another Facebook Page
+                                <i class="fas fa-plus-circle"></i> + নতুন ফেসবুক পেজ ও হোয়াটসঅ্যাপ যুক্ত করুন
                             </button>
                         </div>
                     </div>
@@ -834,144 +834,37 @@
                     </div>
                 </div>
 
-                <div class="glass-card">
+                <!-- Webhook Credentials Reference Card for Meta Developer Portal -->
+                <div class="glass-card" style="border: 1px solid rgba(59, 130, 246, 0.25);">
                     <div class="card-header">
                         <div class="card-title">
-                            <i class="fab fa-facebook-messenger" style="color:#1877f2;"></i>
-                            Primary Facebook Page Connection (Legacy / Global Settings)
-                        </div>
-                        <span id="fb-status-badge" class="badge badge-pending">Ready to Connect</span>
-                    </div>
-                    <div class="form-group">
-                        <label>Facebook Page Access Token: *</label>
-                        <div style="position: relative; display: flex; align-items: center;">
-                            <input type="password" id="setting-fb-token" class="form-control" placeholder="EAA..." style="padding-right: 44px;">
-                            <button type="button" class="btn" onclick="togglePasswordVisibility('setting-fb-token', this)" style="position: absolute; right: 6px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 6px 10px;">
-                                <i class="fas fa-eye"></i>
-                            </button>
+                            <i class="fas fa-network-wired" style="color: #60a5fa;"></i>
+                            Meta Developer Portal — Webhook Configuration Reference
                         </div>
                     </div>
+                    <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 14px;">
+                        আপনার যেকোনো ফেসবুক পেজ বা হোয়াটসঅ্যাপ নম্বরের জন্য মেটা ডেভেলপার পোর্টালে (developers.facebook.com) নিচের ওয়েব হুক ও ভেরিফাই টোকেন ব্যবহার করুন:
+                    </p>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Webhook Callback URL:</label>
-                            <input type="text" id="setting-fb-webhook-display" class="form-control" value="https://rs-ai-agent.onrender.com/webhook/facebook" readonly style="background: rgba(0,0,0,0.3); font-weight: 600; color: #60a5fa;">
+                            <label><i class="fab fa-facebook-messenger" style="color:#1877f2;"></i> Facebook Webhook Callback URL:</label>
+                            <input type="text" class="form-control" value="https://rs-ai-agent.onrender.com/webhook/facebook" readonly style="background: rgba(0,0,0,0.3); font-weight: 600; color: #60a5fa;">
                         </div>
                         <div class="form-group">
-                            <label>Verify Token:</label>
+                            <label><i class="fab fa-facebook-messenger" style="color:#1877f2;"></i> Facebook Verify Token:</label>
                             <input type="text" class="form-control" value="rs_secure_verify_token_2026" readonly style="background: rgba(0,0,0,0.3); font-weight: 600; color: #34d399;">
                         </div>
                     </div>
-                    <button class="btn btn-primary" onclick="saveFacebookSettings()">
-                        <i class="fas fa-save"></i> Save Facebook Settings
-                    </button>
-                </div>
-
-                <div class="glass-card" style="border-left: 3px solid #25d366;">
-                    <div class="card-header">
-                        <div class="card-title">
-                            <i class="fab fa-whatsapp" style="color:#25d366; font-size: 19px;"></i>
-                            Primary WhatsApp Business App Connection
-                        </div>
-                        <span id="wa-status-badge" class="badge badge-pending">Ready to Connect</span>
-                    </div>
-
-                    <div style="background: rgba(37, 211, 102, 0.07); border: 1px solid rgba(37, 211, 102, 0.2); border-radius: 10px; padding: 14px; margin-bottom: 18px;">
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 12px;">
-                            <div>
-                                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Connection Mode</div>
-                                <div style="font-size: 13px; font-weight: 600; color: #34d399; margin-top: 2px;">
-                                    <i class="fas fa-layer-group"></i> Business App + Cloud API Coexistence
-                                </div>
-                            </div>
-                            <div>
-                                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Active Business Number</div>
-                                <div style="font-size: 13.5px; font-weight: 700; color: #fff; margin-top: 2px;" id="wa-display-phone">
-                                    <i class="fas fa-phone-alt" style="color: #25d366; font-size: 12px;"></i> 01816504097
-                                </div>
-                            </div>
-                            <div>
-                                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">WABA ID</div>
-                                <div style="font-size: 12.5px; font-weight: 600; color: #fff; margin-top: 2px;" id="wa-display-waba-id">
-                                    271335301757320
-                                </div>
-                            </div>
-                            <div>
-                                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Phone Number ID</div>
-                                <div style="font-size: 12.5px; font-weight: 600; color: #fff; margin-top: 2px;" id="wa-display-phone-id">
-                                    418451426636680
-                                </div>
-                            </div>
-                            <div>
-                                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Webhook Status</div>
-                                <div style="font-size: 12.5px; font-weight: 600; color: #34d399; margin-top: 2px;" id="wa-display-webhook-status">
-                                    <i class="fas fa-check-circle"></i> Connected
-                                </div>
-                            </div>
-                            <div>
-                                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">AI Auto Reply</div>
-                                <div style="font-size: 12.5px; font-weight: 600; color: #34d399; margin-top: 2px;" id="wa-display-ai-status">
-                                    <i class="fas fa-robot"></i> Active
-                                </div>
-                            </div>
-                        </div>
-                        <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px; margin-bottom: 0; line-height: 1.5;">
-                            ✨ <strong>Coexistence Active:</strong> Your mobile WhatsApp Business App remains fully active on your phone while RS_AI Agent automatically receives customer inquiries via Cloud API webhooks and auto-replies.
-                        </p>
-                    </div>
-
-                    <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
-                        <button type="button" id="btn-connect-wa-embedded" class="btn" onclick="launchWhatsAppEmbeddedSignup()" style="background: linear-gradient(135deg, #25d366, #128c7e); color: #fff; font-weight: 600; padding: 10px 20px; border-radius: 8px; border: none; box-shadow: 0 4px 14px rgba(37, 211, 102, 0.3); display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                            <i class="fab fa-whatsapp" style="font-size: 17px;"></i> Connect WhatsApp Business
-                        </button>
-                        <button type="button" id="btn-reconnect-wa" class="btn btn-secondary" onclick="launchWhatsAppEmbeddedSignup()" style="padding: 10px 16px; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-                            <i class="fas fa-sync-alt"></i> Reconnect / Refresh
-                        </button>
-                        <button type="button" id="btn-disconnect-wa" class="btn btn-danger" onclick="disconnectWhatsApp()" style="padding: 10px 16px; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-                            <i class="fas fa-unlink"></i> Disconnect
-                        </button>
-                    </div>
-
                     <div class="form-row">
                         <div class="form-group">
-                            <label>WhatsApp Webhook Callback URL:</label>
-                            <input type="text" id="setting-wa-webhook-display" class="form-control" value="https://rs-ai-agent.onrender.com/webhook/whatsapp" readonly style="background: rgba(0,0,0,0.3); font-weight: 600; color: #34d399;">
+                            <label><i class="fab fa-whatsapp" style="color:#25d366;"></i> WhatsApp Webhook Callback URL:</label>
+                            <input type="text" class="form-control" value="https://rs-ai-agent.onrender.com/webhook/whatsapp" readonly style="background: rgba(0,0,0,0.3); font-weight: 600; color: #34d399;">
                         </div>
                         <div class="form-group">
-                            <label>WhatsApp Verify Token:</label>
+                            <label><i class="fab fa-whatsapp" style="color:#25d366;"></i> WhatsApp Verify Token:</label>
                             <input type="text" class="form-control" value="rs_whatsapp_token_2026" readonly style="background: rgba(0,0,0,0.3); font-weight: 600; color: #34d399;">
                         </div>
                     </div>
-
-                    <!-- Advanced / Manual Fallback -->
-                    <details style="margin-top: 14px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-glass); border-radius: 8px; padding: 10px 14px;">
-                        <summary style="font-size: 12.5px; font-weight: 600; color: var(--text-muted); cursor: pointer;">
-                            <i class="fas fa-sliders-h"></i> Advanced / Manual Configuration (Fallback)
-                        </summary>
-                        <div style="margin-top: 14px;">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>WhatsApp WABA ID:</label>
-                                    <input type="text" id="setting-wa-waba-id" class="form-control" placeholder="e.g. 271335301757320">
-                                </div>
-                                <div class="form-group">
-                                    <label>WhatsApp Phone Number ID:</label>
-                                    <input type="text" id="setting-wa-phone-id" class="form-control" placeholder="e.g. 418451426636680">
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>WhatsApp Access Token (Server-Side Stored):</label>
-                                <div style="position: relative; display: flex; align-items: center;">
-                                    <input type="password" id="setting-wa-token" class="form-control" placeholder="EAASG0eZCjnVw..." style="padding-right: 44px;">
-                                    <button type="button" class="btn" onclick="togglePasswordVisibility('setting-wa-token', this)" style="position: absolute; right: 6px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 6px 10px;">
-                                        <i class="fas fa-eye"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 14px;" onclick="saveWhatsAppSettings()">
-                                <i class="fas fa-save"></i> Save Manual Credentials
-                            </button>
-                        </div>
-                    </details>
                 </div>
             </section>
 
