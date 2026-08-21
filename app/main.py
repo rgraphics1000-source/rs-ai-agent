@@ -53,7 +53,8 @@ from app.channels.whatsapp import (
     send_whatsapp_video,
     handle_whatsapp_webhook_event,
     validate_whatsapp_token_with_meta,
-    resolve_whatsapp_token_info
+    resolve_whatsapp_token_info,
+    clear_token_validation_cache
 )
 from app.channels.omnichat import (
     get_all_conversations, 
@@ -1124,6 +1125,8 @@ async def api_get_diagnostics_whatsapp():
 
     meta_val = token_info.get("meta_validation") or validate_whatsapp_token_with_meta(token=clean_tok, phone_id=phone_id)
     ready_for_send = bool(token_info.get("is_valid") and meta_val.get("valid") and meta_val.get("phone_number_access"))
+    validation_results = token_info.get("candidate_validation_results", [])
+    candidate_sources = [c.get("source", "") for c in validation_results]
 
     return {
         "workspace_id": 1,
@@ -1131,7 +1134,8 @@ async def api_get_diagnostics_whatsapp():
         "phone_number_id": phone_id,
         "display_phone_number": display_phone,
         "waba_id": waba_id,
-        "token_source": token_source,
+        "selected_token_source": token_source,
+        "selected_token_valid": ready_for_send,
         "token_present": bool(clean_tok),
         "token_valid": ready_for_send,
         "token_preview": f"{token_prefix}...{token_suffix}" if token_len > 10 else "EMPTY/SHORT",
@@ -1140,8 +1144,16 @@ async def api_get_diagnostics_whatsapp():
         "endpoint_url": f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}/{phone_id}/messages",
         "ready_for_send": ready_for_send,
         "meta_validation": meta_val,
-        "rejected_candidates": token_info.get("rejected_candidates", [])
+        "candidate_sources": candidate_sources,
+        "candidate_validation_results": validation_results,
+        "error_message": "" if ready_for_send else (token_info.get("reason") or "No valid WhatsApp Cloud API token is authorized for Phone Number ID 4184514263660680.")
     }
+
+@app.post("/api/diagnostics/whatsapp/clear-cache")
+async def api_diagnostics_whatsapp_clear_cache():
+    """Explicitly clears the in-memory Meta Graph API validation cache."""
+    clear_token_validation_cache()
+    return {"success": True, "message": "Token validation cache cleared successfully."}
 
 @app.post("/api/diagnostics/whatsapp/test-send")
 async def api_diagnostics_whatsapp_test_send(request: Request):

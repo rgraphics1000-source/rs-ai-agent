@@ -68,7 +68,7 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
             }
             return resp
 
-        valid_system_user_token = "EAATestRealSystemUserTokenLongValid12345678901234567890"
+        valid_system_user_token = "EAAGValidRealSystemUserTokenLong12345678901234567890"
         with patch("requests.post", side_effect=mock_post):
             ok = send_whatsapp_message(
                 to_number="8801929778581",
@@ -417,8 +417,65 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
         self.assertGreaterEqual(len(products), 4)
         self.assertGreaterEqual(len(convs), 20)
 
+    def test_16_database_token_precedence_over_env_token(self):
+        """Verifies that a valid database token is preferred over environment tokens."""
+        valid_db_token = "EAAGValidDatabaseTokenForWhatsApp12345678901234567890"
+        invalid_env_token = "EAAGInvalidEnvTokenForWhatsApp12345678901234567890"
+
+        def mock_get(url, headers=None, params=None, timeout=None):
+            auth = headers.get("Authorization", "")
+            resp = MagicMock()
+            if valid_db_token in auth:
+                resp.status_code = 200
+                resp.json.return_value = {
+                    "id": "4184514263660680",
+                    "display_phone_number": "+880 1816-504097",
+                    "verified_name": "RS Graphics"
+                }
+            else:
+                resp.status_code = 400
+                resp.json.return_value = {"error": {"message": "Invalid token", "code": 100}}
+            return resp
+
+        wa_acc = {"id": 1, "access_token": valid_db_token, "phone_number_id": "4184514263660680"}
+        with patch.dict(os.environ, {"META_SYSTEM_USER_ACCESS_TOKEN": invalid_env_token}, clear=False):
+            with patch("requests.get", side_effect=mock_get):
+                info = resolve_whatsapp_token_info(wa_account=wa_acc, workspace_id=1, phone_number_id="4184514263660680")
+                self.assertTrue(info["is_valid"])
+                self.assertEqual(info["token"], valid_db_token)
+                self.assertIn("database", info["source"])
+
+    def test_17_no_outbound_send_when_no_valid_token(self):
+        """Verifies that when no token passes validation, NO request is sent to Meta and an error is returned."""
+        def mock_get(url, headers=None, params=None, timeout=None):
+            resp = MagicMock()
+            resp.status_code = 400
+            resp.json.return_value = {"error": {"message": "Permission denied", "code": 100}}
+            return resp
+
+        with patch("requests.get", side_effect=mock_get):
+            with patch("requests.post") as mock_post:
+                wa_acc = {"id": 1, "access_token": "EAAGInvalid12345678901234567890", "phone_number_id": "4184514263660680"}
+                with patch("app.channels.whatsapp.get_whatsapp_account_by_phone_id", return_value=wa_acc):
+                    res = send_whatsapp_message_detailed(
+                        to_number="8801929778581",
+                        message_text="Should never send",
+                        phone_id="4184514263660680"
+                    )
+                    self.assertFalse(res["success"])
+                    self.assertEqual(res["error_code"], "NO_VALID_WHATSAPP_TOKEN_CONFIGURED")
+                    mock_post.assert_not_called()
+
+    def test_18_clear_cache_endpoint(self):
+        """Verifies that POST /api/diagnostics/whatsapp/clear-cache successfully clears the validation cache."""
+        r = self.client.post("/api/diagnostics/whatsapp/clear-cache")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertTrue(data["success"])
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 
