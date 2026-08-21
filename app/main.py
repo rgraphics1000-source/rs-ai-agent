@@ -952,6 +952,7 @@ async def api_save_settings(request: Request):
     
     # Sync WhatsApp accounts if credentials updated
     if any(k in data for k in ["whatsapp_access_token", "meta_system_user_access_token", "whatsapp_phone_number_id", "whatsapp_waba_id"]):
+        clear_token_validation_cache()
         ensure_whatsapp_account_consistency()
 
     # Sync Facebook connected pages if credentials updated

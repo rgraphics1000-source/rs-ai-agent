@@ -1264,13 +1264,16 @@ def ensure_whatsapp_account_consistency(conn=None) -> Optional[dict]:
                     workspace_id = 1,
                     display_phone_number = COALESCE(NULLIF(display_phone_number, ''), ?),
                     waba_id = COALESCE(NULLIF(waba_id, ''), ?),
-                    access_token = COALESCE(NULLIF(access_token, ''), ?),
+                    access_token = CASE
+                        WHEN ? != '' AND ? NOT LIKE 'EAATest%' THEN ?
+                        ELSE COALESCE(NULLIF(access_token, ''), ?)
+                    END,
                     connection_mode = 'business_app_coexistence',
                     connection_status = 'connected',
                     coexistence_active = 1,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
-            """, (target_display, target_waba_id, target_token, canonical_id))
+            """, (target_display, target_waba_id, target_token, target_token, target_token, target_token, canonical_id))
             # Delete any duplicate rows with target_wa_phone_id if any exist
             cursor.execute("DELETE FROM whatsapp_accounts WHERE phone_number_id = ? AND id != ?", (target_wa_phone_id, canonical_id))
         else:
@@ -1293,13 +1296,16 @@ def ensure_whatsapp_account_consistency(conn=None) -> Optional[dict]:
                         phone_number_id = ?,
                         display_phone_number = COALESCE(NULLIF(display_phone_number, ''), ?),
                         waba_id = COALESCE(NULLIF(waba_id, ''), ?),
-                        access_token = COALESCE(NULLIF(access_token, ''), ?),
+                        access_token = CASE
+                            WHEN ? != '' AND ? NOT LIKE 'EAATest%' THEN ?
+                            ELSE COALESCE(NULLIF(access_token, ''), ?)
+                        END,
                         connection_mode = 'business_app_coexistence',
                         connection_status = 'connected',
                         coexistence_active = 1,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                """, (target_wa_phone_id, target_display, target_waba_id, target_token, canonical_id))
+                """, (target_wa_phone_id, target_display, target_waba_id, target_token, target_token, target_token, target_token, canonical_id))
             else:
                 # Step 3: Insert canonical row
                 cursor.execute("SELECT id FROM connected_pages WHERE workspace_id = 1 ORDER BY id ASC LIMIT 1")
