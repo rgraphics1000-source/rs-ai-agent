@@ -556,7 +556,11 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone
         phone_id = phone_id or resolved_pid
         token = token or resolved_tok
 
-    clean_token = str(token or "").strip().strip('"').strip("'")
+    wa_acc = get_whatsapp_account_by_phone_id(phone_id) if phone_id else None
+    token_info = resolve_whatsapp_token_info(wa_account=wa_acc, workspace_id=workspace_id or 1, phone_number_id=phone_id)
+
+    effective_token = token or token_info.get("token", "")
+    clean_token = str(effective_token or "").strip().strip('"').strip("'")
     if clean_token.lower().startswith("bearer "):
         clean_token = clean_token[7:].strip()
 
@@ -566,18 +570,32 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone
         return False
 
     norm_to = normalize_whatsapp_phone_number(to_number)
-    url = f"{GRAPH_API_URL}/{phone_id}/messages"
-    headers = {
-        "Authorization": f"Bearer {clean_token}",
-        "Content-Type": "application/json"
-    }
+
+    # Determine priority list of phone_ids to try
+    target_phone_ids = [phone_id]
+    alt_phone_id = "418451426636680" if phone_id == "4184514263660680" else ("4184514263660680" if phone_id == "418451426636680" else None)
+    if alt_phone_id and alt_phone_id not in target_phone_ids:
+        if str(settings.WHATSAPP_PHONE_NUMBER_ID).strip() == alt_phone_id:
+            target_phone_ids = [alt_phone_id, phone_id]
+        else:
+            target_phone_ids.append(alt_phone_id)
 
     base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
-    full_url = image_url if image_url.startswith("http") else f"{base_server_url}{image_url}"
+    full_url = image_url if str(image_url).startswith("http") else f"{base_server_url}{image_url if str(image_url).startswith('/') else '/' + str(image_url)}"
+
+    # Check if local file exists on disk
+    local_file_path = None
+    clean_rel = str(image_url).lstrip("/")
+    if os.path.exists(clean_rel):
+        local_file_path = clean_rel
+    elif str(image_url).startswith("/static/") and os.path.exists(str(image_url)[1:]):
+        local_file_path = str(image_url)[1:]
+    elif os.path.exists(os.path.join("static", os.path.basename(str(image_url)))):
+        local_file_path = os.path.join("static", os.path.basename(str(image_url)))
 
     image_obj = {"link": full_url}
-    if caption and caption.strip():
-        image_obj["caption"] = caption.strip()
+    if caption and str(caption).strip():
+        image_obj["caption"] = str(caption).strip()
 
     payload = {
         "messaging_product": "whatsapp",
@@ -587,17 +605,59 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone
         "image": image_obj
     }
 
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=20)
-        status_ok = r.status_code in [200, 201]
-        if status_ok:
-            print(f"[WhatsApp Send] Image: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source=explicit token_valid=true status=success http_status={r.status_code}")
-        else:
-            print(f"[WhatsApp Send ERROR] Image: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} http_status={r.status_code} reason={r.text}")
-        return status_ok
-    except Exception as e:
-        print(f"[WhatsApp Send ERROR] Image Exception: workspace_id={workspace_id or 1} phone_number_id={phone_id} error={str(e)}")
-        return False
+    for cur_phone_id in target_phone_ids:
+        url = f"{GRAPH_API_URL}/{cur_phone_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {clean_token}",
+            "Content-Type": "application/json"
+        }
+
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=20)
+            status_ok = r.status_code in [200, 201]
+            if status_ok:
+                print(f"[WhatsApp Send] Image: workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source=explicit token_valid=true status=success http_status={r.status_code}")
+                return True
+            else:
+                err_text = r.text
+                print(f"[WhatsApp Send ERROR] Image URL send failed: phone_number_id={cur_phone_id} recipient={masked_rec} http_status={r.status_code} reason={err_text}")
+
+                # If URL send failed and local file exists, try uploading binary media to Meta
+                if local_file_path and os.path.exists(local_file_path):
+                    try:
+                        upload_url = f"{GRAPH_API_URL}/{cur_phone_id}/media"
+                        upload_headers = {"Authorization": f"Bearer {clean_token}"}
+                        with open(local_file_path, "rb") as f_img:
+                            files = {"file": (os.path.basename(local_file_path), f_img, "image/jpeg")}
+                            data = {"messaging_product": "whatsapp", "type": "image/jpeg"}
+                            up_resp = requests.post(upload_url, headers=upload_headers, files=files, data=data, timeout=25)
+                            if up_resp.status_code in [200, 201]:
+                                media_id = up_resp.json().get("id")
+                                if media_id:
+                                    media_payload = {
+                                        "messaging_product": "whatsapp",
+                                        "recipient_type": "individual",
+                                        "to": norm_to,
+                                        "type": "image",
+                                        "image": {"id": media_id, "caption": str(caption).strip() if caption else ""}
+                                    }
+                                    r_media = requests.post(url, headers=headers, json=media_payload, timeout=20)
+                                    if r_media.status_code in [200, 201]:
+                                        print(f"[WhatsApp Send] Image Uploaded & Sent: phone_id={cur_phone_id} media_id={media_id} recipient={masked_rec}")
+                                        return True
+                    except Exception as up_err:
+                        print(f"[WhatsApp Send Image Upload Exception]: {up_err}")
+
+                if r.status_code == 400 and "does not exist" in err_text.lower() and cur_phone_id != target_phone_ids[-1]:
+                    continue
+                return False
+        except Exception as e:
+            print(f"[WhatsApp Send ERROR] Image Exception: workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} error={str(e)}")
+            if cur_phone_id != target_phone_ids[-1]:
+                continue
+            return False
+
+    return False
 
 def send_whatsapp_audio(to_number: str, audio_url: str, phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
     """Sends a voice note / audio clip via WhatsApp Cloud API."""
@@ -606,7 +666,11 @@ def send_whatsapp_audio(to_number: str, audio_url: str, phone_id: str = None, to
         phone_id = phone_id or resolved_pid
         token = token or resolved_tok
 
-    clean_token = str(token or "").strip().strip('"').strip("'")
+    wa_acc = get_whatsapp_account_by_phone_id(phone_id) if phone_id else None
+    token_info = resolve_whatsapp_token_info(wa_account=wa_acc, workspace_id=workspace_id or 1, phone_number_id=phone_id)
+
+    effective_token = token or token_info.get("token", "")
+    clean_token = str(effective_token or "").strip().strip('"').strip("'")
     if clean_token.lower().startswith("bearer "):
         clean_token = clean_token[7:].strip()
 
@@ -616,14 +680,17 @@ def send_whatsapp_audio(to_number: str, audio_url: str, phone_id: str = None, to
         return False
 
     norm_to = normalize_whatsapp_phone_number(to_number)
-    url = f"{GRAPH_API_URL}/{phone_id}/messages"
-    headers = {
-        "Authorization": f"Bearer {clean_token}",
-        "Content-Type": "application/json"
-    }
+
+    target_phone_ids = [phone_id]
+    alt_phone_id = "418451426636680" if phone_id == "4184514263660680" else ("4184514263660680" if phone_id == "418451426636680" else None)
+    if alt_phone_id and alt_phone_id not in target_phone_ids:
+        if str(settings.WHATSAPP_PHONE_NUMBER_ID).strip() == alt_phone_id:
+            target_phone_ids = [alt_phone_id, phone_id]
+        else:
+            target_phone_ids.append(alt_phone_id)
 
     base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
-    full_url = audio_url if audio_url.startswith("http") else f"{base_server_url}{audio_url}"
+    full_url = audio_url if str(audio_url).startswith("http") else f"{base_server_url}{audio_url if str(audio_url).startswith('/') else '/' + str(audio_url)}"
 
     payload = {
         "messaging_product": "whatsapp",
@@ -633,17 +700,31 @@ def send_whatsapp_audio(to_number: str, audio_url: str, phone_id: str = None, to
         "audio": {"link": full_url}
     }
 
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=20)
-        status_ok = r.status_code in [200, 201]
-        if status_ok:
-            print(f"[WhatsApp Send] Audio: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source=explicit token_valid=true status=success http_status={r.status_code}")
-        else:
-            print(f"[WhatsApp Send ERROR] Audio: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} http_status={r.status_code} reason={r.text}")
-        return status_ok
-    except Exception as e:
-        print(f"[WhatsApp Send ERROR] Audio Exception: workspace_id={workspace_id or 1} phone_number_id={phone_id} error={str(e)}")
-        return False
+    for cur_phone_id in target_phone_ids:
+        url = f"{GRAPH_API_URL}/{cur_phone_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {clean_token}",
+            "Content-Type": "application/json"
+        }
+
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=20)
+            status_ok = r.status_code in [200, 201]
+            if status_ok:
+                print(f"[WhatsApp Send] Audio: workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source=explicit token_valid=true status=success http_status={r.status_code}")
+                return True
+            else:
+                print(f"[WhatsApp Send ERROR] Audio: workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} recipient={masked_rec} http_status={r.status_code} reason={r.text}")
+                if r.status_code == 400 and "does not exist" in r.text.lower() and cur_phone_id != target_phone_ids[-1]:
+                    continue
+                return False
+        except Exception as e:
+            print(f"[WhatsApp Send ERROR] Audio Exception: workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} error={str(e)}")
+            if cur_phone_id != target_phone_ids[-1]:
+                continue
+            return False
+
+    return False
 
 def send_whatsapp_video(to_number: str, video_url: str, caption: str = "", phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
     """Sends a video message via WhatsApp Cloud API."""
@@ -652,7 +733,11 @@ def send_whatsapp_video(to_number: str, video_url: str, caption: str = "", phone
         phone_id = phone_id or resolved_pid
         token = token or resolved_tok
 
-    clean_token = str(token or "").strip().strip('"').strip("'")
+    wa_acc = get_whatsapp_account_by_phone_id(phone_id) if phone_id else None
+    token_info = resolve_whatsapp_token_info(wa_account=wa_acc, workspace_id=workspace_id or 1, phone_number_id=phone_id)
+
+    effective_token = token or token_info.get("token", "")
+    clean_token = str(effective_token or "").strip().strip('"').strip("'")
     if clean_token.lower().startswith("bearer "):
         clean_token = clean_token[7:].strip()
 
@@ -662,18 +747,21 @@ def send_whatsapp_video(to_number: str, video_url: str, caption: str = "", phone
         return False
 
     norm_to = normalize_whatsapp_phone_number(to_number)
-    url = f"{GRAPH_API_URL}/{phone_id}/messages"
-    headers = {
-        "Authorization": f"Bearer {clean_token}",
-        "Content-Type": "application/json"
-    }
+
+    target_phone_ids = [phone_id]
+    alt_phone_id = "418451426636680" if phone_id == "4184514263660680" else ("4184514263660680" if phone_id == "418451426636680" else None)
+    if alt_phone_id and alt_phone_id not in target_phone_ids:
+        if str(settings.WHATSAPP_PHONE_NUMBER_ID).strip() == alt_phone_id:
+            target_phone_ids = [alt_phone_id, phone_id]
+        else:
+            target_phone_ids.append(alt_phone_id)
 
     base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
-    full_url = video_url if video_url.startswith("http") else f"{base_server_url}{video_url}"
+    full_url = video_url if str(video_url).startswith("http") else f"{base_server_url}{video_url if str(video_url).startswith('/') else '/' + str(video_url)}"
 
     video_obj = {"link": full_url}
-    if caption and caption.strip():
-        video_obj["caption"] = caption.strip()
+    if caption and str(caption).strip():
+        video_obj["caption"] = str(caption).strip()
 
     payload = {
         "messaging_product": "whatsapp",
@@ -683,17 +771,31 @@ def send_whatsapp_video(to_number: str, video_url: str, caption: str = "", phone
         "video": video_obj
     }
 
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=25)
-        status_ok = r.status_code in [200, 201]
-        if status_ok:
-            print(f"[WhatsApp Send] Video: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source=explicit token_valid=true status=success http_status={r.status_code}")
-        else:
-            print(f"[WhatsApp Send ERROR] Video: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} http_status={r.status_code} reason={r.text}")
-        return status_ok
-    except Exception as e:
-        print(f"[WhatsApp Send ERROR] Video Exception: workspace_id={workspace_id or 1} phone_number_id={phone_id} error={str(e)}")
-        return False
+    for cur_phone_id in target_phone_ids:
+        url = f"{GRAPH_API_URL}/{cur_phone_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {clean_token}",
+            "Content-Type": "application/json"
+        }
+
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=25)
+            status_ok = r.status_code in [200, 201]
+            if status_ok:
+                print(f"[WhatsApp Send] Video: workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source=explicit token_valid=true status=success http_status={r.status_code}")
+                return True
+            else:
+                print(f"[WhatsApp Send ERROR] Video: workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} recipient={masked_rec} http_status={r.status_code} reason={r.text}")
+                if r.status_code == 400 and "does not exist" in r.text.lower() and cur_phone_id != target_phone_ids[-1]:
+                    continue
+                return False
+        except Exception as e:
+            print(f"[WhatsApp Send ERROR] Video Exception: workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} error={str(e)}")
+            if cur_phone_id != target_phone_ids[-1]:
+                continue
+            return False
+
+    return False
 
 async def handle_whatsapp_webhook_event(data: dict):
     """Processes incoming WhatsApp messages across multiple configured WhatsApp accounts."""
