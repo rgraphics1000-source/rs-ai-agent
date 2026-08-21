@@ -41,7 +41,9 @@ def normalize_whatsapp_phone_number(raw_phone: str) -> str:
     if not raw_phone:
         return ""
     digits = "".join(filter(str.isdigit, str(raw_phone)))
-    if digits.startswith("01") and len(digits) == 11:
+    if digits.startswith("0088") and len(digits) == 15:
+        digits = digits[2:]
+    elif digits.startswith("01") and len(digits) == 11:
         digits = "88" + digits
     elif digits.startswith("8801") and len(digits) == 13:
         pass
@@ -167,10 +169,12 @@ def resolve_whatsapp_token_info(wa_account: Optional[dict] = None, workspace_id:
     Resolves the WhatsApp access token using live multi-candidate validation against the canonical Phone Number ID.
     Evaluates candidate tokens in strict priority order:
     1. whatsapp_accounts.access_token (Database row for this specific account)
-    2. WHATSAPP_ACCESS_TOKEN (Environment variable)
-    3. META_SYSTEM_USER_ACCESS_TOKEN (Environment variable)
-    4. settings.whatsapp_access_token (Settings table)
-    5. settings.meta_system_user_access_token (Settings table)
+    2. WHATSAPP_ACCESS_TOKEN / WHATSAPP_TOKEN (Environment variables)
+    3. META_ACCESS_TOKEN (Environment variable)
+    4. META_SYSTEM_USER_ACCESS_TOKEN (Environment variable)
+    5. settings.whatsapp_access_token / settings.whatsapp_token (Settings table)
+    6. settings.meta_access_token (Settings table)
+    7. settings.meta_system_user_access_token (Settings table)
     
     A candidate is usable ONLY after Meta live validation confirms access to the Phone Number ID.
     If no candidate is valid, returns is_valid=False and token="" with full rejection diagnostics.
@@ -185,61 +189,49 @@ def resolve_whatsapp_token_info(wa_account: Optional[dict] = None, workspace_id:
 
     # Build prioritized list of candidate tokens
     candidates = []
+    seen_tokens = set()
+
+    def add_candidate(token_val: str, source_desc: str, key_name: str):
+        if not token_val:
+            return
+        t = str(token_val).strip().strip('"').strip("'")
+        if t.lower().startswith("bearer "):
+            t = t[7:].strip()
+        if t and t not in seen_tokens:
+            seen_tokens.add(t)
+            candidates.append({
+                "token": t,
+                "source": source_desc,
+                "key": key_name
+            })
 
     # 1. Database WhatsApp account record token (Highest Priority)
-    acc_tok = str(wa_account.get("access_token", "") if wa_account else "").strip().strip('"').strip("'")
-    if acc_tok.lower().startswith("bearer "):
-        acc_tok = acc_tok[7:].strip()
-    if acc_tok:
-        candidates.append({
-            "token": acc_tok,
-            "source": f"database (whatsapp_accounts.access_token, id={wa_account.get('id') if wa_account else 'unknown'})",
-            "key": "whatsapp_accounts.access_token"
-        })
+    acc_tok = wa_account.get("access_token", "") if wa_account else ""
+    add_candidate(acc_tok, f"database (whatsapp_accounts.access_token, id={wa_account.get('id') if wa_account else 'unknown'})", "whatsapp_accounts.access_token")
 
     # 2. WHATSAPP_ACCESS_TOKEN Environment variable
-    env_wa_tok = str(os.getenv("WHATSAPP_ACCESS_TOKEN", "") or settings.WHATSAPP_ACCESS_TOKEN or "").strip().strip('"').strip("'")
-    if env_wa_tok.lower().startswith("bearer "):
-        env_wa_tok = env_wa_tok[7:].strip()
-    if env_wa_tok:
-        candidates.append({
-            "token": env_wa_tok,
-            "source": "environment (WHATSAPP_ACCESS_TOKEN)",
-            "key": "WHATSAPP_ACCESS_TOKEN"
-        })
+    add_candidate(os.getenv("WHATSAPP_ACCESS_TOKEN", "") or settings.WHATSAPP_ACCESS_TOKEN, "environment (WHATSAPP_ACCESS_TOKEN)", "WHATSAPP_ACCESS_TOKEN")
 
-    # 3. META_SYSTEM_USER_ACCESS_TOKEN Environment variable
-    env_sys_tok = str(os.getenv("META_SYSTEM_USER_ACCESS_TOKEN", "") or settings.META_SYSTEM_USER_ACCESS_TOKEN or "").strip().strip('"').strip("'")
-    if env_sys_tok.lower().startswith("bearer "):
-        env_sys_tok = env_sys_tok[7:].strip()
-    if env_sys_tok:
-        candidates.append({
-            "token": env_sys_tok,
-            "source": "environment (META_SYSTEM_USER_ACCESS_TOKEN)",
-            "key": "META_SYSTEM_USER_ACCESS_TOKEN"
-        })
+    # 3. WHATSAPP_TOKEN Environment variable
+    add_candidate(os.getenv("WHATSAPP_TOKEN", ""), "environment (WHATSAPP_TOKEN)", "WHATSAPP_TOKEN")
 
-    # 4. Settings table: whatsapp_access_token
-    wa_setting_tok = str(get_setting("whatsapp_access_token", "")).strip().strip('"').strip("'")
-    if wa_setting_tok.lower().startswith("bearer "):
-        wa_setting_tok = wa_setting_tok[7:].strip()
-    if wa_setting_tok:
-        candidates.append({
-            "token": wa_setting_tok,
-            "source": "settings (whatsapp_access_token)",
-            "key": "settings.whatsapp_access_token"
-        })
+    # 4. META_ACCESS_TOKEN Environment variable
+    add_candidate(os.getenv("META_ACCESS_TOKEN", ""), "environment (META_ACCESS_TOKEN)", "META_ACCESS_TOKEN")
 
-    # 5. Settings table: meta_system_user_access_token
-    sys_setting_tok = str(get_setting("meta_system_user_access_token", "")).strip().strip('"').strip("'")
-    if sys_setting_tok.lower().startswith("bearer "):
-        sys_setting_tok = sys_setting_tok[7:].strip()
-    if sys_setting_tok:
-        candidates.append({
-            "token": sys_setting_tok,
-            "source": "settings (meta_system_user_access_token)",
-            "key": "settings.meta_system_user_access_token"
-        })
+    # 5. META_SYSTEM_USER_ACCESS_TOKEN Environment variable
+    add_candidate(os.getenv("META_SYSTEM_USER_ACCESS_TOKEN", "") or settings.META_SYSTEM_USER_ACCESS_TOKEN, "environment (META_SYSTEM_USER_ACCESS_TOKEN)", "META_SYSTEM_USER_ACCESS_TOKEN")
+
+    # 6. Settings table: whatsapp_access_token
+    add_candidate(get_setting("whatsapp_access_token", ""), "settings (whatsapp_access_token)", "settings.whatsapp_access_token")
+
+    # 7. Settings table: whatsapp_token
+    add_candidate(get_setting("whatsapp_token", ""), "settings (whatsapp_token)", "settings.whatsapp_token")
+
+    # 8. Settings table: meta_access_token
+    add_candidate(get_setting("meta_access_token", ""), "settings (meta_access_token)", "settings.meta_access_token")
+
+    # 9. Settings table: meta_system_user_access_token
+    add_candidate(get_setting("meta_system_user_access_token", ""), "settings (meta_system_user_access_token)", "settings.meta_system_user_access_token")
 
     candidate_validation_results = []
 

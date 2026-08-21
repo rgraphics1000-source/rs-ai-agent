@@ -473,6 +473,29 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
         data = r.json()
         self.assertTrue(data["success"])
 
+    def test_19_phone_normalization_formats(self):
+        """Verifies normalization across various formats (+8801..., 01..., 008801..., 8801...)."""
+        from app.channels.whatsapp import normalize_whatsapp_phone_number
+        self.assertEqual(normalize_whatsapp_phone_number("+8801816504097"), "8801816504097")
+        self.assertEqual(normalize_whatsapp_phone_number("01816504097"), "8801816504097")
+        self.assertEqual(normalize_whatsapp_phone_number("008801816504097"), "8801816504097")
+        self.assertEqual(normalize_whatsapp_phone_number("8801816504097"), "8801816504097")
+        self.assertEqual(normalize_whatsapp_phone_number("01929-778581"), "8801929778581")
+
+    def test_20_candidate_validation_transparency(self):
+        """Verifies that GET /api/diagnostics/whatsapp lists candidate sources with masked tokens."""
+        r = self.client.get("/api/diagnostics/whatsapp")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["workspace_id"], 1)
+        self.assertEqual(data["phone_number_id"], "4184514263660680")
+        self.assertEqual(data["waba_id"], "27905447135785944")
+        self.assertIn("candidate_sources", data)
+        self.assertIn("candidate_validation_results", data)
+        # Ensure raw sensitive tokens are NEVER leaked
+        raw_text = r.text
+        self.assertNotIn("TOKEN_WS2_SECRET_TEST", raw_text)
+
 if __name__ == "__main__":
     unittest.main()
 
