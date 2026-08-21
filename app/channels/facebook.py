@@ -5,24 +5,26 @@ import time
 import requests
 import asyncio
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
+import hashlib
 from app.config import settings
 from app.database import (
     get_db_connection, get_setting, is_conversation_ai_active,
     get_connected_page, get_all_connected_pages, get_page_ai_config,
-    ensure_facebook_page_consistency
+    ensure_facebook_page_consistency,
+    is_webhook_event_processed, mark_webhook_event_processed,
+    claim_media_delivery, update_media_delivery_status
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.ai_agent.gemini_brain import process_customer_message
 
 GRAPH_API_URL = "https://graph.facebook.com/v19.0"
-PROCESSED_FB_MESSAGE_IDS = set()
 
 def get_fb_token(page_id: str = None) -> str:
     """Retrieves the access token for a specific Page ID, or falls back to global settings / primary connected page."""
@@ -82,8 +84,43 @@ def send_fb_text_message(recipient_id: str, text: str, page_token: str = None, p
         print(f"[Facebook Send Exception]: {e}")
         return False
 
-def send_fb_media_message(recipient_id: str, media_type: str, media_url: str, page_token: str = None, page_id: str = None) -> bool:
-    """Sends an image, video, or audio attachment to a Facebook Messenger user."""
+def compute_media_fingerprint(media_url: str) -> Tuple[str, Optional[Path]]:
+    """Computes a stable SHA-256 fingerprint for a media file or URL."""
+    if not media_url:
+        return "empty", None
+    filename = Path(media_url).name
+    candidate_paths = [
+        settings.STATIC_DIR / media_url.replace("/static/", "").lstrip("/"),
+        settings.BASE_DIR / media_url.lstrip("/"),
+        settings.UPLOADS_DIR / filename,
+        settings.BASE_DIR / "static" / "uploads" / filename
+    ]
+    for p in candidate_paths:
+        if p.exists() and p.is_file():
+            try:
+                with open(p, "rb") as f_bin:
+                    content_chunk = f_bin.read(131072)
+                    fp = hashlib.sha256(content_chunk).hexdigest()[:16]
+                    return fp, p
+            except Exception:
+                pass
+    fp = hashlib.sha256(str(media_url).strip().encode("utf-8")).hexdigest()[:16]
+    return fp, None
+
+def send_fb_media_message(
+    recipient_id: str,
+    media_type: str,
+    media_url: str,
+    page_token: str = None,
+    page_id: str = None,
+    workspace_id: int = 1,
+    batch_id: str = "",
+    conversation_id: int = None
+) -> bool:
+    """
+    Sends an image, video, or audio attachment to a Facebook Messenger user with strict idempotency.
+    Guarantees effectively-once delivery per logical media item.
+    """
     token = page_token or get_fb_token(page_id)
     clean_token = str(token or "").strip().strip('"').strip("'")
     if clean_token.lower().startswith("bearer "):
@@ -92,12 +129,90 @@ def send_fb_media_message(recipient_id: str, media_type: str, media_url: str, pa
     if not clean_token or not recipient_id or not media_url:
         return False
 
+    eff_page_id = str(page_id or "default").strip()
+    filename = Path(media_url).name
+    fingerprint, local_file_path = compute_media_fingerprint(media_url)
+    delivery_key = f"fb_media:{workspace_id}:{eff_page_id}:{recipient_id}:{fingerprint}"
+
+    masked_rec = f"{recipient_id[:6]}****{recipient_id[-4:]}" if len(recipient_id) > 10 else "***"
+    masked_key = f"fb_media:{workspace_id}:{eff_page_id}:{masked_rec}:{fingerprint}"
+
+    # Atomic claim check
+    can_send, claim_record = claim_media_delivery(
+        delivery_key=delivery_key,
+        workspace_id=workspace_id,
+        page_id=eff_page_id,
+        recipient_id=recipient_id,
+        media_type=media_type,
+        media_url=media_url,
+        media_filename=filename,
+        media_fingerprint=fingerprint,
+        batch_id=batch_id,
+        conversation_id=conversation_id
+    )
+
+    if not can_send:
+        existing_status = claim_record.get("status", "UNKNOWN")
+        if existing_status == "SENT":
+            print(f"[Facebook Media Delivery SKIPPED] workspace_id={workspace_id} recipient={masked_rec} media={filename} reason=already_sent delivery_key={masked_key}")
+            return True
+        elif existing_status == "UNKNOWN":
+            print(f"[Facebook Media Delivery UNKNOWN] workspace_id={workspace_id} recipient={masked_rec} media={filename} reason=network_timeout retry_blocked=true delivery_key={masked_key}")
+            return False
+        else:
+            print(f"[Facebook Media Delivery SKIPPED] workspace_id={workspace_id} recipient={masked_rec} media={filename} reason=concurrent_worker_active delivery_key={masked_key}")
+            return False
+
+    attempt_num = claim_record.get("attempt_count", 1)
+    print(f"[Facebook Media Delivery START] workspace_id={workspace_id} page_id={eff_page_id} recipient={masked_rec} media={filename} fingerprint={fingerprint} delivery_key={masked_key} status=SENDING attempt={attempt_num}")
+
     url = f"{GRAPH_API_URL}/me/messages"
     params = {"access_token": clean_token}
+
+    # 1. If local file exists on disk, use direct binary upload (fastest, eliminates Meta callback timeout loop)
+    if local_file_path and local_file_path.exists() and local_file_path.is_file():
+        try:
+            data = {
+                "recipient": json.dumps({"id": recipient_id}),
+                "message": json.dumps({
+                    "attachment": {
+                        "type": media_type,
+                        "payload": {"is_reusable": True}
+                    }
+                })
+            }
+            with open(local_file_path, "rb") as f_bin:
+                mime = "image/jpeg" if media_type == "image" else ("video/mp4" if media_type == "video" else "audio/mp4")
+                files = {"filedata": (local_file_path.name, f_bin, mime)}
+                r = requests.post(url, params=params, data=data, files=files, timeout=25)
+                
+            if r.status_code == 200:
+                try:
+                    res_json = r.json()
+                    msg_id = res_json.get("message_id", "")
+                    att_id = res_json.get("attachment_id", "")
+                except Exception:
+                    msg_id, att_id = "", ""
+                update_media_delivery_status(delivery_key, "SENT", meta_message_id=msg_id, attachment_id=att_id)
+                print(f"[Facebook Media Delivery SUCCESS] workspace_id={workspace_id} recipient={masked_rec} media={filename} http_status=200 message_id={msg_id} attachment_id={att_id}")
+                return True
+            else:
+                err_text = r.text
+                update_media_delivery_status(delivery_key, "FAILED", last_error=err_text)
+                print(f"[Facebook Media Delivery FAILED] workspace_id={workspace_id} recipient={masked_rec} media={filename} http_status={r.status_code} error={err_text}")
+                return False
+        except requests.exceptions.Timeout as t_err:
+            update_media_delivery_status(delivery_key, "UNKNOWN", last_error="Binary upload timeout (25s)")
+            print(f"[Facebook Media Delivery UNKNOWN] workspace_id={workspace_id} recipient={masked_rec} media={filename} reason=network_timeout retry_blocked=true")
+            return False
+        except Exception as up_err:
+            update_media_delivery_status(delivery_key, "FAILED", last_error=str(up_err))
+            print(f"[Facebook Media Delivery FAILED] workspace_id={workspace_id} recipient={masked_rec} media={filename} error={up_err}")
+            return False
+
+    # 2. Remote URL attachment payload
     base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
     full_url = media_url if media_url.startswith("http") else f"{base_server_url}{media_url}"
-
-    # 1. URL attachment payload method (Fastest & standard for Messenger)
     payload = {
         "recipient": {"id": recipient_id},
         "message": {
@@ -112,52 +227,38 @@ def send_fb_media_message(recipient_id: str, media_type: str, media_url: str, pa
     }
     try:
         r = requests.post(url, params=params, json=payload, timeout=15)
-        print(f"[Facebook Media URL Send]: status={r.status_code}, body={r.text}")
         if r.status_code == 200:
-            return True
-    except Exception as e:
-        print(f"[Facebook Media URL Error]: {e}")
-
-    # 2. Local binary fallback if file exists on disk
-    filename = Path(media_url).name
-    candidate_paths = [
-        settings.STATIC_DIR / media_url.replace("/static/", "").lstrip("/"),
-        settings.BASE_DIR / media_url.lstrip("/"),
-        settings.UPLOADS_DIR / filename,
-        settings.BASE_DIR / "static" / "uploads" / filename
-    ]
-
-    for p in candidate_paths:
-        if p.exists() and p.is_file():
             try:
-                data = {
-                    "recipient": json.dumps({"id": recipient_id}),
-                    "message": json.dumps({
-                        "attachment": {
-                            "type": media_type,
-                            "payload": {"is_reusable": True}
-                        }
-                    })
-                }
-                with open(p, "rb") as f_bin:
-                    mime = "image/jpeg" if media_type == "image" else ("video/mp4" if media_type == "video" else "audio/mp4")
-                    files = {"filedata": (p.name, f_bin, mime)}
-                    r = requests.post(url, params=params, data=data, files=files, timeout=25)
-                    print(f"[Facebook Direct Binary Upload Result]: HTTP {r.status_code}, Body: {r.text}")
-                    if r.status_code == 200:
-                        return True
-            except Exception as up_err:
-                print(f"[Facebook Binary Upload Error]: {up_err}")
+                res_json = r.json()
+                msg_id = res_json.get("message_id", "")
+                att_id = res_json.get("attachment_id", "")
+            except Exception:
+                msg_id, att_id = "", ""
+            update_media_delivery_status(delivery_key, "SENT", meta_message_id=msg_id, attachment_id=att_id)
+            print(f"[Facebook Media Delivery SUCCESS] workspace_id={workspace_id} recipient={masked_rec} media={filename} http_status=200 message_id={msg_id} attachment_id={att_id}")
+            return True
+        else:
+            err_text = r.text
+            update_media_delivery_status(delivery_key, "FAILED", last_error=err_text)
+            print(f"[Facebook Media Delivery FAILED] workspace_id={workspace_id} recipient={masked_rec} media={filename} http_status={r.status_code} error={err_text}")
+            return False
+    except requests.exceptions.Timeout as t_err:
+        # Crucial fix: Do NOT blindly retry upon timeout (Meta might have processed the request)
+        update_media_delivery_status(delivery_key, "UNKNOWN", last_error="URL send read timeout (15s)")
+        print(f"[Facebook Media Delivery UNKNOWN] workspace_id={workspace_id} recipient={masked_rec} media={filename} reason=network_timeout retry_blocked=true")
+        return False
+    except Exception as e:
+        update_media_delivery_status(delivery_key, "FAILED", last_error=str(e))
+        print(f"[Facebook Media Delivery FAILED] workspace_id={workspace_id} recipient={masked_rec} media={filename} error={e}")
+        return False
 
-    return False
+def send_fb_audio_message(recipient_id: str, audio_url: str, page_token: str = None, page_id: str = None, workspace_id: int = 1, batch_id: str = "") -> bool:
+    """Sends an audio / voice message via Facebook Messenger with idempotency."""
+    return send_fb_media_message(recipient_id, "audio", audio_url, page_token=page_token, page_id=page_id, workspace_id=workspace_id, batch_id=batch_id)
 
-def send_fb_audio_message(recipient_id: str, audio_url: str, page_token: str = None, page_id: str = None) -> bool:
-    """Sends an audio / voice message via Facebook Messenger."""
-    return send_fb_media_message(recipient_id, "audio", audio_url, page_token=page_token, page_id=page_id)
-
-def send_fb_video_message(recipient_id: str, video_url: str, page_token: str = None, page_id: str = None) -> bool:
-    """Sends a video attachment via Facebook Messenger."""
-    return send_fb_media_message(recipient_id, "video", video_url, page_token=page_token, page_id=page_id)
+def send_fb_video_message(recipient_id: str, video_url: str, page_token: str = None, page_id: str = None, workspace_id: int = 1, batch_id: str = "") -> bool:
+    """Sends a video attachment via Facebook Messenger with idempotency."""
+    return send_fb_media_message(recipient_id, "video", video_url, page_token=page_token, page_id=page_id, workspace_id=workspace_id, batch_id=batch_id)
 
 def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, page_id: str = None) -> bool:
     """Replies publicly to a Facebook post comment."""
@@ -245,12 +346,10 @@ async def handle_facebook_webhook_event(data: dict):
 
                     msg_id = msg.get("mid")
                     if msg_id:
-                        if msg_id in PROCESSED_FB_MESSAGE_IDS:
-                            print(f"[Facebook Webhook] Duplicate message skipped: mid={msg_id}")
+                        if is_webhook_event_processed("facebook", msg_id):
+                            print(f"[Facebook Webhook DUPLICATE] event_id={msg_id} action=ignored_already_processed")
                             continue
-                        PROCESSED_FB_MESSAGE_IDS.add(msg_id)
-                        if len(PROCESSED_FB_MESSAGE_IDS) > 2000:
-                            PROCESSED_FB_MESSAGE_IDS.pop()
+                        mark_webhook_event_processed("facebook", msg_id, workspace_id=workspace_id, page_id_or_phone_id=page_id)
 
                     msg_text = msg.get("text", "")
                     attachments = msg.get("attachments", [])
@@ -312,35 +411,59 @@ async def handle_facebook_webhook_event(data: dict):
                     reply_text = ai_result.get("reply_text", "")
                     if reply_text:
                         print(f"[Facebook Messenger Replying on Workspace {workspace_id} ('{page_name}')]: '{reply_text[:60]}...' to {sender_id}")
-                        send_fb_text_message(sender_id, reply_text, page_token=page_token, page_id=page_id)
-                        record_conversation_message("facebook", sender_id, customer_name, "bot", reply_text, page_id=page_id, workspace_id=workspace_id)
+                        send_ok = send_fb_text_message(sender_id, reply_text, page_token=page_token, page_id=page_id)
+                        if send_ok:
+                            record_conversation_message("facebook", sender_id, customer_name, "bot", reply_text, page_id=page_id, workspace_id=workspace_id)
 
-                    # Send all matched product images as rich media attachments
+                    # Send all matched product images as rich media attachments with media-level idempotency
                     matched_images = ai_result.get("matched_images", [])
                     base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
+                    batch_id = f"fb_batch_{sender_id}_{msg_id or int(time.time()*1000)}"
 
                     for img_path in matched_images:
                         if not img_path:
                             continue
                         full_img_url = img_path if img_path.startswith("http") else f"{base_server_url}{img_path}"
-                        print(f"[Facebook Messenger Sending Image on Workspace {workspace_id}]: {full_img_url} to {sender_id}")
-                        send_fb_media_message(sender_id, "image", img_path, page_token=page_token, page_id=page_id)
-                        record_conversation_message("facebook", sender_id, customer_name, "bot", "", full_img_url, page_id=page_id, workspace_id=workspace_id)
+                        img_sent = send_fb_media_message(
+                            recipient_id=sender_id,
+                            media_type="image",
+                            media_url=img_path,
+                            page_token=page_token,
+                            page_id=page_id,
+                            workspace_id=workspace_id,
+                            batch_id=batch_id
+                        )
+                        if img_sent:
+                            record_conversation_message("facebook", sender_id, customer_name, "bot", "", full_img_url, page_id=page_id, workspace_id=workspace_id)
                         await asyncio.sleep(0.15)
 
                     # Send video demo if requested
                     matched_video = ai_result.get("video_url", "")
                     if matched_video:
-                        print(f"[Facebook Messenger Sending Video on Workspace {workspace_id}]: {matched_video} to {sender_id}")
-                        send_fb_video_message(sender_id, matched_video, page_token=page_token, page_id=page_id)
-                        record_conversation_message("facebook", sender_id, customer_name, "bot", "[Video Demo]", matched_video, page_id=page_id, workspace_id=workspace_id)
+                        vid_sent = send_fb_video_message(
+                            recipient_id=sender_id,
+                            video_url=matched_video,
+                            page_token=page_token,
+                            page_id=page_id,
+                            workspace_id=workspace_id,
+                            batch_id=batch_id
+                        )
+                        if vid_sent:
+                            record_conversation_message("facebook", sender_id, customer_name, "bot", "[Video Demo]", matched_video, page_id=page_id, workspace_id=workspace_id)
 
                     # Send voice note if requested / generated
                     voice_url = ai_result.get("voice_url", "")
                     if voice_url:
-                        print(f"[Facebook Messenger Sending Audio on Workspace {workspace_id}]: {voice_url} to {sender_id}")
-                        send_fb_audio_message(sender_id, voice_url, page_token=page_token, page_id=page_id)
-                        record_conversation_message("facebook", sender_id, customer_name, "bot", "[Voice Note]", voice_url, page_id=page_id, workspace_id=workspace_id)
+                        voice_sent = send_fb_audio_message(
+                            recipient_id=sender_id,
+                            audio_url=voice_url,
+                            page_token=page_token,
+                            page_id=page_id,
+                            workspace_id=workspace_id,
+                            batch_id=batch_id
+                        )
+                        if voice_sent:
+                            record_conversation_message("facebook", sender_id, customer_name, "bot", "[Voice Note]", voice_url, page_id=page_id, workspace_id=workspace_id)
 
             # 2. Handle Feed Comments (Auto Comment Reply & Private Inbox Message)
             if "changes" in entry:

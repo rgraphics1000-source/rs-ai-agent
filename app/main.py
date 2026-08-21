@@ -631,7 +631,7 @@ async def api_send_saved_media(request: Request):
     m_url = med["file_url"]
     m_title = med["title"]
     
-    send_ok = False
+    ws_id = conv["workspace_id"] if "workspace_id" in conv.keys() else 1
     if channel == "whatsapp":
         if m_type in ["voice", "audio"]:
             send_ok = send_whatsapp_audio(sender_id, m_url, page_id=page_id)
@@ -641,11 +641,11 @@ async def api_send_saved_media(request: Request):
             send_ok = send_whatsapp_image(sender_id, m_url, caption=m_title, page_id=page_id)
     elif channel == "facebook":
         if m_type in ["voice", "audio"]:
-            send_ok = send_fb_audio_message(sender_id, m_url, page_id=page_id)
+            send_ok = send_fb_audio_message(sender_id, m_url, page_id=page_id, workspace_id=ws_id)
         elif m_type == "video":
-            send_ok = send_fb_video_message(sender_id, m_url, page_id=page_id)
+            send_ok = send_fb_video_message(sender_id, m_url, page_id=page_id, workspace_id=ws_id)
         else:
-            send_ok = send_fb_media_message(sender_id, "image", m_url, page_id=page_id)
+            send_ok = send_fb_media_message(sender_id, "image", m_url, page_id=page_id, workspace_id=ws_id)
     else:
         send_ok = True
         

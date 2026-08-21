@@ -1,8 +1,8 @@
 import os
 import sqlite3
 import json
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+from typing import Optional, List, Dict, Any, Tuple
+from datetime import datetime, timezone
 from app.config import settings
 
 DB_PATH = settings.BASE_DIR / "rs_ai.db"
@@ -219,6 +219,46 @@ def init_db():
         FOREIGN KEY (connected_page_id) REFERENCES connected_pages(id) ON DELETE SET NULL
     );
     """)
+
+    # 13. Facebook Media Deliveries Table (Media Idempotency & Delivery State Tracking)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS facebook_media_deliveries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER NOT NULL DEFAULT 1,
+        page_id TEXT NOT NULL,
+        recipient_id TEXT NOT NULL,
+        conversation_id INTEGER,
+        batch_id TEXT,
+        media_type TEXT NOT NULL DEFAULT 'image',
+        media_url TEXT NOT NULL,
+        media_filename TEXT,
+        media_fingerprint TEXT NOT NULL,
+        delivery_key TEXT UNIQUE NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        meta_message_id TEXT,
+        attachment_id TEXT,
+        attempt_count INTEGER DEFAULT 0,
+        last_error TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        sent_at TIMESTAMP
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_fb_media_delivery_key ON facebook_media_deliveries(delivery_key)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_fb_media_recipient_status ON facebook_media_deliveries(recipient_id, status)")
+
+    # 14. Processed Webhook Events Table (Persistent Webhook Deduplication)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS processed_webhook_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel TEXT NOT NULL,
+        event_id TEXT UNIQUE NOT NULL,
+        workspace_id INTEGER DEFAULT 1,
+        page_id_or_phone_id TEXT,
+        processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_webhook_events_id ON processed_webhook_events(event_id)")
 
     # Multi-tenant scoping columns migration for all business tables
     scoped_tables = [
@@ -1671,3 +1711,184 @@ def get_page_ai_config(page_id: str = "", workspace_id: int = None) -> dict:
         "ai_enabled": bool(ws.get("ai_enabled", 1)),
         "page_id": page_id
     }
+
+# ============================================================
+# WEBHOOK DEDUPLICATION & MEDIA DELIVERY IDEMPOTENCY
+# ============================================================
+
+def is_webhook_event_processed(channel: str, event_id: str) -> bool:
+    """Checks whether a webhook event (by message ID or event ID) has already been processed."""
+    if not event_id:
+        return False
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM processed_webhook_events WHERE channel = ? AND event_id = ?", (channel, str(event_id).strip()))
+        row = cursor.fetchone()
+        conn.close()
+        return row is not None
+    except Exception as e:
+        print(f"[DB is_webhook_event_processed Error]: {e}")
+        return False
+
+def mark_webhook_event_processed(channel: str, event_id: str, workspace_id: int = 1, page_id_or_phone_id: str = "") -> bool:
+    """Records a webhook event ID persistently so duplicate webhooks are ignored."""
+    if not event_id:
+        return False
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR IGNORE INTO processed_webhook_events (channel, event_id, workspace_id, page_id_or_phone_id)
+            VALUES (?, ?, ?, ?)
+        """, (channel, str(event_id).strip(), int(workspace_id or 1), str(page_id_or_phone_id or "").strip()))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[DB mark_webhook_event_processed Error]: {e}")
+        return False
+
+def get_media_delivery(delivery_key: str) -> Optional[dict]:
+    """Fetches a media delivery record by deterministic delivery key."""
+    if not delivery_key:
+        return None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM facebook_media_deliveries WHERE delivery_key = ?", (str(delivery_key).strip(),))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_media_delivery Error]: {e}")
+        return None
+
+def claim_media_delivery(
+    delivery_key: str,
+    workspace_id: int,
+    page_id: str,
+    recipient_id: str,
+    media_type: str,
+    media_url: str,
+    media_filename: str,
+    media_fingerprint: str,
+    batch_id: str = "",
+    conversation_id: int = None
+) -> Tuple[bool, dict]:
+    """
+    Atomically claims a media item for delivery.
+    Returns:
+      (True, record)  -> Worker successfully claimed this media item and MAY proceed to send.
+      (False, record) -> Delivery already SENT, UNKNOWN (timeout-blocked), or actively SENDING by another worker.
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM facebook_media_deliveries WHERE delivery_key = ?", (delivery_key,))
+        existing = cursor.fetchone()
+        
+        if existing:
+            ex_dict = dict(existing)
+            status = ex_dict.get("status", "PENDING")
+            
+            # If already sent, skip immediately
+            if status == "SENT":
+                conn.close()
+                return False, ex_dict
+                
+            # If UNKNOWN (timed out previously), block immediate duplicate retry
+            if status == "UNKNOWN":
+                conn.close()
+                return False, ex_dict
+                
+            # If currently SENDING, check if lock is fresh (<60s)
+            if status == "SENDING":
+                updated_at_str = ex_dict.get("updated_at")
+                if updated_at_str:
+                    try:
+                        updated_dt = datetime.fromisoformat(updated_at_str.replace(" ", "T"))
+                        if updated_dt.tzinfo is None:
+                            updated_dt = updated_dt.replace(tzinfo=timezone.utc)
+                        diff = (datetime.now(timezone.utc) - updated_dt).total_seconds()
+                        if diff < 60:
+                            # Another active worker is currently sending this media
+                            conn.close()
+                            return False, ex_dict
+                    except Exception:
+                        pass
+                        
+            # Otherwise claim the item: update to SENDING
+            cursor.execute("""
+                UPDATE facebook_media_deliveries SET
+                    status = 'SENDING',
+                    attempt_count = attempt_count + 1,
+                    updated_at = CURRENT_TIMESTAMP,
+                    batch_id = COALESCE(NULLIF(?, ''), batch_id)
+                WHERE delivery_key = ?
+            """, (batch_id, delivery_key))
+            conn.commit()
+            cursor.execute("SELECT * FROM facebook_media_deliveries WHERE delivery_key = ?", (delivery_key,))
+            claimed = cursor.fetchone()
+            conn.close()
+            return True, dict(claimed) if claimed else ex_dict
+        else:
+            # Insert new record in SENDING state
+            cursor.execute("""
+                INSERT INTO facebook_media_deliveries (
+                    workspace_id, page_id, recipient_id, conversation_id, batch_id,
+                    media_type, media_url, media_filename, media_fingerprint, delivery_key,
+                    status, attempt_count, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SENDING', 1, CURRENT_TIMESTAMP)
+            """, (
+                int(workspace_id or 1),
+                str(page_id or "").strip(),
+                str(recipient_id or "").strip(),
+                conversation_id,
+                str(batch_id or "").strip(),
+                str(media_type or "image").strip(),
+                str(media_url or "").strip(),
+                str(media_filename or "").strip(),
+                str(media_fingerprint or "").strip(),
+                str(delivery_key or "").strip()
+            ))
+            conn.commit()
+            cursor.execute("SELECT * FROM facebook_media_deliveries WHERE delivery_key = ?", (delivery_key,))
+            new_row = cursor.fetchone()
+            conn.close()
+            return True, dict(new_row) if new_row else {}
+    except Exception as e:
+        print(f"[DB claim_media_delivery Error]: {e}")
+        return True, {}
+
+def update_media_delivery_status(
+    delivery_key: str,
+    status: str,
+    meta_message_id: str = None,
+    attachment_id: str = None,
+    last_error: str = None
+) -> bool:
+    """Updates the state of a media delivery (SENT, UNKNOWN, FAILED)."""
+    if not delivery_key:
+        return False
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        sent_at_clause = ", sent_at = CURRENT_TIMESTAMP" if status == "SENT" else ""
+        cursor.execute(f"""
+            UPDATE facebook_media_deliveries SET
+                status = ?,
+                meta_message_id = COALESCE(?, meta_message_id),
+                attachment_id = COALESCE(?, attachment_id),
+                last_error = ?,
+                updated_at = CURRENT_TIMESTAMP
+                {sent_at_clause}
+            WHERE delivery_key = ?
+        """, (status, meta_message_id, attachment_id, last_error, delivery_key))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[DB update_media_delivery_status Error]: {e}")
+        return False
