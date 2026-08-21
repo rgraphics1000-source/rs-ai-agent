@@ -285,10 +285,18 @@ def detect_google_form_intent(user_message: str) -> Optional[dict]:
 
     # Keywords for form creation
     triggers = [
-        "id card form", "google form", "ফর্ম বানাও", "ফর্ম তৈরি", "ফর্ম বানিয়ে", "ফর্ম বানিয়ে",
-        "ফর্ম বানিয়ে দাও", "ফর্ম বানিয়ে দিন", "ফর্ম বানিয়ে দিন", "বানিয়ে দিন", "বানিয়ে দিন",
-        "ফর্ম লিঙ্ক", "ফর্ম লিংক", "তথ্য নেওয়ার ফর্ম", "ছাত্রদের ফর্ম", "আইডি কার্ড ফর্ম",
-        "id card ফর্ম", "ফর্ম দাও", "ফর্ম পাঠান", "create form", "make form", "ফর্ম", "গুগল ফর্ম"
+        "id card form", "google form", "gform",
+        "ফর্ম বানাও", "ফরম বানাও", "ফর্ম তৈরি", "ফরম তৈরি",
+        "ফর্ম বানিয়ে", "ফরম বানিয়ে", "ফর্ম বানিয়ে", "ফরম বানিয়ে",
+        "ফর্ম বানিয়ে দাও", "ফরম বানিয়ে দাও", "ফর্ম বানিয়ে দাও", "ফরম বানিয়ে দাও",
+        "ফর্ম বানিয়ে দিন", "ফরম বানিয়ে দিন", "ফর্ম বানিয়ে দিন", "ফরম বানিয়ে দিন",
+        "বানিয়ে দাও", "বানিয়ে দাও", "বানিয়ে দিন", "বানিয়ে দিন",
+        "ফর্ম লিঙ্ক", "ফরম লিঙ্ক", "ফর্ম লিংক", "ফরম লিংক",
+        "তথ্য নেওয়ার ফর্ম", "তথ্য নেওয়ার ফরম", "ছাত্রদের ফর্ম", "ছাত্রদের ফরম",
+        "আইডি কার্ড ফর্ম", "আইডি কার্ড ফরম", "id card ফর্ম", "id card ফরম",
+        "ফর্ম দাও", "ফরম দাও", "ফর্ম পাঠান", "ফরম পাঠান",
+        "create form", "make form",
+        "ফর্ম", "ফরম", "ফর্মে", "ফরমে", "গুগল ফর্ম", "গুগল ফরম"
     ]
 
     has_intent = any(t in msg_lower for t in triggers)
@@ -312,7 +320,7 @@ def detect_google_form_intent(user_message: str) -> Optional[dict]:
         inst_name = extracted.split(",")[0].strip()
 
     if not inst_name:
-        m1 = re.search(r'(.+?)(?:র\s+জন্য|এর\s+জন্য|র\s+|এর\s+)\s*(?:একটি\s+|একটা\s+)?(?:id\s*card\s+|আইডি\s*কার্ড\s+)?(?:form|ফর্ম)', msg, re.IGNORECASE)
+        m1 = re.search(r'(.+?)(?:র\s+জন্য|এর\s+জন্য|র\s+|এর\s+)\s*(?:একটি\s+|একটা\s+)?(?:id\s*card\s+|আইডি\s*কার্ড\s+)?(?:form|ফর্ম|ফরম)', msg, re.IGNORECASE)
         if m1:
             extracted = m1.group(1).strip()
             if phone_match:
@@ -348,19 +356,16 @@ def resolve_google_form_workflow(
     """
     Multi-turn conversation state manager and executor for Google Form creation.
     Accumulates institution name, institution mobile, and requested fields across messages,
-    and automatically executes form creation when all parameters are fulfilled.
+    then executes create_institution_form when all required data is collected.
     """
     flat_history = []
     if conversation_history:
         for m in conversation_history:
-            st = str(m.get("sender_type") or m.get("sender") or m.get("role") or "").lower()
-            is_user = st in ("user", "customer")
-            content = m.get("content") or m.get("message") or m.get("text") or m.get("body") or ""
-            if isinstance(content, str) and content.strip():
-                flat_history.append({
-                    "role": "user" if is_user else "assistant",
-                    "text": content.strip()
-                })
+            sender_val = str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower()
+            role = "user" if sender_val in ("customer", "user") else "assistant"
+            content = m.get("content") or m.get("text") or m.get("message") or ""
+            if content:
+                flat_history.append({"role": role, "text": content.strip()})
 
     # Append current user message
     if user_message and user_message.strip():
@@ -371,16 +376,22 @@ def resolve_google_form_workflow(
 
     form_intent_patterns = [
         r'ফর্ম',
+        r'ফরম',
         r'form',
         r'গুগল\s*ফর্ম',
+        r'গুগল\s*ফরম',
         r'google\s*form',
+        r'gform',
         r'id\s*card\s*(?:এর\s*)?form',
         r'id\s*card\s*(?:এর\s*)?ফর্ম',
-        r'আইডি\s*কার্ড(?:ের)?\s*(?:জন্য\s*)?(?:একটি\s*|একটা\s*)?ফর্ম',
-        r'আইডি\s*কার্ড(?:ের)?\s*ফর্ম',
-        r'আইডি\s*কার্ডের\s*জন্য\s*ফর্ম',
+        r'id\s*card\s*(?:এর\s*)?ফরম',
+        r'আইডি\s*কার্ড(?:ের)?\s*(?:জন্য\s*)?(?:একটি\s*|একটা\s*)?(?:ফর্ম|ফরম|form)',
+        r'আইডি\s*কার্ড(?:ের)?\s*(?:ফর্ম|ফরম|form)',
+        r'আইডি\s*কার্ডের\s*জন্য\s*(?:ফর্ম|ফরম|form)',
         r'আইডি\s*কার্ড',
-        r'তথ্য\s*নেওয়ার\s*জন্য',
+        r'তথ্য\s*নেওয়ার\s*(?:জন্য|ফর্ম|ফরম|form|লিংক|লিঙ্ক)',
+        r'ছাত্রদের\s*(?:তথ্য|ডাটা|ফর্ম|ফরম)',
+        r'শিক্ষার্থীদের\s*(?:তথ্য|ডাটা|ফর্ম|ফরম)',
         r'create\s*form|make\s*form',
     ]
 
@@ -391,7 +402,12 @@ def resolve_google_form_workflow(
         if any(re.search(p, txt_lower, re.IGNORECASE) for p in form_intent_patterns):
             has_form_intent = True
             break
-        if any(kw in txt_lower for kw in ["ফর্ম", "ফর্মে", "form", "গুগল ফর্ম", "google form", "আইডি কার্ড ফর্ম", "id card form", "আইডি কার্ড"]):
+        if any(kw in txt_lower for kw in [
+            "ফর্ম", "ফর্মে", "ফরম", "ফরমে", "ফর্মটি", "ফরমটি", "ফর্মটা", "ফরমটা", "ফর্মের", "ফরমের",
+            "form", "forms", "gform", "g-form",
+            "গুগল ফর্ম", "গুগল ফরম", "google form",
+            "আইডি কার্ড ফর্ম", "আইডি কার্ড ফরম", "id card form", "আইডি কার্ড"
+        ]):
             has_form_intent = True
             break
         if m["role"] == "assistant" and any(q in txt for q in [
@@ -404,8 +420,10 @@ def resolve_google_form_workflow(
     if not has_form_intent:
         return None
 
-    print(f"[GOOGLE_FORM_WORKFLOW] Incoming message detected: {user_message[:60] if user_message else ''}")
-    print(f"[GOOGLE_FORM_WORKFLOW] Intent detected = TRUE")
+    try:
+        print(f"[GOOGLE_FORM_WORKFLOW] Intent detected = TRUE (msg_len={len(user_message) if user_message else 0})")
+    except Exception:
+        pass
 
     phone_pattern = r'(?:\+?880|880|0)?1[3-9]\d{2}[-\s]?\d{6}'
 
@@ -437,11 +455,11 @@ def resolve_google_form_workflow(
                     cand = cand[len(pfx):].strip()
             if cand in ["প্রতিষ্ঠান", "প্রতিষ্ঠানের", "স্কুল", "স্কুলের", "মাদ্রাসা", "মাদ্রাসার", "মাদরাসা", "মাদরাসার", "আমাদের প্রতিষ্ঠান", "আমার প্রতিষ্ঠান", "প্রতিষ্ঠানটি", "স্কুলটি", "মাদ্রাসাটি", "id card", "কার্ড"]:
                 cand = ""
-            if cand and not any(kw in cand.lower() for kw in ["দিন", "করুন", "বানাও", "ফর্ম", "id card"]):
+            if cand and not any(kw in cand.lower() for kw in ["দিন", "করুন", "বানাও", "ফর্ম", "ফরম", "id card"]):
                 inst_name = cand
                 break
 
-        m_for = re.search(r'(.+?)(?:র\s+জন্য|এর\s+জন্য|র\s+|এর\s+)\s*(?:একটি\s+|একটা\s+)?(?:id\s*card\s+|আইডি\s*কার্ড\s+)?(?:form|ফর্ম)', t, re.IGNORECASE)
+        m_for = re.search(r'(.+?)(?:র\s+জন্য|এর\s+জন্য|র\s+|এর\s+)\s*(?:একটি\s+|একটা\s+)?(?:id\s*card\s+|আইডি\s*কার্ড\s+)?(?:form|ফর্ম|ফরম)', t, re.IGNORECASE)
         if m_for:
             cand = m_for.group(1).strip()
             cand = re.sub(phone_pattern, '', cand).strip()
@@ -451,7 +469,7 @@ def resolve_google_form_workflow(
             cand_stem = re.sub(r'(?:ের|র|ে|টি|টির|গুলো)$', '', cand.strip()).strip()
             if cand_stem in ["প্রতিষ্ঠান", "স্কুল", "মাদ্রাসা", "মাদরাসা", "কলেজ", "আমাদের প্রতিষ্ঠান", "আমার প্রতিষ্ঠান", "id card", "কার্ড", ""]:
                 cand = ""
-            if len(cand) > 1 and not any(kw in cand.lower() for kw in ["আইডি", "কার্ড", "বানাতে", "তৈরি", "ফর্ম"]):
+            if len(cand) > 1 and not any(kw in cand.lower() for kw in ["আইডি", "কার্ড", "বানাতে", "তৈরি", "ফর্ম", "ফরম"]):
                 inst_name = cand
                 break
 
@@ -465,7 +483,7 @@ def resolve_google_form_workflow(
             cand_stem = re.sub(r'(?:ের|র|ে|টি|টির|গুলো)$', '', cand.strip()).strip()
             if cand_stem in ["প্রতিষ্ঠান", "স্কুল", "মাদ্রাসা", "মাদরাসা", "কলেজ", "আমাদের প্রতিষ্ঠান", "আমার প্রতিষ্ঠান", "id card", "কার্ড", ""]:
                 cand = ""
-            if len(cand) > 1 and not any(kw in cand.lower() for kw in ["ফর্ম", "বানাও", "বানাতে", "কার্ড"]):
+            if len(cand) > 1 and not any(kw in cand.lower() for kw in ["ফর্ম", "ফরম", "বানাও", "বানাতে", "কার্ড"]):
                 inst_name = cand
                 break
 
@@ -481,7 +499,7 @@ def resolve_google_form_workflow(
                     for pfx in ["দয়া করে", "প্লিজ", "আমাদের প্রতিষ্ঠানের নাম", "প্রতিষ্ঠানের নাম", "নাম", "আমাদের", "আমার"]:
                         if cand.startswith(pfx):
                             cand = cand[len(pfx):].lstrip(": ").strip()
-                    if len(cand) >= 2 and not any(kw in cand.lower() for kw in ["ফর্ম", "আইডি কার্ড", "বানাতে"]):
+                    if len(cand) >= 2 and not any(kw in cand.lower() for kw in ["ফর্ম", "ফরম", "আইডি কার্ড", "বানাতে"]):
                         inst_name = cand
                         break
 
