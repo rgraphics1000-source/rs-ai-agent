@@ -10,7 +10,7 @@ services:
       - key: WHATSAPP_WABA_ID
         value: "271335301757320"
       - key: WHATSAPP_PHONE_NUMBER_ID
-        value: "4184514263660680"
+        value: "418451426636680"
       - key: WHATSAPP_DISPLAY_PHONE_NUMBER
         value: "+8801816504097"
       - key: WHATSAPP_VERIFY_TOKEN

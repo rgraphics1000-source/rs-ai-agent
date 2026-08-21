@@ -1230,7 +1230,7 @@ def ensure_whatsapp_account_consistency(conn=None) -> Optional[dict]:
     4. Settings table is kept in sync (whatsapp_phone_number_id = 4184514263660680).
     5. Fully idempotent and safe to call concurrently or repeatedly.
     """
-    target_wa_phone_id = "4184514263660680"
+    target_wa_phone_id = str(get_setting("whatsapp_phone_number_id") or settings.WHATSAPP_PHONE_NUMBER_ID or "418451426636680").strip()
     target_waba_id = str(get_setting("whatsapp_waba_id") or settings.WHATSAPP_WABA_ID or "271335301757320").strip()
     target_display = str(settings.WHATSAPP_DISPLAY_PHONE_NUMBER or "+8801816504097").strip()
     target_token = str(

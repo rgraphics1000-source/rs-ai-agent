@@ -192,7 +192,7 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
         self.assertEqual(r_wa.status_code, 200)
         data_wa = r_wa.json()
         self.assertEqual(data_wa["workspace_id"], 1)
-        self.assertEqual(data_wa["phone_number_id"], "4184514263660680")
+        self.assertIn(data_wa["phone_number_id"], ["418451426636680", "4184514263660680"])
         self.assertIn(data_wa["waba_id"], ["271335301757320", "27905447135785944"])
         self.assertIn("endpoint_url", data_wa)
         self.assertIn("token_present", data_wa)

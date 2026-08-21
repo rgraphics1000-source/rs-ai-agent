@@ -1087,8 +1087,8 @@ async def api_diagnostics_meta():
         "rs_graphics_workspace_1": {
             "canonical_facebook_page_id": "105116472071659",
             "facebook_ready": fb_w1_ready,
-            "canonical_whatsapp_phone_id": "4184514263660680",
-            "canonical_whatsapp_waba_id": "271335301757320",
+            "canonical_whatsapp_phone_id": settings.WHATSAPP_PHONE_NUMBER_ID,
+            "canonical_whatsapp_waba_id": settings.WHATSAPP_WABA_ID,
             "whatsapp_ready": wa_w1_ready
         },
         "facebook": {
@@ -1105,16 +1105,16 @@ async def api_diagnostics_meta():
 @app.get("/api/diagnostic/whatsapp")
 async def api_get_diagnostics_whatsapp():
     """
-    Dedicated diagnostic endpoint validating WhatsApp Phone Number ID (4184514263660680),
+    Dedicated diagnostic endpoint validating WhatsApp Phone Number ID (418451426636680 / 4184514263660680),
     WABA ID (271335301757320), token presence, token source, and live Meta Graph API read access.
     Never exposes raw tokens or full customer numbers.
     """
     ensure_whatsapp_account_consistency()
     
-    wa_account = get_whatsapp_account_by_phone_id("4184514263660680")
-    phone_id = wa_account.get("phone_number_id", "4184514263660680") if wa_account else "4184514263660680"
+    wa_account = get_whatsapp_account_by_phone_id(settings.WHATSAPP_PHONE_NUMBER_ID)
+    phone_id = wa_account.get("phone_number_id", settings.WHATSAPP_PHONE_NUMBER_ID) if wa_account else settings.WHATSAPP_PHONE_NUMBER_ID
     display_phone = wa_account.get("display_phone_number", "+8801816504097") if wa_account else "+8801816504097"
-    waba_id = wa_account.get("waba_id", "271335301757320") if wa_account else "271335301757320"
+    waba_id = wa_account.get("waba_id", settings.WHATSAPP_WABA_ID) if wa_account else settings.WHATSAPP_WABA_ID
 
     token_info = resolve_whatsapp_token_info(wa_account=wa_account, workspace_id=1, phone_number_id=phone_id)
     clean_tok = token_info.get("token", "")
