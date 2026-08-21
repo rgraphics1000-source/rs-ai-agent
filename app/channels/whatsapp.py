@@ -433,79 +433,109 @@ def send_whatsapp_message_detailed(to_number: str, message_text: str, phone_id: 
         }
 
     norm_to = normalize_whatsapp_phone_number(to_number)
-    url = f"{GRAPH_API_URL}/{phone_id}/messages"
-    headers = {
-        "Authorization": f"Bearer {clean_token}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "recipient_type": "individual",
-        "to": norm_to,
-        "type": "text",
-        "text": {
-            "body": message_text
-        }
-    }
 
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=15)
-        status_ok = r.status_code in [200, 201]
-        if status_ok:
-            try:
-                resp_json = r.json()
-                msg_id = resp_json.get("messages", [{}])[0].get("id", "")
-            except Exception:
-                msg_id = ""
-            print(f"[WhatsApp Send] workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source=explicit token_valid=true status=success message_id={msg_id} http_status={r.status_code}")
-            return {
-                "success": True,
-                "http_status": r.status_code,
-                "message_id": msg_id,
-                "phone_number_id": phone_id,
-                "token_source": "explicit",
-                "token_valid": True,
-                "token_preview": token_masked,
-                "recipient": masked_rec
-            }
+    # Determine priority list of phone_ids to try (handles both 15-digit and 16-digit variants)
+    target_phone_ids = [phone_id]
+    alt_phone_id = "418451426636680" if phone_id == "4184514263660680" else ("4184514263660680" if phone_id == "418451426636680" else None)
+    if alt_phone_id and alt_phone_id not in target_phone_ids:
+        if str(settings.WHATSAPP_PHONE_NUMBER_ID).strip() == alt_phone_id:
+            target_phone_ids = [alt_phone_id, phone_id]
         else:
-            try:
-                err_data = r.json().get("error", {})
-                err_code = err_data.get("code")
-                err_subcode = err_data.get("error_subcode")
-                err_type = err_data.get("type")
-                err_msg = err_data.get("message")
-            except Exception:
-                err_code = None
-                err_subcode = None
-                err_type = "HttpError"
-                err_msg = r.text
+            target_phone_ids.append(alt_phone_id)
 
-            print(f"[WhatsApp Send ERROR] workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} http_status={r.status_code} graph_error_code={err_code} token_source=explicit token_valid=false reason={err_msg}")
-            return {
+    last_res = None
+    for cur_phone_id in target_phone_ids:
+        url = f"{GRAPH_API_URL}/{cur_phone_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {clean_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": norm_to,
+            "type": "text",
+            "text": {
+                "body": message_text
+            }
+        }
+
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=15)
+            status_ok = r.status_code in [200, 201]
+            if status_ok:
+                try:
+                    resp_json = r.json()
+                    msg_id = resp_json.get("messages", [{}])[0].get("id", "")
+                except Exception:
+                    msg_id = ""
+                print(f"[WhatsApp Send] workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source=explicit token_valid=true status=success message_id={msg_id} http_status={r.status_code}")
+                return {
+                    "success": True,
+                    "http_status": r.status_code,
+                    "message_id": msg_id,
+                    "phone_number_id": cur_phone_id,
+                    "token_source": "explicit",
+                    "token_valid": True,
+                    "token_preview": token_masked,
+                    "recipient": masked_rec
+                }
+            else:
+                try:
+                    err_data = r.json().get("error", {})
+                    err_code = err_data.get("code")
+                    err_subcode = err_data.get("error_subcode")
+                    err_type = err_data.get("type")
+                    err_msg = err_data.get("message")
+                except Exception:
+                    err_code = None
+                    err_subcode = None
+                    err_type = "HttpError"
+                    err_msg = r.text
+
+                print(f"[WhatsApp Send ERROR] workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} recipient={masked_rec} http_status={r.status_code} graph_error_code={err_code} token_source=explicit token_valid=false reason={err_msg}")
+                last_res = {
+                    "success": False,
+                    "http_status": r.status_code,
+                    "graph_error_code": err_code,
+                    "graph_error_subcode": err_subcode,
+                    "error_type": err_type,
+                    "error_message": err_msg,
+                    "phone_number_id": cur_phone_id,
+                    "token_source": "explicit",
+                    "token_valid": False,
+                    "token_preview": token_masked,
+                    "recipient": masked_rec
+                }
+                # If error is specifically "Object with ID does not exist" and we have another ID to try, continue loop
+                if err_code == 100 and "does not exist" in str(err_msg).lower() and cur_phone_id != target_phone_ids[-1]:
+                    continue
+                return last_res
+        except Exception as e:
+            print(f"[WhatsApp Send Network ERROR] phone_id={cur_phone_id} recipient={masked_rec} error={e}")
+            last_res = {
                 "success": False,
-                "http_status": r.status_code,
-                "graph_error_code": err_code,
-                "graph_error_subcode": err_subcode,
-                "graph_error_type": err_type,
-                "graph_error_message": err_msg,
-                "phone_number_id": phone_id,
+                "http_status": 0,
+                "error_code": "NETWORK_EXCEPTION",
+                "error_message": str(e),
+                "phone_number_id": cur_phone_id,
                 "token_source": "explicit",
                 "token_valid": False,
                 "token_preview": token_masked,
-                "recipient": masked_rec,
-                "reason": err_msg
+                "recipient": masked_rec
             }
-    except Exception as e:
-        print(f"[WhatsApp Send ERROR]: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} reason={str(e)}")
-        return {
-            "success": False,
-            "http_status": 0,
-            "error_code": "NETWORK_EXCEPTION",
-            "error_message": str(e),
-            "phone_number_id": phone_id,
-            "recipient": masked_rec
-        }
+            if cur_phone_id != target_phone_ids[-1]:
+                continue
+            return last_res
+
+    return last_res or {
+        "success": False,
+        "http_status": 0,
+        "error_code": "UNKNOWN_ERROR",
+        "error_message": "Failed to send WhatsApp message",
+        "phone_number_id": phone_id,
+        "recipient": masked_rec
+    }
 
 def send_whatsapp_message(to_number: str, message_text: str, phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
     """Sends a text message via WhatsApp Cloud API using specified or default account."""
