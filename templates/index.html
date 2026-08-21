@@ -997,11 +997,21 @@
                         </div>
                     </div>
 
-                    <div class="table-responsive" style="margin-top: 12px;">
+                    <!-- Search Bar by Mobile Number -->
+                    <div style="display: flex; gap: 10px; align-items: center; margin: 12px 0 6px 0; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 260px; position: relative;">
+                            <input type="text" id="gforms-search-mobile" class="form-control" placeholder="🔍 প্রতিষ্ঠানের মোবাইল নম্বর দিয়ে খুঁজুন (e.g. 01712345678)..." oninput="filterFormsByMobile(this.value)" style="font-size: 12.5px; padding: 7px 12px;">
+                        </div>
+                        <button class="btn btn-secondary btn-sm" onclick="clearFormsSearch()" style="padding: 6px 12px; font-size: 12px;">
+                            <i class="fas fa-times"></i> ক্লিয়ার
+                        </button>
+                    </div>
+
+                    <div class="table-responsive" style="margin-top: 8px;">
                         <table class="custom-table" style="font-size: 12px;">
                             <thead>
                                 <tr>
-                                    <th>প্রতিষ্ঠানের নাম</th>
+                                    <th>প্রতিষ্ঠানের নাম ও মোবাইল</th>
                                     <th>গুগল ফর্ম লিংক</th>
                                     <th>রেসপন্স শিট</th>
                                     <th>মোট সাবমিশন</th>
@@ -1799,12 +1809,15 @@
             <form id="form-create-institution-form" onsubmit="handleCreateInstitutionForm(event)" class="modal-form-container">
                 <div class="modal-scroll-body">
                     <div class="form-group">
-                        <label>প্রতিষ্ঠানের নাম (যেমন: জামিয়া রাহমানিয়া আরাবিয়া) <span style="color:#ef4444;">*</span>:</label>
-                        <input type="text" id="new-inst-name" class="form-control" placeholder="যেমন: জামিয়া রাহমানিয়া আরাবিয়া" required>
+                        <label>প্রতিষ্ঠানের নাম (যেমন: আল-আমিন মাদরাসা) <span style="color:#ef4444;">*</span>:</label>
+                        <input type="text" id="new-inst-name" class="form-control" placeholder="যেমন: আল-আমিন মাদরাসা" required>
                     </div>
                     <div class="form-group">
-                        <label>যোগাযোগের ফোন নম্বর (ঐচ্ছিক):</label>
-                        <input type="text" id="new-inst-phone" class="form-control" placeholder="017XXXXXXXX">
+                        <label>প্রতিষ্ঠানের মোবাইল নম্বর (Mobile Number) <span style="color:#ef4444;">*</span>:</label>
+                        <input type="text" id="new-inst-phone" class="form-control" placeholder="যেমন: 01712345678" required>
+                        <small style="color: var(--text-dim); font-size: 11px; display: block; margin-top: 3px;">
+                            মোবাইল নম্বরটি গুগল ড্রাইভ ও শিটের সার্চ আইডি হিসেবে ব্যবহৃত হবে।
+                        </small>
                     </div>
                     <div class="form-group">
                         <label>ফর্মের বিবরণ ও নির্দেশাবলী (Description):</label>
@@ -1972,6 +1985,6 @@
     </nav>
 
     <div id="fb-root"></div>
-    <script src="/static/js/dashboard.js?v=20260821v10_google_forms"></script>
+    <script src="/static/js/dashboard.js?v=20260821v11_google_forms_mobile"></script>
 </body>
 </html>

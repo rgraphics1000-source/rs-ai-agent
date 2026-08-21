@@ -71,22 +71,34 @@ def get_or_create_workspace_root_folder(workspace_id: int, workspace_name: str =
     update_google_master_ids(workspace_id=workspace_id, drive_root_folder_id=folder_id)
     return folder_id
 
-def get_or_create_institution_folder(workspace_id: int, institution_name: str, parent_folder_id: str = None) -> str:
-    """Creates or retrieves a dedicated subfolder for the specific institution."""
+def get_or_create_institution_folder(
+    workspace_id: int,
+    institution_name: str,
+    institution_mobile: str = None,
+    parent_folder_id: str = None
+) -> str:
+    """Creates or retrieves a dedicated subfolder for the specific institution with mobile identifier."""
     drive = get_drive_client(workspace_id=workspace_id)
     
     if not parent_folder_id:
         parent_folder_id = get_or_create_workspace_root_folder(workspace_id=workspace_id)
 
     clean_name = str(institution_name).strip()
-    query = f"name = '{clean_name}' and '{parent_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    if institution_mobile:
+        from app.database import normalize_bd_mobile
+        canonical = normalize_bd_mobile(institution_mobile)
+        folder_name = f"{clean_name} | {canonical}" if canonical else clean_name
+    else:
+        folder_name = clean_name
+
+    query = f"name = '{folder_name}' and '{parent_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     res = drive.files().list(q=query, spaces="drive", fields="files(id, name)").execute()
     files = res.get("files", [])
     if files:
         return files[0]["id"]
 
     folder_metadata = {
-        "name": clean_name,
+        "name": folder_name,
         "mimeType": "application/vnd.google-apps.folder",
         "parents": [parent_folder_id]
     }

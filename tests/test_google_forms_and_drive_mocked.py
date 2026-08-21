@@ -104,17 +104,19 @@ class TestGoogleFormsAndDriveMocked(unittest.TestCase):
         result = create_institution_form(
             workspace_id=self.workspace_id,
             institution_name="জামিয়া রাহমানিয়া আরাবিয়া",
+            institution_mobile="01712345678",
             custom_description="অনুগ্রহ করে সকল তথ্য সঠিকভাবে পূরণ করুন।"
         )
 
         self.assertTrue(result["success"])
         self.assertEqual(result["institution_name"], "জামিয়া রাহমানিয়া আরাবিয়া")
+        self.assertEqual(result["institution_mobile"], "01712345678")
         self.assertEqual(result["form_id"], "cloned_form_993_abc")
         self.assertIn("docs.google.com/forms", result["responder_url"])
         self.assertIn("docs.google.com/spreadsheets", result["sheet_url"])
 
         # Check DB record
-        db_form = get_generated_form_by_institution(workspace_id=self.workspace_id, institution_name="জামিয়া রাহমানিয়া আরাবিয়া")
+        db_form = get_generated_form_by_institution(workspace_id=self.workspace_id, institution_name="জামিয়া রাহমানিয়া আরাবিয়া", institution_mobile="01712345678")
         self.assertIsNotNone(db_form)
         self.assertEqual(db_form["form_id"], "cloned_form_993_abc")
         print("✓ Form creation with Drive cloning & Sheets setup passed.")
@@ -122,7 +124,8 @@ class TestGoogleFormsAndDriveMocked(unittest.TestCase):
         # Test Idempotency: calling again should return existing form without duplicating
         dup_result = create_institution_form(
             workspace_id=self.workspace_id,
-            institution_name="জামিয়া রাহমানিয়া আরাবিয়া"
+            institution_name="জামিয়া রাহমানিয়া আরাবিয়া",
+            institution_mobile="01712345678"
         )
         self.assertTrue(dup_result["success"])
         self.assertTrue(dup_result.get("is_existing"))

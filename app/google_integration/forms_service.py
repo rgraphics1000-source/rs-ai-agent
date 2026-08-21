@@ -74,12 +74,13 @@ def customize_cloned_institution_form(
     workspace_id: int,
     form_id: str,
     institution_name: str,
+    institution_mobile: str = None,
     custom_description: str = None,
     fields: List[dict] = None
 ) -> dict:
     """
     Customizes the copied Master Form:
-    1. Sets Title to '[Institution Name] - ID Card Information'
+    1. Sets Title to '[Institution Name] | [Mobile] | ID Card Form'
     2. Sets Description with student submission guidelines
     3. PRESERVES File Upload questions completely (does not delete them)
     4. Customizes text/choice questions to match the institution field configuration
@@ -93,7 +94,13 @@ def customize_cloned_institution_form(
         "ছবি পরিষ্কার এবং নির্ধারিত নিয়ম অনুযায়ী আপলোড করুন।"
     )
     final_desc = custom_description or default_desc
-    form_title = f"{institution_name} - ID Card Information"
+    
+    if institution_mobile:
+        from app.database import normalize_bd_mobile
+        canonical = normalize_bd_mobile(institution_mobile)
+        form_title = f"{institution_name} | {canonical} | ID Card Form" if canonical else f"{institution_name} | ID Card Form"
+    else:
+        form_title = f"{institution_name} | ID Card Form"
     
     update_form_title_and_description(
         workspace_id=workspace_id,

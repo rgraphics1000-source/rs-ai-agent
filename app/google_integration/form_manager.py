@@ -18,6 +18,7 @@ from app.google_integration.sheets_service import create_institution_response_sh
 def create_institution_form(
     workspace_id: int,
     institution_name: str,
+    institution_mobile: str = None,
     template_id: int = None,
     custom_description: str = None,
     fields: List[dict] = None,
@@ -28,29 +29,41 @@ def create_institution_form(
     Main Business Service:
     Clones the configured Workspace Master Form, customizes it for the institution,
     preserves File Upload, sets up Google Sheets & Drive folders, and returns public URL.
+    Identifies institution by BOTH Name and Mobile Number.
     """
     ws_id = int(workspace_id or 1)
-    clean_inst_name = str(institution_name).strip()
+    clean_inst_name = str(institution_name or "").strip()
+    raw_mobile = str(institution_mobile or institution_phone or "").strip()
+    
     if not clean_inst_name:
-        raise ValueError("Institution name is required.")
+        raise ValueError("প্রতিষ্ঠানের নাম প্রদান করা বাধ্যতামূলক।")
+    if not raw_mobile:
+        raise ValueError("প্রতিষ্ঠানের মোবাইল নম্বর প্রদান করা বাধ্যতামূলক।")
 
-    # 1. Check if form already exists for this institution under this workspace
-    if not allow_duplicate:
-        existing = get_generated_form_by_institution(workspace_id=ws_id, institution_name=clean_inst_name)
-        if existing:
-            return {
-                "success": True,
-                "is_existing": True,
-                "workspace_id": ws_id,
-                "institution_name": clean_inst_name,
-                "form_id": existing["form_id"],
-                "form_url": existing["form_url"],
-                "responder_url": existing.get("responder_uri") or existing["form_url"],
-                "edit_url": existing.get("edit_url"),
-                "sheet_url": existing.get("response_sheet_url"),
-                "drive_folder_id": existing.get("drive_folder_id"),
-                "message": f"'{clean_inst_name}' এর জন্য পূর্বেই ফর্ম তৈরি করা আছে।"
-            }
+    from app.database import normalize_bd_mobile, get_institution_by_mobile
+    canonical_mobile = normalize_bd_mobile(raw_mobile)
+    if not canonical_mobile or len(canonical_mobile) < 6:
+        raise ValueError("সঠিক মোবাইল নম্বর প্রদান করুন (যেমন: 01712345678)।")
+
+    # 1. Check if an institution / form with this mobile number already exists in this workspace
+    existing_form = get_generated_form_by_institution(workspace_id=ws_id, institution_name=clean_inst_name, institution_mobile=canonical_mobile)
+
+    if existing_form and not allow_duplicate:
+        return {
+            "success": True,
+            "is_existing": True,
+            "workspace_id": ws_id,
+            "institution_id": existing_form.get("institution_id"),
+            "institution_name": clean_inst_name,
+            "institution_mobile": canonical_mobile,
+            "form_id": existing_form["form_id"],
+            "form_url": existing_form["form_url"],
+            "responder_url": existing_form.get("responder_uri") or existing_form["form_url"],
+            "edit_url": existing_form.get("edit_url"),
+            "sheet_url": existing_form.get("response_sheet_url"),
+            "drive_folder_id": existing_form.get("drive_folder_id"),
+            "message": f"এই মোবাইল নম্বরের একটি প্রতিষ্ঠান ইতোমধ্যে আছে:\n\nপ্রতিষ্ঠান: {clean_inst_name}\nমোবাইল: {canonical_mobile}\n\nপূর্বের তৈরি ফর্মটি ব্যবহার করতে পারেন অথবা নতুন ফর্ম তৈরি করুন।"
+        }
 
     # 2. Validate Google connection and Master Form ID
     conn_data = get_google_connection(workspace_id=ws_id)
@@ -61,11 +74,12 @@ def create_institution_form(
     if not master_form_id:
         raise ValueError(f"Workspace {ws_id} এ কোনো Master ID Card Form ID সিলেক্ট করা নেই। Google Integration সেকশন থেকে Master Form সেট করুন।")
 
-    # 3. Create or get Institution Folder in Google Drive
+    # 3. Create or get Institution Folder in Google Drive (Tagged with mobile number)
     root_folder_id = get_or_create_workspace_root_folder(workspace_id=ws_id)
     inst_folder_id = get_or_create_institution_folder(
         workspace_id=ws_id,
         institution_name=clean_inst_name,
+        institution_mobile=canonical_mobile,
         parent_folder_id=root_folder_id
     )
 
@@ -73,12 +87,13 @@ def create_institution_form(
     inst_record = save_institution(
         workspace_id=ws_id,
         name=clean_inst_name,
-        phone=institution_phone,
+        phone=canonical_mobile,
+        institution_mobile=canonical_mobile,
         drive_folder_id=inst_folder_id
     )
 
-    # 5. Clone Master Form using Google Drive API (Preserves File Upload binding!)
-    form_title = f"{clean_inst_name} - ID Card Information"
+    # 5. Clone Master Form using Google Drive API (Tagged with mobile number)
+    form_title = f"{clean_inst_name} | {canonical_mobile} | ID Card Form"
     copy_result = copy_master_form_file(
         workspace_id=ws_id,
         master_form_id=master_form_id,
@@ -92,6 +107,7 @@ def create_institution_form(
         workspace_id=ws_id,
         form_id=cloned_form_id,
         institution_name=clean_inst_name,
+        institution_mobile=canonical_mobile,
         custom_description=custom_description,
         fields=fields
     )
@@ -99,12 +115,13 @@ def create_institution_form(
     responder_url = custom_res.get("responder_url") or get_responder_url(ws_id, cloned_form_id)
     edit_url = custom_res.get("edit_url") or f"https://docs.google.com/forms/d/{cloned_form_id}/edit"
 
-    # 7. Create dedicated Google Response Sheet in the institution's folder
+    # 7. Create dedicated Google Response Sheet in the institution's folder (Tagged with mobile number)
     sheet_data = {}
     try:
         sheet_data = create_institution_response_sheet(
             workspace_id=ws_id,
             institution_name=clean_inst_name,
+            institution_mobile=canonical_mobile,
             folder_id=inst_folder_id
         )
     except Exception as s_err:
@@ -114,6 +131,7 @@ def create_institution_form(
     saved_form = save_generated_form(
         workspace_id=ws_id,
         institution_name=clean_inst_name,
+        institution_mobile=canonical_mobile,
         form_id=cloned_form_id,
         form_url=responder_url,
         responder_uri=responder_url,
@@ -130,14 +148,18 @@ def create_institution_form(
         "success": True,
         "is_existing": False,
         "workspace_id": ws_id,
+        "institution_id": inst_record.get("id"),
         "institution_name": clean_inst_name,
+        "institution_mobile": canonical_mobile,
         "form_id": cloned_form_id,
+        "form_title": form_title,
+        "sheet_title": sheet_data.get("title") or f"{clean_inst_name} | {canonical_mobile} | ID Card Responses",
         "form_url": responder_url,
         "responder_url": responder_url,
         "edit_url": edit_url,
         "sheet_url": sheet_data.get("sheet_url"),
         "drive_folder_id": inst_folder_id,
-        "message": f"'{clean_inst_name}' এর জন্য সফলভাবে Google Form ও Google Sheet তৈরি সম্পন্ন হয়েছে।"
+        "message": f"'{clean_inst_name}' ({canonical_mobile}) এর জন্য সফলভাবে Google Form ও Google Sheet তৈরি সম্পন্ন হয়েছে।"
     }
 
 def send_form_link_via_whatsapp(

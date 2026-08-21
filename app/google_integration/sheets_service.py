@@ -15,17 +15,25 @@ def get_sheets_client(workspace_id: int = 1):
 def create_institution_response_sheet(
     workspace_id: int,
     institution_name: str,
+    institution_mobile: str = None,
     folder_id: str = None,
     column_headers: List[str] = None
 ) -> dict:
     """
     Creates a new Google Spreadsheet in the institution's folder for clean record-keeping.
     Initializes column headers for student details and uploaded photos.
+    Includes Institution Name + Mobile Number in title for fast Google Drive / Sheets searchability.
     """
     sheets_service = get_sheets_client(workspace_id=workspace_id)
     drive_service = get_drive_client(workspace_id=workspace_id)
 
-    sheet_title = f"{institution_name} - ID Card Responses"
+    if institution_mobile:
+        from app.database import normalize_bd_mobile
+        canonical = normalize_bd_mobile(institution_mobile)
+        sheet_title = f"{institution_name} | {canonical} | ID Card Responses" if canonical else f"{institution_name} | ID Card Responses"
+    else:
+        sheet_title = f"{institution_name} | ID Card Responses"
+
     spreadsheet_body = {
         "properties": {
             "title": sheet_title

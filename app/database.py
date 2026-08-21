@@ -1,4 +1,5 @@
 import os
+import re
 import sqlite3
 import json
 from typing import Optional, List, Dict, Any, Tuple
@@ -6,6 +7,22 @@ from datetime import datetime, timezone
 from app.config import settings
 
 DB_PATH = settings.BASE_DIR / "rs_ai.db"
+
+def normalize_bd_mobile(phone: str) -> str:
+    """
+    Normalizes a Bangladeshi phone number to canonical 11-digit format (01XXXXXXXXX).
+    Handles +8801..., 8801..., 01..., 1... seamlessly.
+    """
+    if not phone:
+        return ""
+    digits = re.sub(r"[^\d]", "", str(phone).strip())
+    if digits.startswith("880") and len(digits) == 13:
+        digits = digits[2:]
+    elif digits.startswith("88") and len(digits) == 13:
+        digits = digits[2:]
+    elif len(digits) == 10 and digits.startswith("1"):
+        digits = "0" + digits
+    return digits
 
 def get_db_connection():
     conn = sqlite3.connect(str(DB_PATH))
@@ -475,6 +492,40 @@ def init_db():
             cursor.execute(f"ALTER TABLE google_form_templates ADD COLUMN {col_name} {col_type}")
         except Exception:
             pass
+
+    # Auto-migration columns for institutions (Mobile Identification)
+    inst_cols = [
+        ("institution_mobile", "TEXT"),
+        ("normalized_mobile", "TEXT")
+    ]
+    for col_name, col_type in inst_cols:
+        try:
+            cursor.execute(f"ALTER TABLE institutions ADD COLUMN {col_name} {col_type}")
+            conn.commit()
+        except Exception:
+            pass
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_institutions_mobile ON institutions(workspace_id, normalized_mobile)")
+        conn.commit()
+    except Exception:
+        pass
+
+    # Auto-migration columns for generated_forms (Mobile Identification)
+    gform_cols = [
+        ("institution_mobile", "TEXT"),
+        ("selected_fields", "TEXT")
+    ]
+    for col_name, col_type in gform_cols:
+        try:
+            cursor.execute(f"ALTER TABLE generated_forms ADD COLUMN {col_name} {col_type}")
+            conn.commit()
+        except Exception:
+            pass
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gforms_mobile ON generated_forms(workspace_id, institution_mobile)")
+        conn.commit()
+    except Exception:
+        pass
 
     # Migrate conversations table if legacy single-column UNIQUE(sender_id) exists
     try:
@@ -2377,40 +2428,93 @@ def get_institution_by_name(workspace_id: int, name: str) -> Optional[dict]:
         print(f"[DB get_institution_by_name Error]: {e}")
         return None
 
-def save_institution(
-    workspace_id: int,
-    name: str,
-    code: str = None,
-    contact_person: str = None,
-    phone: str = None,
-    address: str = None,
-    drive_folder_id: str = None,
-    active: int = 1
-) -> dict:
-    """Creates or updates an institution record."""
+def get_institution_by_mobile(workspace_id: int, mobile: str) -> Optional[dict]:
+    """Fetches an institution by normalized mobile number under a specific workspace."""
+    if not mobile:
+        return None
+    canonical = normalize_bd_mobile(mobile)
+    if not canonical:
+        return None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        existing = get_institution_by_name(workspace_id, name)
+        cursor.execute("""
+            SELECT * FROM institutions 
+            WHERE workspace_id = ? AND (normalized_mobile = ? OR phone = ? OR institution_mobile = ?)
+            ORDER BY id DESC LIMIT 1
+        """, (int(workspace_id or 1), canonical, canonical, canonical))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_institution_by_mobile Error]: {e}")
+        return None
+
+def save_institution(
+    workspace_id: int,
+    name: str,
+    phone: str = None,
+    institution_mobile: str = None,
+    code: str = None,
+    contact_person: str = None,
+    address: str = None,
+    drive_folder_id: str = None,
+    active: int = 1,
+    institution_id: int = None
+) -> dict:
+    """Creates or updates an institution record with canonical mobile normalization."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        raw_phone = institution_mobile or phone or ""
+        norm_phone = normalize_bd_mobile(raw_phone)
+        
+        # Check by id, or by mobile, or by name within workspace
+        existing = None
+        if institution_id:
+            cursor.execute("SELECT * FROM institutions WHERE id = ? AND workspace_id = ?", (int(institution_id), int(workspace_id or 1)))
+            existing = cursor.fetchone()
+        if not existing and norm_phone:
+            cursor.execute("""
+                SELECT * FROM institutions 
+                WHERE workspace_id = ? AND (normalized_mobile = ? OR phone = ? OR institution_mobile = ?)
+                LIMIT 1
+            """, (int(workspace_id or 1), norm_phone, norm_phone, norm_phone))
+            existing = cursor.fetchone()
+        if not existing and name:
+            cursor.execute("SELECT * FROM institutions WHERE workspace_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1", (int(workspace_id or 1), name))
+            existing = cursor.fetchone()
+
         if existing:
             cursor.execute("""
                 UPDATE institutions SET
+                    name = COALESCE(?, name),
                     code = COALESCE(?, code),
                     contact_person = COALESCE(?, contact_person),
                     phone = COALESCE(?, phone),
+                    institution_mobile = COALESCE(?, institution_mobile),
+                    normalized_mobile = COALESCE(?, normalized_mobile),
                     address = COALESCE(?, address),
                     drive_folder_id = COALESCE(?, drive_folder_id),
                     active = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
-            """, (code, contact_person, phone, address, drive_folder_id, active, existing["id"]))
+            """, (
+                name, code, contact_person, norm_phone or raw_phone,
+                norm_phone or raw_phone, norm_phone,
+                address, drive_folder_id, active, existing["id"]
+            ))
             inst_id = existing["id"]
         else:
             cursor.execute("""
                 INSERT INTO institutions (
-                    workspace_id, name, code, contact_person, phone, address, drive_folder_id, active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (int(workspace_id or 1), name, code, contact_person, phone, address, drive_folder_id, active))
+                    workspace_id, name, code, contact_person, phone, institution_mobile, normalized_mobile, address, drive_folder_id, active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                int(workspace_id or 1), name, code, contact_person,
+                norm_phone or raw_phone, norm_phone or raw_phone, norm_phone,
+                address, drive_folder_id, active
+            ))
             inst_id = cursor.lastrowid
         conn.commit()
         cursor.execute("SELECT * FROM institutions WHERE id = ?", (inst_id,))
@@ -2422,12 +2526,14 @@ def save_institution(
         return {}
 
 def get_generated_forms(workspace_id: int = 1) -> List[dict]:
-    """Fetches all generated forms for a workspace."""
+    """Fetches all generated forms for a workspace with institution mobile and stats."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT gf.*, inst.phone as institution_phone, inst.contact_person
+            SELECT gf.*, 
+                   COALESCE(gf.institution_mobile, inst.normalized_mobile, inst.phone) as institution_phone, 
+                   inst.contact_person
             FROM generated_forms gf
             LEFT JOIN institutions inst ON gf.institution_id = inst.id
             WHERE gf.workspace_id = ?
@@ -2455,21 +2561,82 @@ def get_generated_form_by_id(form_id: str) -> Optional[dict]:
         print(f"[DB get_generated_form_by_id Error]: {e}")
         return None
 
-def get_generated_form_by_institution(workspace_id: int, institution_name: str) -> Optional[dict]:
-    """Checks if a form already exists for an institution under the workspace."""
-    if not institution_name:
-        return None
+def get_generated_forms_by_mobile(workspace_id: int, mobile: str) -> List[dict]:
+    """Fetches all generated forms matching an institution mobile number for a workspace."""
+    if not mobile:
+        return []
+    canonical = normalize_bd_mobile(mobile)
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT * FROM generated_forms 
-            WHERE workspace_id = ? AND LOWER(TRIM(institution_name)) = LOWER(TRIM(?))
-            ORDER BY id DESC LIMIT 1
-        """, (int(workspace_id or 1), institution_name))
-        row = cursor.fetchone()
+            SELECT gf.*, 
+                   COALESCE(gf.institution_mobile, inst.normalized_mobile, inst.phone) as institution_phone, 
+                   inst.contact_person
+            FROM generated_forms gf
+            LEFT JOIN institutions inst ON gf.institution_id = inst.id
+            WHERE gf.workspace_id = ? AND (
+                gf.institution_mobile = ? OR 
+                inst.normalized_mobile = ? OR 
+                inst.phone = ?
+            )
+            ORDER BY gf.id DESC
+        """, (int(workspace_id or 1), canonical, canonical, canonical))
+        rows = cursor.fetchall()
         conn.close()
-        return dict(row) if row else None
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"[DB get_generated_forms_by_mobile Error]: {e}")
+        return []
+
+def search_institutions_and_forms_by_mobile(workspace_id: int, mobile: str) -> dict:
+    """
+    Search workspace-isolated institution and its generated Google Forms by mobile number.
+    """
+    canonical = normalize_bd_mobile(mobile)
+    if not canonical:
+        return {"institution": None, "forms": [], "count": 0}
+    
+    inst = get_institution_by_mobile(workspace_id=workspace_id, mobile=canonical)
+    forms = get_generated_forms_by_mobile(workspace_id=workspace_id, mobile=canonical)
+    return {
+        "institution": inst,
+        "forms": forms,
+        "count": len(forms)
+    }
+
+def get_generated_form_by_institution(workspace_id: int, institution_name: str, institution_mobile: str = None) -> Optional[dict]:
+    """Checks if a form already exists for an institution name / mobile under the workspace."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if institution_mobile:
+            canonical = normalize_bd_mobile(institution_mobile)
+            cursor.execute("""
+                SELECT * FROM generated_forms 
+                WHERE workspace_id = ? AND (
+                    institution_mobile = ? OR 
+                    (LOWER(TRIM(institution_name)) = LOWER(TRIM(?)) AND institution_mobile = ?)
+                )
+                ORDER BY id DESC LIMIT 1
+            """, (int(workspace_id or 1), canonical, institution_name, canonical))
+            row = cursor.fetchone()
+            if row:
+                conn.close()
+                return dict(row)
+
+        if institution_name:
+            cursor.execute("""
+                SELECT * FROM generated_forms 
+                WHERE workspace_id = ? AND LOWER(TRIM(institution_name)) = LOWER(TRIM(?))
+                ORDER BY id DESC LIMIT 1
+            """, (int(workspace_id or 1), institution_name))
+            row = cursor.fetchone()
+            conn.close()
+            return dict(row) if row else None
+            
+        conn.close()
+        return None
     except Exception as e:
         print(f"[DB get_generated_form_by_institution Error]: {e}")
         return None
@@ -2479,6 +2646,7 @@ def save_generated_form(
     institution_name: str,
     form_id: str,
     form_url: str,
+    institution_mobile: str = None,
     responder_uri: str = None,
     edit_url: str = None,
     template_id: int = None,
@@ -2486,26 +2654,30 @@ def save_generated_form(
     drive_folder_id: str = None,
     response_destination_id: str = None,
     response_sheet_url: str = None,
+    selected_fields: str = None,
     status: str = "active"
 ) -> dict:
-    """Saves or updates a cloned Google Form metadata record."""
+    """Saves or updates a cloned Google Form metadata record with institution mobile identifier."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        norm_mobile = normalize_bd_mobile(institution_mobile) if institution_mobile else None
         cursor.execute("""
             INSERT INTO generated_forms (
-                workspace_id, template_id, institution_id, institution_name,
+                workspace_id, template_id, institution_id, institution_name, institution_mobile,
                 form_id, form_url, responder_uri, edit_url, drive_folder_id,
-                response_destination_id, response_sheet_url, status, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                response_destination_id, response_sheet_url, selected_fields, status, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(form_id) DO UPDATE SET
                 institution_name = excluded.institution_name,
+                institution_mobile = COALESCE(excluded.institution_mobile, institution_mobile),
                 form_url = excluded.form_url,
                 responder_uri = COALESCE(excluded.responder_uri, responder_uri),
                 edit_url = COALESCE(excluded.edit_url, edit_url),
                 drive_folder_id = COALESCE(excluded.drive_folder_id, drive_folder_id),
                 response_destination_id = COALESCE(excluded.response_destination_id, response_destination_id),
                 response_sheet_url = COALESCE(excluded.response_sheet_url, response_sheet_url),
+                selected_fields = COALESCE(excluded.selected_fields, selected_fields),
                 status = excluded.status,
                 updated_at = CURRENT_TIMESTAMP
         """, (
@@ -2513,6 +2685,7 @@ def save_generated_form(
             template_id,
             institution_id,
             institution_name,
+            norm_mobile,
             str(form_id).strip(),
             str(form_url).strip(),
             responder_uri,
@@ -2520,6 +2693,7 @@ def save_generated_form(
             drive_folder_id,
             response_destination_id,
             response_sheet_url,
+            selected_fields,
             status
         ))
         conn.commit()

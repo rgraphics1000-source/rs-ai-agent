@@ -36,8 +36,9 @@ class MasterFormSelectRequest(BaseModel):
 class CreateFormRequest(BaseModel):
     workspace_id: int = 1
     institution_name: str
-    custom_description: Optional[str] = None
+    institution_mobile: Optional[str] = None
     institution_phone: Optional[str] = None
+    custom_description: Optional[str] = None
     allow_duplicate: Optional[bool] = False
 
 class SendWhatsAppRequest(BaseModel):
@@ -195,11 +196,12 @@ def select_master_form(payload: MasterFormSelectRequest):
 def create_form(payload: CreateFormRequest):
     """Creates a new institution Google Form based on the workspace Master Form."""
     try:
+        mobile = payload.institution_mobile or payload.institution_phone
         res = create_institution_form(
             workspace_id=payload.workspace_id,
             institution_name=payload.institution_name,
+            institution_mobile=mobile,
             custom_description=payload.custom_description,
-            institution_phone=payload.institution_phone,
             allow_duplicate=payload.allow_duplicate or False
         )
         return res
@@ -209,6 +211,18 @@ def create_form(payload: CreateFormRequest):
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Form creation failed: {str(e)}")
+
+@router.get("/institutions/search")
+def search_institution_by_mobile(mobile: str = Query(...), workspace_id: int = Query(1)):
+    """Searches institution profile and generated forms by mobile number in a workspace."""
+    from app.database import search_institutions_and_forms_by_mobile
+    result = search_institutions_and_forms_by_mobile(workspace_id=workspace_id, mobile=mobile)
+    return {
+        "success": True,
+        "workspace_id": workspace_id,
+        "query_mobile": mobile,
+        **result
+    }
 
 @router.get("/forms")
 def list_forms(workspace_id: int = Query(1)):

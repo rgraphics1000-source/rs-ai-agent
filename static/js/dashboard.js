@@ -3668,68 +3668,105 @@ async function deleteFormField(fieldId) {
     }
 }
 
+let allGeneratedFormsCache = [];
+
+function renderGeneratedFormsRows(forms) {
+    const tbody = document.getElementById("gforms-table-tbody");
+    if (!tbody) return;
+
+    if (!forms || forms.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 25px;">কোনো প্রতিষ্ঠানের ফর্ম পাওয়া যায়নি।</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = forms.map(f => {
+        const formUrl = f.responder_uri || f.form_url;
+        const sheetUrl = f.response_sheet_url || (f.response_destination_id ? `https://docs.google.com/spreadsheets/d/${f.response_destination_id}/edit` : "");
+        const mobile = f.institution_mobile || f.institution_phone || "";
+        
+        return `
+            <tr>
+                <td>
+                    <strong style="color: #fff; font-size: 13px;">${f.institution_name}</strong>
+                    ${mobile ? `
+                    <div style="font-size: 11.5px; color: #38bdf8; margin-top: 2px; display: flex; align-items: center; gap: 4px;">
+                        <i class="fas fa-mobile-screen"></i> <code>${mobile}</code>
+                    </div>` : ''}
+                </td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <a href="${formUrl}" target="_blank" style="color: #38bdf8; font-weight: 600; text-decoration: none; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
+                            <i class="fas fa-arrow-up-right-from-square"></i> Open Form
+                        </a>
+                        <button class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 10.5px;" onclick="copyTextToClipboard('${formUrl}')" title="লিংক কপি করুন">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </td>
+                <td>
+                    ${sheetUrl ? `
+                    <a href="${sheetUrl}" target="_blank" style="color: #34d399; font-weight: 600; text-decoration: none; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
+                        <i class="fas fa-table"></i> Google Sheet
+                    </a>` : `<span style="color: var(--text-dim); font-size: 11px;">Not Linked</span>`}
+                </td>
+                <td>
+                    <span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; font-weight: 700; font-size: 12px; padding: 3px 8px;">
+                        ${f.submission_count || 0} জন
+                    </span>
+                </td>
+                <td style="font-size: 11px; color: var(--text-dim);">
+                    ${f.last_synced_at ? f.last_synced_at.slice(0, 16) : 'Never'}
+                </td>
+                <td>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        <button class="btn btn-primary btn-sm" style="padding: 4px 8px; font-size: 11px;" onclick="viewFormSubmissions('${f.form_id}', '${f.institution_name}')" title="রেসপন্স দেখুন">
+                            <i class="fas fa-users"></i> Submissions
+                        </button>
+                        <button class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 11px;" onclick="syncInstitutionForm('${f.form_id}')" title="ডাটা সিঙ্ক করুন">
+                            <i class="fas fa-rotate"></i> Sync
+                        </button>
+                        <button class="btn btn-sm" style="background: rgba(37, 211, 102, 0.2); color: #4ade80; border: 1px solid rgba(37, 211, 102, 0.4); padding: 4px 8px; font-size: 11px;" onclick="openSendFormWhatsAppModal('${f.form_id}', '${f.institution_name}', '${formUrl}')" title="WhatsApp এ পাঠান">
+                            <i class="fab fa-whatsapp"></i> Send
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join("");
+}
+
+function filterFormsByMobile(query) {
+    const q = (query || "").trim().toLowerCase();
+    if (!q) {
+        renderGeneratedFormsRows(allGeneratedFormsCache);
+        return;
+    }
+    const filtered = allGeneratedFormsCache.filter(f => {
+        const phone = (f.institution_mobile || f.institution_phone || "").toLowerCase();
+        const name = (f.institution_name || "").toLowerCase();
+        return phone.includes(q) || name.includes(q);
+    });
+    renderGeneratedFormsRows(filtered);
+}
+
+function clearFormsSearch() {
+    const searchInput = document.getElementById("gforms-search-mobile");
+    if (searchInput) searchInput.value = "";
+    renderGeneratedFormsRows(allGeneratedFormsCache);
+}
+
 async function loadGeneratedFormsList() {
     try {
         const res = await fetch(`/api/google/forms?workspace_id=${currentWorkspaceId}`);
         const data = await res.json();
-        const tbody = document.getElementById("gforms-table-tbody");
-        if (!tbody) return;
-
-        if (!data.forms || data.forms.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 25px;">এখনো কোনো প্রতিষ্ঠানের ফর্ম তৈরি করা হয়নি। উপরের '+ নতুন প্রতিষ্ঠানের ফর্ম বানান' বাটনে ক্লিক করে ফর্ম তৈরি করুন।</td></tr>`;
-            return;
+        allGeneratedFormsCache = data.forms || [];
+        
+        const searchInput = document.getElementById("gforms-search-mobile");
+        if (searchInput && searchInput.value.trim()) {
+            filterFormsByMobile(searchInput.value);
+        } else {
+            renderGeneratedFormsRows(allGeneratedFormsCache);
         }
-
-        tbody.innerHTML = data.forms.map(f => {
-            const formUrl = f.responder_uri || f.form_url;
-            const sheetUrl = f.response_sheet_url || (f.response_destination_id ? `https://docs.google.com/spreadsheets/d/${f.response_destination_id}/edit` : "");
-            
-            return `
-                <tr>
-                    <td>
-                        <strong style="color: #fff; font-size: 13px;">${f.institution_name}</strong>
-                        ${f.institution_phone ? `<div style="font-size: 11px; color: var(--text-dim);"><i class="fas fa-phone"></i> ${f.institution_phone}</div>` : ''}
-                    </td>
-                    <td>
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <a href="${formUrl}" target="_blank" style="color: #38bdf8; font-weight: 600; text-decoration: none; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
-                                <i class="fas fa-arrow-up-right-from-square"></i> Open Form
-                            </a>
-                            <button class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 10.5px;" onclick="copyTextToClipboard('${formUrl}')" title="লিংক কপি করুন">
-                                <i class="fas fa-copy"></i>
-                            </button>
-                        </div>
-                    </td>
-                    <td>
-                        ${sheetUrl ? `
-                        <a href="${sheetUrl}" target="_blank" style="color: #34d399; font-weight: 600; text-decoration: none; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
-                            <i class="fas fa-table"></i> Google Sheet
-                        </a>` : `<span style="color: var(--text-dim); font-size: 11px;">Not Linked</span>`}
-                    </td>
-                    <td>
-                        <span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; font-weight: 700; font-size: 12px; padding: 3px 8px;">
-                            ${f.submission_count || 0} জন
-                        </span>
-                    </td>
-                    <td style="font-size: 11px; color: var(--text-dim);">
-                        ${f.last_synced_at ? f.last_synced_at.slice(0, 16) : 'Never'}
-                    </td>
-                    <td>
-                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                            <button class="btn btn-primary btn-sm" style="padding: 4px 8px; font-size: 11px;" onclick="viewFormSubmissions('${f.form_id}', '${f.institution_name}')" title="রেসপন্স দেখুন">
-                                <i class="fas fa-users"></i> Submissions
-                            </button>
-                            <button class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 11px;" onclick="syncInstitutionForm('${f.form_id}')" title="ডাটা সিঙ্ক করুন">
-                                <i class="fas fa-rotate"></i> Sync
-                            </button>
-                            <button class="btn btn-sm" style="background: rgba(37, 211, 102, 0.2); color: #4ade80; border: 1px solid rgba(37, 211, 102, 0.4); padding: 4px 8px; font-size: 11px;" onclick="openSendFormWhatsAppModal('${f.form_id}', '${f.institution_name}', '${formUrl}')" title="WhatsApp এ পাঠান">
-                                <i class="fab fa-whatsapp"></i> Send
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }).join("");
     } catch (e) {
         console.error("loadGeneratedFormsList error:", e);
     }
@@ -3747,7 +3784,11 @@ async function handleCreateInstitutionForm(e) {
     const desc = document.getElementById("new-inst-desc")?.value?.trim();
 
     if (!instName) {
-        showToast("প্রতিষ্ঠানের নাম দিন", "warning");
+        showToast("প্রতিষ্ঠানের নাম প্রদান করা বাধ্যতামূলক", "warning");
+        return;
+    }
+    if (!phone) {
+        showToast("প্রতিষ্ঠানের মোবাইল নম্বর প্রদান করা বাধ্যতামূলক", "warning");
         return;
     }
 
@@ -3760,13 +3801,18 @@ async function handleCreateInstitutionForm(e) {
             body: JSON.stringify({
                 workspace_id: currentWorkspaceId,
                 institution_name: instName,
+                institution_mobile: phone,
                 institution_phone: phone,
                 custom_description: desc
             })
         });
         const data = await res.json();
         if (res.ok && data.success) {
-            showToast(`'${instName}' এর Google Form সফলভাবে তৈরি হয়েছে!`, "success");
+            if (data.is_existing) {
+                showToast(`'${instName}' (${phone}) এর পূর্ববর্তী ফর্ম লোড করা হয়েছে`, "info");
+            } else {
+                showToast(`'${instName}' এর Google Form সফলভাবে তৈরি হয়েছে!`, "success");
+            }
             closeModal("modal-create-institution-form");
             loadGeneratedFormsList();
         } else {
