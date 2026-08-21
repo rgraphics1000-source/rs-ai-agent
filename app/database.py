@@ -1202,11 +1202,23 @@ def is_conversation_ai_active(sender_id: str = None, conversation_id: int = None
     # 2. Check Blacklisted / Muted Phone Numbers
     blacklisted = get_setting("blacklisted_ai_numbers", "")
     if blacklisted and sender_id:
-        clean_sender = "".join([c for c in str(sender_id) if c.isdigit()])
+        s_raw = str(sender_id).strip()
+        clean_sender = "".join([c for c in s_raw if c.isdigit()])
+        sender_last10 = clean_sender[-10:] if len(clean_sender) >= 10 else ""
+
         for bl in blacklisted.replace(",", "\n").split("\n"):
-            bl_clean = "".join([c for c in bl.strip() if c.isdigit()])
-            if bl_clean and (bl_clean in clean_sender or clean_sender in bl_clean):
+            bl_item = bl.strip()
+            if not bl_item:
+                continue
+            if s_raw == bl_item:
                 return False
+            bl_clean = "".join([c for c in bl_item if c.isdigit()])
+            bl_last10 = bl_clean[-10:] if len(bl_clean) >= 10 else ""
+            if clean_sender and bl_clean:
+                if clean_sender == bl_clean:
+                    return False
+                if sender_last10 and bl_last10 and sender_last10 == bl_last10:
+                    return False
 
     conn = get_db_connection()
     cursor = conn.cursor()

@@ -323,25 +323,58 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     if is_stopping:
         return []
 
-    # 2. Check if photos are requested in user message, bot reply, or history
-    is_asking_photo = any(k in msg for k in [
-        "ছবি", "স্যাম্পল", "ফটো", "পিক", "পিকচার", "ফটোগ্রাফ", "দেখতে চাই", "দেখবো", "দেখান", "পাঠান", "পাঠাও", "দেখাও",
-        "photo", "photos", "picture", "pictures", "sample", "samples", "pic", "pics", "image", "images", "সবগুলো"
+    # 2. Check if photos are requested explicitly or agreed upon in response to bot's offer
+    is_explicit_photo_req = any(k in msg for k in [
+        "ছবি দেখতে চাই", "ছবি দেখান", "ছবি পাঠান", "ছবি পাঠাও", "ছবি দেখাও", "ছবি দেন", "ছবি দিন",
+        "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দেন", "স্যাম্পল দিন", "স্যাম্পল দেখতে চাই",
+        "পিক দেখান", "পিক দেন", "পিক পাঠান", "পিকচার দেখান", "পিকচার পাঠান", "ফটো দেখান", "ফটো পাঠান", "ফটো দেন",
+        "show photo", "send photo", "show sample", "send sample", "show pic", "send pic", "show image", "send image"
+    ]) or (any(k in msg for k in ["ছবি", "স্যাম্পল", "ফটো", "পিক", "পিকচার", "sample", "photo", "image"]) and any(a in msg for a in ["দেখান", "পাঠান", "দিন", "দেন", "চাই", "দেখবো", "show", "send", "give"]))
+
+    # Check if the IMMEDIATELY preceding assistant message explicitly offered photos
+    last_bot_msg = ""
+    if conversation_history:
+        for m in reversed(conversation_history):
+            sender_val = str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower()
+            if sender_val in ("bot", "assistant", "seller"):
+                last_bot_msg = (m.get("content") or m.get("text") or "").lower()
+                break
+
+    bot_offered_photos_last_turn = any(k in last_bot_msg for k in [
+        "ছবি দেখতে চান", "স্যাম্পল দেখতে চান", "ছবি পাঠাব", "স্যাম্পল পাঠাব", "ছবি দেব", "পিকচার দেখতে চান", "স্যাম্পল দেব", "ছবি পাঠাবো"
     ])
 
     agreement_keywords = [
         "হ্যাঁ", "পাঠান", "দেখান", "জি", "হুম", "পাঠাও", "দেখাও", "দিলে ভালো", "দিলে ভালো হয়",
         "yes", "sure", "ok", "okay", "send", "show", "ha", "ji", "achha", "yep", "yeah", "সেন্ড করুন"
     ]
-    is_agreeing = any(k in msg for k in agreement_keywords)
+    is_agreeing_to_photo = any(k == msg or msg.startswith(k + " ") or msg.endswith(" " + k) or f" {k} " in f" {msg} " for k in agreement_keywords) and bot_offered_photos_last_turn
     
     bot_claims_photos = any(k in reply for k in [
         "পাঠিয়ে দেওয়া হলো", "পাঠানো হলো", "ছবি দেওয়া হলো", "স্যাম্পল ছবি", "নিচে দেখুন", 
         "পাঠিয়েছি", "ছবি পাঠাচ্ছি", "ছবি দেখতে চেয়েছেন", "স্যাম্পল পাঠাচ্ছি", "ছবিগুলো দেওয়া হলো"
     ])
 
-    # If incoming was an audio voice note or regular message, evaluate if photos should be delivered
-    should_send = is_asking_photo or is_agreeing or bot_claims_photos
+    # Check if photos were already delivered recently in the thread (Anti-Spam / Anti-Bombardment check)
+    already_sent_recently = False
+    if conversation_history:
+        recent_bot_msgs = [
+            m.get("content", "") for m in conversation_history[-6:]
+            if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant")
+        ]
+        already_sent_recently = any(
+            any(ext in bm for ext in [".jpg", ".png", ".jpeg", "/uploads/"]) or 
+            any(kw in bm for kw in ["স্যাম্পল ছবি", "ছবি দেওয়া হলো", "ছবি পাঠানো হলো"])
+            for bm in recent_bot_msgs
+        )
+
+    is_asking_more = any(k in msg for k in ["আরও", "আরো", "অন্য", "নতুন", "more", "other", "different", "আবার"])
+
+    # If photos were already sent recently and customer did not ask for more/new photos, do not blast photos again!
+    if already_sent_recently and not is_asking_more and not is_explicit_photo_req:
+        return []
+
+    should_send = is_explicit_photo_req or is_agreeing_to_photo or (bot_claims_photos and not already_sent_recently)
     if not should_send:
         return []
 
@@ -384,13 +417,15 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
             selected_images = get_category_batch_images("FITA-02", workspace_id=workspace_id)
         elif any(k in hist_text for k in ["কভার", "হোল্ডার", "holder", "cover"]):
             selected_images = get_category_batch_images("COV-03", workspace_id=workspace_id)
+        elif any(k in hist_text for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"]):
+            selected_images = get_category_batch_images("IDC-01", workspace_id=workspace_id)
         else:
             # Grab general active product images for this workspace
             selected_images = get_category_batch_images("", workspace_id=workspace_id)
 
     if req_count and req_count > 0:
         return selected_images[:req_count]
-    return selected_images
+    return selected_images[:3]
 
 def detect_saved_media_to_send(user_msg: str, bot_reply: str = "", workspace_id: int = 1) -> dict:
     """Detects if customer requested a demo video or pre-recorded voice note within a workspace."""

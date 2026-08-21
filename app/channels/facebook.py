@@ -313,16 +313,30 @@ async def handle_facebook_webhook_event(data: dict):
             # 1. Handle Messenger Messages
             if "messaging" in entry:
                 for event in entry["messaging"]:
-                    sender_id = event.get("sender", {}).get("id")
-                    recipient_id = event.get("recipient", {}).get("id") # Target Page ID
+                    sender_id = str(event.get("sender", {}).get("id", "")).strip()
+                    recipient_id = str(event.get("recipient", {}).get("id", "")).strip()
                     
-                    target_page_id = str(recipient_id or entry_id).strip()
-                    if not target_page_id or not sender_id:
+                    if not sender_id:
                         continue
 
-                    # Look up the specific connected page for this message
+                    msg = event.get("message", {})
+                    if not msg:
+                        continue
+
+                    is_echo = bool(msg.get("is_echo"))
+
+                    # Look up the specific connected page for this message (check recipient, entry_id, or sender)
+                    target_page_id = recipient_id or entry_id
                     page_conn = get_connected_page(target_page_id)
-                    if not page_conn and target_page_id in ["105116472071659", "rs_graphics_page_1"]:
+                    if not page_conn:
+                        page_conn = get_connected_page(entry_id)
+                    if not page_conn:
+                        page_conn = get_connected_page(sender_id)
+                        if page_conn:
+                            is_echo = True
+                            target_page_id = sender_id
+
+                    if not page_conn and (target_page_id in ["105116472071659", "rs_graphics_page_1"] or sender_id in ["105116472071659", "rs_graphics_page_1"] or entry_id in ["105116472071659", "rs_graphics_page_1"]):
                         page_conn = ensure_facebook_page_consistency()
 
                     if not page_conn:
@@ -334,15 +348,17 @@ async def handle_facebook_webhook_event(data: dict):
                     page_token = page_conn.get("page_access_token")
                     page_name = page_conn.get("page_name", "Facebook Page")
 
+                    # Detect if message was sent by the Page Owner / Human Admin
+                    if is_echo or (sender_id == page_id) or (get_connected_page(sender_id) is not None):
+                        actual_cust_id = recipient_id if (sender_id == page_id or get_connected_page(sender_id) is not None) else sender_id
+                        echo_text = msg.get("text", "")
+                        from app.database import add_muted_number
+                        record_conversation_message("facebook", actual_cust_id, "Customer", "admin", echo_text, page_id=page_id, workspace_id=workspace_id)
+                        add_muted_number(actual_cust_id)
+                        print(f"[Facebook Human Takeover AUTO-ACTIVATED]: Page Owner/Admin replied to customer {actual_cust_id}: '{echo_text[:30]}'. AI paused for this conversation.")
+                        continue
+
                     print(f"[Facebook Routing] recipient_id={target_page_id} matched_page_id={page_id} workspace_id={workspace_id} page_name={page_name}")
-
-                    # Prevent replying to messages sent by our own pages
-                    if sender_id == recipient_id or get_connected_page(sender_id) is not None:
-                        continue
-
-                    msg = event.get("message", {})
-                    if not msg:
-                        continue
 
                     msg_id = msg.get("mid")
                     if msg_id:
@@ -383,6 +399,19 @@ async def handle_facebook_webhook_event(data: dict):
                     # Fetch customer name and record customer message scoped to this Workspace & Page
                     customer_name = get_fb_user_profile(sender_id, page_token=page_token, page_id=page_id)
                     record_conversation_message("facebook", sender_id, customer_name, "user", msg_text, page_id=page_id, workspace_id=workspace_id)
+
+                    # Check for Admin / Customer AI Control Commands
+                    clean_cmd = msg_text.strip().lower()
+                    if clean_cmd in ["#ai", "[ai]", "start ai", "এআই চালু", "এআই অন"]:
+                        from app.database import remove_muted_number
+                        remove_muted_number(sender_id)
+                        send_fb_text_message(sender_id, "জি স্যার, আপনার জন্য এআই অটোমেশন পুনরায় চালু করা হয়েছে।", page_token=page_token, page_id=page_id)
+                        continue
+                    elif clean_cmd in ["#pause", "[pause]", "[stop]", "এআই বন্ধ", "এআই অফ", "আমি কথা বলছি"]:
+                        from app.database import add_muted_number
+                        add_muted_number(sender_id)
+                        send_fb_text_message(sender_id, "জি স্যার, এআই অটোমেশন সাময়িকভাবে বন্ধ (Paused) করা হয়েছে। আপনি সরাসরি কথা বলতে পারবেন।", page_token=page_token, page_id=page_id)
+                        continue
 
                     # Check if AI Master Switch or Per-Customer Takeover is active
                     if not is_conversation_ai_active(sender_id=sender_id):

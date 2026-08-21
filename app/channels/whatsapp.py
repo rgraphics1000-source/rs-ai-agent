@@ -900,6 +900,19 @@ async def handle_whatsapp_webhook_event(data: dict):
                         customer_name = raw_customer_name or f"WhatsApp User ({sender_phone})"
                         record_conversation_message("whatsapp", sender_phone, customer_name, "user", msg_text, page_id=page_id, workspace_id=workspace_id)
 
+                        # Check for Admin / Customer AI Control Commands
+                        clean_cmd = msg_text.strip().lower()
+                        if clean_cmd in ["#ai", "[ai]", "start ai", "এআই চালু", "এআই অন"]:
+                            from app.database import remove_muted_number
+                            remove_muted_number(sender_phone)
+                            send_whatsapp_message(sender_phone, "জি স্যার, আপনার জন্য এআই অটোমেশন পুনরায় চালু করা হয়েছে।", phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id)
+                            continue
+                        elif clean_cmd in ["#pause", "[pause]", "[stop]", "এআই বন্ধ", "এআই অফ", "আমি কথা বলছি"]:
+                            from app.database import add_muted_number
+                            add_muted_number(sender_phone)
+                            send_whatsapp_message(sender_phone, "জি স্যার, এআই অটোমেশন সাময়িকভাবে বন্ধ (Paused) করা হয়েছে। আপনি সরাসরি কথা বলতে পারবেন।", phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id)
+                            continue
+
                         # Check if AI Master Switch or Per-Customer Takeover is active
                         if not is_conversation_ai_active(sender_id=sender_phone):
                             print(f"[WhatsApp]: AI is PAUSED for customer {masked_sender} on account {effective_phone_id} (Human Takeover). AI will stay silent.")
