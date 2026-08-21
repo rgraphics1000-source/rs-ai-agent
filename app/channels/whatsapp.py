@@ -252,8 +252,11 @@ def get_whatsapp_credentials(phone_number_id: str = None, page_id: str = None, w
 
     return phone_id, token
 
-def send_whatsapp_message(to_number: str, message_text: str, phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
-    """Sends a text message via WhatsApp Cloud API using specified or default account."""
+def send_whatsapp_message_detailed(to_number: str, message_text: str, phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> dict:
+    """
+    Sends a text message via WhatsApp Cloud API matching the proven Postman reference request.
+    Returns structured delivery metadata including HTTP status, message ID, and sanitized error diagnostics.
+    """
     if not phone_id or not token:
         resolved_pid, resolved_tok = get_whatsapp_credentials(phone_number_id=phone_id, page_id=page_id, workspace_id=workspace_id)
         phone_id = phone_id or resolved_pid
@@ -275,8 +278,18 @@ def send_whatsapp_message(to_number: str, message_text: str, phone_id: str = Non
     token_masked = f"{token_prefix}...{token_suffix} (len={token_len})" if token_len > 10 else "EMPTY/SHORT"
 
     if not phone_id or not clean_token or not to_number or not message_text:
-        print(f"[WhatsApp Send Error] Missing required fields: workspace_id={workspace_id or 1} phone_number_id={'SET' if phone_id else 'MISSING'} token_source={token_source} token_present={bool(clean_token)} recipient={masked_rec}")
-        return False
+        err_detail = f"Missing required fields: phone_id={'SET' if phone_id else 'MISSING'}, token={'SET' if clean_token else 'MISSING'}, to_number={'SET' if to_number else 'MISSING'}"
+        print(f"[WhatsApp Send Error] workspace_id={workspace_id or 1} phone_number_id={'SET' if phone_id else 'MISSING'} token_source={token_source} token_present={bool(clean_token)} recipient={masked_rec}")
+        return {
+            "success": False,
+            "http_status": 0,
+            "error_code": "MISSING_REQUIRED_FIELDS",
+            "error_message": err_detail,
+            "phone_number_id": phone_id,
+            "token_source": token_source,
+            "token_preview": token_masked,
+            "recipient": masked_rec
+        }
 
     norm_to = normalize_whatsapp_phone_number(to_number)
     url = f"{GRAPH_API_URL}/{phone_id}/messages"
@@ -298,7 +311,21 @@ def send_whatsapp_message(to_number: str, message_text: str, phone_id: str = Non
         r = requests.post(url, headers=headers, json=payload, timeout=15)
         status_ok = r.status_code in [200, 201]
         if status_ok:
-            print(f"[WhatsApp Send] workspace_id={workspace_id or 1} phone_number_id={phone_id} endpoint_phone_id={phone_id} graph_api_version={settings.META_GRAPH_VERSION} token_source={token_source} token_preview={token_masked} recipient={masked_rec} status=success http_status={r.status_code}")
+            try:
+                resp_json = r.json()
+                msg_id = resp_json.get("messages", [{}])[0].get("id", "")
+            except Exception:
+                msg_id = ""
+            print(f"[WhatsApp Send] workspace_id={workspace_id or 1} phone_number_id={phone_id} endpoint_phone_id={phone_id} graph_api_version={settings.META_GRAPH_VERSION} token_source={token_source} token_preview={token_masked} recipient={masked_rec} message_id={msg_id} status=success http_status={r.status_code}")
+            return {
+                "success": True,
+                "http_status": r.status_code,
+                "message_id": msg_id,
+                "phone_number_id": phone_id,
+                "token_source": token_source,
+                "token_preview": token_masked,
+                "recipient": masked_rec
+            }
         else:
             try:
                 err_data = r.json().get("error", {})
@@ -313,10 +340,42 @@ def send_whatsapp_message(to_number: str, message_text: str, phone_id: str = Non
                 err_msg = r.text
 
             print(f"[WhatsApp Send] workspace_id={workspace_id or 1} phone_number_id={phone_id} endpoint_phone_id={phone_id} graph_api_version={settings.META_GRAPH_VERSION} token_source={token_source} token_preview={token_masked} recipient={masked_rec} status=failed http_status={r.status_code} graph_error_code={err_code} graph_error_type={err_type} graph_error_message={err_msg}")
-        return status_ok
+            return {
+                "success": False,
+                "http_status": r.status_code,
+                "graph_error_code": err_code,
+                "graph_error_subcode": err_subcode,
+                "graph_error_type": err_type,
+                "graph_error_message": err_msg,
+                "phone_number_id": phone_id,
+                "token_source": token_source,
+                "token_preview": token_masked,
+                "recipient": masked_rec
+            }
     except Exception as e:
         print(f"[WhatsApp Send Exception]: workspace_id={workspace_id or 1} phone_number_id={phone_id} token_source={token_source} error={str(e)}")
-        return False
+        return {
+            "success": False,
+            "http_status": 0,
+            "error_code": "NETWORK_EXCEPTION",
+            "error_message": str(e),
+            "phone_number_id": phone_id,
+            "token_source": token_source,
+            "token_preview": token_masked,
+            "recipient": masked_rec
+        }
+
+def send_whatsapp_message(to_number: str, message_text: str, phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
+    """Sends a text message via WhatsApp Cloud API using specified or default account."""
+    res = send_whatsapp_message_detailed(
+        to_number=to_number,
+        message_text=message_text,
+        phone_id=phone_id,
+        token=token,
+        page_id=page_id,
+        workspace_id=workspace_id
+    )
+    return res.get("success", False)
 
 def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
     """Sends an image via WhatsApp Cloud API using specified or default account."""

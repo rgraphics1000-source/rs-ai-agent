@@ -47,6 +47,7 @@ from app.channels.facebook import (
 )
 from app.channels.whatsapp import (
     send_whatsapp_message,
+    send_whatsapp_message_detailed,
     send_whatsapp_image,
     send_whatsapp_audio,
     send_whatsapp_video,
@@ -1145,6 +1146,42 @@ async def api_get_diagnostics_whatsapp():
         "endpoint_url": f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}/{phone_id}/messages",
         "ready_for_send": ready_for_send,
         "meta_validation": meta_val
+    }
+
+@app.post("/api/diagnostics/whatsapp/test-send")
+async def api_diagnostics_whatsapp_test_send(request: Request):
+    """
+    Controlled diagnostic endpoint to test WhatsApp Cloud API delivery.
+    Matches the proven Postman reference request:
+    POST https://graph.facebook.com/v23.0/4184514263660680/messages
+    Never exposes raw tokens.
+    """
+    data = await request.json()
+    to_number = data.get("to_number", "").strip()
+    message = data.get("message", "RS AI Agent WhatsApp Cloud API test message").strip()
+    workspace_id = int(data.get("workspace_id", 1))
+
+    if not to_number:
+        raise HTTPException(status_code=400, detail="to_number is required (e.g. 8801929778581)")
+
+    wa_acc = get_whatsapp_account_by_workspace_id(workspace_id)
+    phone_id = wa_acc.get("phone_number_id", "4184514263660680") if wa_acc else "4184514263660680"
+
+    result = send_whatsapp_message_detailed(
+        to_number=to_number,
+        message_text=message,
+        phone_id=phone_id,
+        workspace_id=workspace_id
+    )
+
+    masked_rec = f"{to_number[:5]}****{to_number[-4:]}" if len(to_number) > 8 else "***"
+    return {
+        "success": result.get("success", False),
+        "workspace_id": workspace_id,
+        "phone_number_id": phone_id,
+        "recipient": masked_rec,
+        "endpoint_url": f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}/{phone_id}/messages",
+        "result": result
     }
 
 @app.get("/api/diagnostics/facebook")

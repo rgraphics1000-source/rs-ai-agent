@@ -227,5 +227,102 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
             self.assertEqual(r.status_code, 200)
             mock_wa_send.assert_called_once_with("8801929778581", "Admin reply test", page_id="4184514263660680", workspace_id=1)
 
+    def test_07_media_sending_whatsapp_and_facebook(self):
+        """Verifies image, audio, and video delivery for WhatsApp and Facebook."""
+        with patch("requests.post") as mock_p:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {"messages": [{"id": "wamid.media123"}]}
+            mock_resp.text = '{"recipient_id": "123", "message_id": "m_123"}'
+            mock_p.return_value = mock_resp
+
+            # WhatsApp Media
+            self.assertTrue(send_whatsapp_image("8801929778581", "https://example.com/pic.jpg", phone_id="4184514263660680", token="EAAGValidTok12345678901234567890", workspace_id=1))
+            self.assertTrue(send_whatsapp_audio("8801929778581", "https://example.com/audio.mp3", phone_id="4184514263660680", token="EAAGValidTok12345678901234567890", workspace_id=1))
+            self.assertTrue(send_whatsapp_video("8801929778581", "https://example.com/video.mp4", phone_id="4184514263660680", token="EAAGValidTok12345678901234567890", workspace_id=1))
+
+            # Facebook Media
+            self.assertTrue(send_fb_media_message("fb_123", "image", "https://example.com/pic.jpg", page_token="EAASValid12345678901234567890", page_id="105116472071659"))
+
+    def test_08_unknown_whatsapp_phone_number_rejection(self):
+        """Verifies unknown WhatsApp Phone Number ID is dropped without fallback to Workspace 1."""
+        unknown_payload = {
+            "object": "whatsapp_business_account",
+            "entry": [{
+                "id": "unknown_waba",
+                "changes": [{
+                    "value": {
+                        "messaging_product": "whatsapp",
+                        "metadata": {"display_phone_number": "1234567890", "phone_number_id": "9999999999999999"},
+                        "messages": [{"id": "wamid_unknown_01", "from": "8801999999999", "type": "text", "text": {"body": "Hello"}}]
+                    },
+                    "field": "messages"
+                }]
+            }]
+        }
+        with patch("app.channels.whatsapp.send_whatsapp_message") as mock_send:
+            r = self.client.post("/webhook/whatsapp", json=unknown_payload)
+            self.assertEqual(r.status_code, 200)
+            mock_send.assert_not_called()
+
+    def test_09_unknown_facebook_page_rejection(self):
+        """Verifies unknown Facebook Page ID is dropped without fallback to Workspace 1."""
+        unknown_fb_payload = {
+            "object": "page",
+            "entry": [{
+                "id": "unknown_page_888888888888",
+                "messaging": [{
+                    "sender": {"id": "fb_user_unknown"},
+                    "recipient": {"id": "unknown_page_888888888888"},
+                    "message": {"mid": "mid_unknown_01", "text": "Hi"}
+                }]
+            }]
+        }
+        with patch("app.channels.facebook.send_fb_text_message") as mock_fb_send:
+            r = self.client.post("/webhook/facebook", json=unknown_fb_payload)
+            self.assertEqual(r.status_code, 200)
+            mock_fb_send.assert_not_called()
+
+    def test_10_database_idempotency_and_no_duplicates(self):
+        """Verifies database consistency functions can run multiple times without duplicating records."""
+        for _ in range(3):
+            ensure_facebook_page_consistency()
+            ensure_whatsapp_account_consistency()
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) as count FROM whatsapp_accounts WHERE phone_number_id = '4184514263660680'")
+        wa_count = cur.fetchone()["count"]
+        self.assertEqual(wa_count, 1)
+
+        cur.execute("SELECT COUNT(*) as count FROM connected_pages WHERE page_id = '105116472071659'")
+        fb_count = cur.fetchone()["count"]
+        self.assertEqual(fb_count, 1)
+        conn.close()
+
+    def test_11_test_send_diagnostic_endpoint(self):
+        """Verifies POST /api/diagnostics/whatsapp/test-send executes with structured diagnostics."""
+        with patch("requests.post") as mock_p:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {
+                "messaging_product": "whatsapp",
+                "contacts": [{"input": "8801929778581", "wa_id": "8801929778581"}],
+                "messages": [{"id": "wamid.TestDiag12345"}]
+            }
+            mock_p.return_value = mock_resp
+
+            with patch("app.channels.whatsapp.resolve_whatsapp_token_info", return_value={"token": "EAAGValidDiagnosticToken12345678901234567890", "source": "test", "is_valid": True}):
+                r = self.client.post("/api/diagnostics/whatsapp/test-send", json={
+                    "to_number": "8801929778581",
+                    "message": "Diagnostic test message"
+                })
+                self.assertEqual(r.status_code, 200)
+                data = r.json()
+                self.assertTrue(data["success"])
+                self.assertEqual(data["phone_number_id"], "4184514263660680")
+                self.assertEqual(data["result"]["message_id"], "wamid.TestDiag12345")
+
 if __name__ == "__main__":
     unittest.main()
+
