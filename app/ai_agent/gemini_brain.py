@@ -616,7 +616,7 @@ async def process_customer_message(
             print(f"[Google Form Workflow Error]: {e}")
 
         # CRITICAL SAFETY: Intercept hallucinated fake form links or waiting promises
-        if "[এখানে" in clean_reply or "ফর্মের লিংকটি বসবে" in clean_reply or ("গুগল ফর্ম" in clean_reply and ("১০ থেকে ১৫ মিনিট" in clean_reply or "২-৩ মিনিট" in clean_reply or "১৫ মিনিট" in clean_reply)):
+        if "[এখানে" in clean_reply or "ফর্মের লিংকটি বসবে" in clean_reply or (("গুগল ফর্ম" in clean_reply or "ফর্ম" in clean_reply or "ফরম" in clean_reply) and any(kw in clean_reply for kw in ["মিনিট", "অপেক্ষা", "পাঠিয়ে দেব", "পাঠিয়ে দেব", "পাঠিয়ে দিচ্ছি", "পাঠিয়ে দিচ্ছি", "তৈরি করে দিচ্ছি", "কাজ শুরু"]) and "http" not in clean_reply):
             try:
                 from app.database import get_generated_forms_by_mobile
                 mobile_to_check = sender_id if (sender_id and str(sender_id).isdigit() and len(str(sender_id)) >= 10) else ""

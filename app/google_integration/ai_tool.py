@@ -401,7 +401,9 @@ def resolve_google_form_workflow(
         r'(?:আমার|আমাদের)\s*(?:গুগল\s*)?(?:ফর্ম|ফরম|form)',
         r'(?:ফর্ম|ফরম|form)\s*(?:বানাতে|করতে|লাগবে|চাই|দিন|দাও|হবে|কোথায়|কোথায়|রেডি|কবে|পাঠান|লিংক|লিঙ্ক)',
         r'(?:ফর্ম|ফরম|form)\s*(?:এর\s*)?(?:লিংক|লিঙ্ক|link)',
-        r'(?:ফর্মে|ফরমে)\s*(?:নাম|পিতার|শ্রেণি|ছবি|রোল|তথ্য)'
+        r'(?:ফর্মে|ফরমে)\s*(?:নাম|পিতার|শ্রেণি|ছবি|রোল|তথ্য)',
+        r'প্রতিষ্ঠানের\s*নাম|স্কুলের\s*নাম|মাদ্রাসার\s*নাম|মাদরাসার\s*নাম|কলেজের\s*নাম',
+        r'(?:নাম|পিতা|শ্রেণি|শ্রেণী|রোল|ছবি|জন্মতারিখ).*(?:থাকবে|রাখব|রাখবো|নেব|নেবো|কালেক্ট|ফিল্ড)'
     ]
     has_explicit_form_intent = any(re.search(p, msg_lower, re.IGNORECASE) for p in form_explicit_triggers)
 
@@ -451,6 +453,10 @@ def resolve_google_form_workflow(
                 if norm:
                     inst_mobile = norm
                     break
+    if not inst_mobile and customer_phone:
+        norm_cust = normalize_bd_mobile(customer_phone)
+        if norm_cust and len(norm_cust) >= 10:
+            inst_mobile = norm_cust
 
     # 3. Extract Institution Name across thread
     inst_name = ""
@@ -459,7 +465,7 @@ def resolve_google_form_workflow(
             continue
         t = m["text"]
 
-        m_lbl = re.search(r'(?:প্রতিষ্ঠানের\s*নাম|স্কুলের\s*নাম|মাদ্রাসার\s*নাম|মাদরাসার\s*নাম|কলেজের\s*নাম|প্রতিষ্ঠানের\s*নামটি|নাম)\s*[:=]\s*([^\n,।]+)', t, re.IGNORECASE)
+        m_lbl = re.search(r'(?:প্রতিষ্ঠানের\s*নামটি|প্রতিষ্ঠানের\s*নাম|স্কুলের\s*নাম|মাদ্রাসার\s*নাম|মাদরাসার\s*নাম|কলেজের\s*নাম|ইনস্টিটিউটের\s*নাম)\s*[:=\s]\s*([^\n,।]+)', t, re.IGNORECASE)
         if m_lbl:
             cand = m_lbl.group(1).strip()
             cand = re.sub(phone_pattern, '', cand).strip()

@@ -562,6 +562,43 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
         mock_create.assert_called_once()
         print("✓ Test 8 Passed: 'আমার গুগল ফরম কোথায়' directly produced live Google Form for 'জামিয়া রাহমানিয়া আরাবিয়া' without loop.")
 
+
+    @patch("app.google_integration.ai_tool.create_institution_form")
+    def test_09_ummul_qura_one_shot_fields_no_waiting(self, mock_create):
+        """
+        Tests user providing institution name and fields without typing the word 'form':
+        'প্রতিষ্ঠানের নাম জামিয়া উম্মুল কোরা মসজিদ\nনাম পিতা শ্রেণী রোল আর স্টুডেন্টের ছবি এগুলো থাকবে'
+        -> Must immediately generate Google Form and return live URL in ONE turn without 5-10 min delay promises.
+        """
+        mock_create.return_value = {
+            "success": True,
+            "form_id": "form_ummul_qura_test",
+            "form_title": "জামিয়া উম্মুল কোরা মসজিদ - 01929778581 - ID Card Form",
+            "sheet_title": "জামিয়া উম্মুল কোরা মসজিদ - 01929778581 - ID Card Responses",
+            "responder_url": "https://docs.google.com/forms/d/e/1FAIpQLSc_ummul_qura_test/viewform",
+            "sheet_url": "https://docs.google.com/spreadsheets/d/sheet_ummul_qura_test/edit",
+            "selected_fields": ["student_name", "father_name", "class_name", "roll", "student_photo"]
+        }
+
+        res = resolve_google_form_workflow(
+            user_message="প্রতিষ্ঠানের নাম জামিয়া উম্মুল কোরা মসজিদ\nনাম পিতা শ্রেণী রোল আর স্টুডেন্টের ছবি এগুলো থাকবে",
+            conversation_history=[],
+            customer_phone="01929778581",
+            workspace_id=self.workspace_id
+        )
+
+        self.assertIsNotNone(res, "Must resolve form workflow from institution name and fields")
+        self.assertEqual(res.get("status"), "created")
+        self.assertEqual(res.get("institution_name"), "জামিয়া উম্মুল কোরা মসজিদ")
+        self.assertEqual(res.get("institution_mobile"), "01929778581")
+        self.assertIn("https://docs.google.com/forms/d/e/1FAIpQLSc_ummul_qura_test/viewform", res.get("reply", ""))
+        self.assertIn("https://docs.google.com/spreadsheets/d/sheet_ummul_qura_test/edit", res.get("reply", ""))
+        self.assertNotIn("৫ থেকে ১০ মিনিট", res.get("reply", ""))
+        self.assertNotIn("১০-১৫ মিনিট", res.get("reply", ""))
+        mock_create.assert_called_once()
+        print("✓ Test 9 Passed: 'জামিয়া উম্মুল কোরা মসজিদ' created live Google Form with 0 seconds waiting time.")
+
 if __name__ == "__main__":
+
 
     unittest.main()
