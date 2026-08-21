@@ -39,6 +39,12 @@ async function loadWorkspacesList() {
         const data = await res.json();
         if (data.success && data.workspaces) {
             allWorkspaces = data.workspaces;
+            const valid = allWorkspaces.some(w => w.id === currentWorkspaceId);
+            if (!valid) {
+                currentWorkspaceId = allWorkspaces[0] ? allWorkspaces[0].id : 1;
+                localStorage.setItem("current_workspace_id", currentWorkspaceId);
+                refreshAllWorkspaceData();
+            }
             renderWorkspaceDropdown();
         }
     } catch (e) {
@@ -64,11 +70,24 @@ function renderWorkspaceDropdown() {
     });
 }
 
+function refreshAllWorkspaceData() {
+    loadOverview();
+    loadOrders();
+    loadProducts();
+    loadTrainingRules();
+    loadSavedMediaList();
+    loadFaqs();
+    loadCommentLogs();
+    loadAllSettings();
+    loadOmnichatConversations();
+    loadConnectedPages();
+}
+
 function onWorkspaceChanged(wsId) {
     currentWorkspaceId = parseInt(wsId) || 1;
     localStorage.setItem("current_workspace_id", currentWorkspaceId);
     showToast(`Switched to Business Workspace #${currentWorkspaceId}`, "success");
-    refreshCurrentTab();
+    refreshAllWorkspaceData();
 }
 
 function openCreateWorkspaceModal() {

@@ -540,21 +540,24 @@ def init_db():
             )
         ]
         cursor.executemany("""
-            INSERT INTO products (name, code, description, price, discount_price, stock, category, image_url, gallery_images, tags, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            INSERT INTO products (name, code, description, price, discount_price, stock, category, image_url, gallery_images, tags, is_active, workspace_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
         """, real_products)
     else:
         # Update existing PKG-COMBO with exact structured variation prices
-        cursor.execute("UPDATE products SET gallery_images = ?, description = ? WHERE code = 'PKG-COMBO'", (
+        cursor.execute("UPDATE products SET gallery_images = ?, description = ?, workspace_id = 1 WHERE code = 'PKG-COMBO'", (
             json.dumps(pkg_variations),
             'জাপানি UV প্রিন্ট কার্ড + ডিজিটাল প্রিন্ট ফিতা + কভার। প্যাকেজ ০১ (৭০৳), প্যাকেজ ০২ (৭০৳), প্যাকেজ ০৩ (৮৩৳), প্যাকেজ ০৭ (৯১৳), প্যাকেজ ০৪ (৭৫৳), প্যাকেজ ০৫ (৮০৳), প্যাকেজ ০৬ (৮৫৳)। (১০০+ অর্ডারে স্পেশাল রেট)'
         ))
         if id_card_imgs:
-            cursor.execute("UPDATE products SET gallery_images = ? WHERE code = 'IDC-01'", (json.dumps(id_card_imgs),))
+            cursor.execute("UPDATE products SET gallery_images = ?, workspace_id = 1 WHERE code = 'IDC-01'", (json.dumps(id_card_imgs),))
         if fita_imgs:
-            cursor.execute("UPDATE products SET gallery_images = ? WHERE code = 'FITA-02'", (json.dumps(fita_imgs),))
+            cursor.execute("UPDATE products SET gallery_images = ?, workspace_id = 1 WHERE code = 'FITA-02'", (json.dumps(fita_imgs),))
         if cover_imgs:
-            cursor.execute("UPDATE products SET gallery_images = ? WHERE code = 'COV-03'", (json.dumps(cover_imgs),))
+            cursor.execute("UPDATE products SET gallery_images = ?, workspace_id = 1 WHERE code = 'COV-03'", (json.dumps(cover_imgs),))
+
+    # Ensure all primary products belong to Workspace 1
+    cursor.execute("UPDATE products SET workspace_id = 1 WHERE workspace_id IS NULL OR workspace_id = 0")
 
     # Clean up old demo products if present
     cursor.execute("DELETE FROM products WHERE code IN ('PJ-101', 'TP-202', 'CB-303')")
