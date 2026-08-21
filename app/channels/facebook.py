@@ -22,7 +22,7 @@ from app.database import (
     claim_media_delivery, update_media_delivery_status
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
-from app.ai_agent.gemini_brain import process_customer_message
+from app.ai_agent.gemini_brain import process_customer_message, detect_customer_gender_title
 
 GRAPH_API_URL = "https://graph.facebook.com/v19.0"
 
@@ -419,6 +419,7 @@ async def handle_facebook_webhook_event(data: dict):
                     matched_images = ai_result.get("matched_images", [])
                     base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
                     batch_id = f"fb_batch_{sender_id}_{msg_id or int(time.time()*1000)}"
+                    fb_img_sent_count = 0
 
                     for img_path in matched_images:
                         if not img_path:
@@ -434,8 +435,24 @@ async def handle_facebook_webhook_event(data: dict):
                             batch_id=batch_id
                         )
                         if img_sent:
+                            fb_img_sent_count += 1
                             record_conversation_message("facebook", sender_id, customer_name, "bot", "", full_img_url, page_id=page_id, workspace_id=workspace_id)
-                        await asyncio.sleep(0.15)
+                        await asyncio.sleep(0.2)
+
+                    # Send concluding follow-up message after all photos are delivered
+                    if fb_img_sent_count > 0 and sender_id:
+                        honorific = detect_customer_gender_title(customer_name)
+                        if any("pakage" in str(p).lower() or "pkg" in str(p).lower() for p in matched_images):
+                            fb_followup = f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+                        else:
+                            fb_followup = f"আপনার কত পিস প্রয়োজন জানাবেন {honorific}।"
+
+                        await asyncio.sleep(0.4)
+                        send_fb_message(
+                            sender_id, fb_followup,
+                            page_token=page_token, page_id=page_id, workspace_id=workspace_id
+                        )
+                        record_conversation_message("facebook", sender_id, customer_name, "bot", fb_followup, page_id=page_id, workspace_id=workspace_id)
 
                     # Send video demo if requested
                     matched_video = ai_result.get("video_url", "")

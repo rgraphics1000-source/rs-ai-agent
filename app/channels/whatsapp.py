@@ -22,7 +22,7 @@ from app.database import (
     get_all_faqs, get_all_products
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
-from app.ai_agent.gemini_brain import process_customer_message
+from app.ai_agent.gemini_brain import process_customer_message, detect_customer_gender_title
 
 GRAPH_API_URL = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}"
 PROCESSED_WA_MESSAGE_IDS = set()
@@ -944,6 +944,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                         matched_images = ai_result.get("matched_images", [])
                         if matched_images:
                             print(f"[WhatsApp Batch Images on Workspace {workspace_id}] Sending {len(matched_images)} images to {sender_phone}...")
+                            sent_count = 0
                             for img_path in matched_images:
                                 if not img_path:
                                     continue
@@ -952,8 +953,24 @@ async def handle_whatsapp_webhook_event(data: dict):
                                     phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
                                 )
                                 if img_ok:
+                                    sent_count += 1
                                     record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "", img_path, page_id=page_id, workspace_id=workspace_id)
-                                await asyncio.sleep(0.15)
+                                await asyncio.sleep(0.2)
+
+                            # Send concluding follow-up message after all photos are delivered
+                            if sent_count > 0 and sender_phone:
+                                honorific = detect_customer_gender_title(customer_name)
+                                if any("pakage" in str(p).lower() or "pkg" in str(p).lower() for p in matched_images):
+                                    followup_msg = f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+                                else:
+                                    followup_msg = f"আপনার কত পিস প্রয়োজন জানাবেন {honorific}।"
+
+                                await asyncio.sleep(0.4)
+                                send_whatsapp_message(
+                                    sender_phone, followup_msg,
+                                    phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
+                                )
+                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", followup_msg, page_id=page_id, workspace_id=workspace_id)
 
                         # Send video demo if requested
                         matched_video = ai_result.get("video_url", "")

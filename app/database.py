@@ -323,11 +323,12 @@ def init_db():
         "delivery_inside_dhaka": str(settings.DELIVERY_FEE_INSIDE_DHAKA),
         "delivery_outside_dhaka": str(settings.DELIVERY_FEE_OUTSIDE_DHAKA),
         "comment_auto_reply": "true",
-        "comment_reply_template": "ধন্যবাদ {name} আপু/ভাইয়া! বিস্তারিত তথ্য ও ছবি আপনার ইনবক্সে পাঠানো হয়েছে 🥰",
+        "comment_reply_template": "ধন্যবাদ {name} স্যার/ম্যাম! বিস্তারিত তথ্য ও ছবি আপনার ইনবক্সে পাঠানো হয়েছে 🥰",
         "private_message_on_comment": "true",
         "ai_system_prompt": (
             "তুমি একটি অত্যন্ত মিষ্টিভাষী, বিনম্র ও দক্ষ বাংলাদেশি ই-কমার্স সেলস এজেন্ট (Sales Assistant)। "
-            "তোমার কাজ হলো কাস্টমারের সাথে সুন্দর করে কথা বলা (যেমন: 'আসসালামু আলাইকুম আপু/ভাইয়া', 'কেমন আছেন?', 'জি অবশ্যই')। "
+            "তোমার কাজ হলো কাস্টমারের সাথে সুন্দর করে কথা বলা (যেমন: 'আসসালামু আলাইকুম স্যার/ম্যাম', 'কেমন আছেন?', 'জি অবশ্যই')। "
+            "কাস্টমার পুরুষ হলে 'স্যার' এবং মহিলা হলে 'ম্যাম' বলবে। কখনোই 'ভাইয়া' বা 'আপু' বলবে না। "
             "কাস্টমারকে প্রডাক্ট পছন্দ করতে সাহায্য করবে, দাম ও স্টক জানাবে এবং অর্ডার করতে চাইলে বিনয়ের সাথে নাম, মোবাইল নম্বর (১১ ডিজিট) ও সম্পূর্ণ ডেলিভারি ঠিকানা সংগ্রহ করবে। "
             "ঢাকার ভেতরে ডেলিভারি চার্জ {delivery_inside} টাকা এবং ঢাকার বাইরে {delivery_outside} টাকা। "
             "সব প্রয়োজনীয় তথ্য পাওয়ার সাথে সাথে কাস্টমারকে অর্ডারের সামারি দিয়ে কনফার্ম করবে।"
@@ -361,8 +362,23 @@ def init_db():
     # Migration: clear unrelated phone number ID 1265595526643418 so only verified target ID is stored
     cursor.execute("UPDATE settings SET value = '' WHERE key = 'whatsapp_phone_number_id' AND value = '1265595526643418'")
 
-    # Migration: update sample photos training rule to send immediately without asking permission
-    cursor.execute("UPDATE ai_training_rules SET response_or_rule = 'কাস্টমার ছবি বা স্যাম্পল দেখতে চাইলে কালবিলম্ব না করে সরাসরি অমায়িক ভাষায় বলবে জি ভাইয়া, অবশ্যই দেওয়া যাবে। নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো পাঠানো হলো। এবং সাথে সাথে সবগুলো স্যাম্পল ছবি পাঠাবে।' WHERE title LIKE '%স্যাম্পল%'")
+    # Migration: update sample photos and honorific training rules
+    cursor.execute(
+        "UPDATE ai_training_rules SET title = ?, response_or_rule = ? WHERE id = 25 OR title LIKE '%ভাইয়া%' OR title LIKE '%আপু%' OR title LIKE '%সম্বোধন%'",
+        ("কাস্টমারের নাম দেখে স্যার/ম্যাম সম্বোধন", "কাস্টমার পুরুষ হলে 'স্যার' এবং মহিলা হলে 'ম্যাম' সম্বোধন করবে। কখনোই 'ভাইয়া' বা 'আপু' বলবে না।")
+    )
+    cursor.execute(
+        "UPDATE ai_training_rules SET response_or_rule = ? WHERE title LIKE '%স্যাম্পল%'",
+        ("কাস্টমার ছবি বা স্যাম্পল দেখতে চাইলে কালবিলম্ব না করে সরাসরি বলবে জি স্যার/ম্যাম, অবশ্যই দিচ্ছি। নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো পাঠানো হলো। এবং সাথে সাথে সবগুলো স্যাম্পল ছবি পাঠাবে।",)
+    )
+    cursor.execute("""
+        INSERT OR REPLACE INTO ai_training_rules (id, workspace_id, title, category, question_or_trigger, response_or_rule, is_active)
+        VALUES (
+            120, 1, 'প্যাকেজের ছবি চাওয়ার নিয়ম', 'Protocol', 'প্যাকেজের ছবি',
+            'কাস্টমার প্যাকেজ বা কম্বো প্যাকেজের ছবি চাইলে টেক্সটে কোনো লম্বা প্যাকেজ লিস্ট দেবে না। শুধুমাত্র বলবে ''জি স্যার/ম্যাম, অবশ্যই দিচ্ছি।'' এবং প্যাকেজের ৭টি ছবি পাঠাবে। সব ছবি পাঠানো শেষ হলে স্বয়ংক্রিয়ভাবে বলবে ''আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন স্যার/ম্যাম।''',
+            1
+        )
+    """)
 
     # Safe Automatic Migration for Workspace 1 (RS Graphics)
     cursor.execute("SELECT COUNT(*) FROM workspaces")

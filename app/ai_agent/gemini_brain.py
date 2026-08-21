@@ -18,10 +18,11 @@ from app.ai_agent.order_engine import extract_phone_number, create_order
 def detect_customer_gender_title(customer_name: str) -> str:
     """
     Intelligently recognizes if customer is male/female from their name.
-    Returns 'ভাইয়া', 'আপু', or 'স্যার/ম্যাম'.
+    Strictly returns 'স্যার' for males/general or 'ম্যাম' for females.
+    Never uses 'ভাইয়া' or 'আপু'.
     """
     if not customer_name:
-        return "স্যার/ম্যাম"
+        return "স্যার"
     
     name_lower = customer_name.lower().strip()
     
@@ -34,26 +35,13 @@ def detect_customer_gender_title(customer_name: str) -> str:
         "sonia", "sabina", "swapna", "shirin", "lima", "shila", "nazma", "papia", "shahnaz",
         "আক্তার", "বেগম", "খাতুন", "সুলতানা", "জাহান", "নাহার", "ফারজানা", "সুমাইয়া", "রুমা",
         "সাদিয়া", "নুসরাত", "মিম", "তানিয়া", "মোসাম্মৎ", "মমতাজ", "সালমা", "পারভীন", "ফাতেমা",
-        "সোনিয়া", "সাবিনা", "স্বপ্না", "শিরিন", "লিমা", "শীলা", "নাজমা", "পাপিয়া", "শাহনাজ"
+        "সোনিয়া", "সাবিনা", "স্বপ্না", "শিরিন", "লিমা", "শীলা", "নাজমা", "পাপিয়া", "শাহনাজ",
+        "আপু", "ম্যাডাম", "ম্যাম", "miss", "mrs", "ms"
     ]
     if any(fp in name_lower for fp in female_patterns):
-        return "আপু"
+        return "ম্যাম"
         
-    # Male indicators
-    male_patterns = [
-        "md", "mohammad", "muhammad", "ahmed", "ahmad", "khan", "hasan", "hossain", "islam",
-        "rahman", "chowdhury", "tanvir", "sakib", "rakib", "rony", "alamin", "faruk", "rasel",
-        "shuvo", "sabbir", "tareq", "mahmud", "arafat", "ashik", "arif", "habib", "nazmul",
-        "jewel", "sohel", "saiful", "kawsar", "mizan", "kamrul", "rashed", "shahadat",
-        "ripon", "kabir", "jamal", "kamal", "babul", "monir", "farid", "rubel", "jahid",
-        "মোঃ", "মোহাম্মদ", "আহমেদ", "খান", "হাসান", "হোসেন", "ইসলাম", "রহমান", "চৌধুরী",
-        "তানভীর", "সাকিব", "রাকিব", "রনি", "আলআমিন", "ফারুক", "রাসেল", "শুভ", "সাব্বির",
-        "রিপন", "কবির", "জামাল", "কামাল", "বাবুল", "মনির", "ফরিদ", "রুবেল", "জাহিদ"
-    ]
-    if any(mp in name_lower for mp in male_patterns):
-        return "ভাইয়া"
-        
-    return "স্যার/ম্যাম"
+    return "স্যার"
 
 def get_product_catalog_context(workspace_id: int = 1) -> str:
     """Fetches active products from DB scoped strictly to the workspace."""
@@ -141,23 +129,30 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
    - কখনোই বলবে না: 'টাইপ করে দিন' বা 'ভয়েস পেয়েছি'।
    - কাস্টমার যদি ছবি/স্যাম্পল দেখতে চায়, সরাসরি বলবে: "জি {honorific}, নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো দেওয়া হলো।" এবং ছবি পাঠাবে।
 
-১. স্মৃতিশক্তি ও পূর্ববর্তী কথোপকথন মনে রাখা:
-   - কাস্টমার ইতিপূর্বে যেসব তথ্যের উত্তর দিয়ে দিয়েছেন, সেই একই কথা বা প্রশ্ন কখনোই পুনরায় জিজ্ঞাসা করবে না।
+১. কাস্টমারকে সম্বোধনের কঠোর নিয়ম (Address Rule):
+   - কাস্টমারকে সর্বদা {honorific} (স্যার / ম্যাম) বলে সম্মান দিয়ে কথা বলবে।
+   - কাস্টমার পুরুষ হলে 'স্যার' এবং মহিলা হলে 'ম্যাম' বলবে।
+   - কঠোরভাবে মনে রাখবে: কখনোই 'ভাইয়া', 'ভাই', 'আপু', 'আপা' শব্দ ব্যবহার করবে না।
 
 ২. সংক্ষিপ্ত ও টু-দ্য-পয়েন্ট উত্তর:
    - কাস্টমার যতটুকু প্রশ্ন করবে শুধু ততটুকুরই উত্তর দেবে।
-   - কাস্টমারকে {honorific} বলে সম্বোধন করবে।
+   - কোনো অপ্রয়োজনীয় ভূমিকা বা লম্বা কথা বলবে না।
 
-৩. শপের ডেলিভারি ইনফরমেশন:
+৩. প্যাকেজের ছবি চাওয়ার বিশেষ নিয়ম (Package Images Protocol):
+   - কাস্টমার যদি প্যাকেজ বা কম্বো প্যাকেজের ছবি দেখতে চায় (যেমন: "প্যাকেজের ছবি দিন", "প্যাকেজগুলোর ছবি দেখান", "কম্বো ছবি"):
+   - টেক্সটে কোনো লম্বা প্যাকেজের তালিকা বা বিবরণী দেওয়ার কোনো প্রয়োজন নেই।
+   - শুধুমাত্র সংক্ষিপ্ত উত্তর দেবে: "জি {honorific}, অবশ্যই দিচ্ছি।" (ছবিগুলো স্বয়ংক্রিয়ভাবে কাস্টমারের কাছে চলে যাবে)।
+
+৪. শপের ডেলিভারি ইনফরমেশন:
    - ডেলিভারি চার্জ: ঢাকার ভেতরে {int(float(inside_fee))} টাকা এবং ঢাকার বাইরে {int(float(outside_fee))} টাকা।
    - ক্যাশ অন ডেলিভারি সুবিধা রয়েছে।
 
-৪. প্রডাক্ট ক্যাটালগ ও মূল্য তালিকা:
+৫. প্রডাক্ট ক্যাটালগ ও মূল্য তালিকা:
 {catalog}
 {training_text}
 {faq_text}
 
-৫. অজানা বিষয়ের উত্তর বানিয়ে না বলা (Strict Anti-Hallucination):
+৬. অজানা বিষয়ের উত্তর বানিয়ে না বলা (Strict Anti-Hallucination):
    - যে পণ্য, সেবা বা পলিসি সম্পর্কে তোমার ক্যাটালগে কোনো উল্লেখ নেই, সে বিষয়ে নিজে থেকে কোনো মনগড়া উত্তর দেবে না।
    - সরাসরি বলবে: "জি {honorific}, এই বিষয়টি আমাদের টিমকে জানিয়েছি। কিছুক্ষণের মধ্যে আমাদের টিম আপনার সাথে যোগাযোগ করে সঠিক তথ্যটি জানিয়ে দেবে।"
 """
@@ -336,29 +331,25 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     
     selected_images = []
 
-    is_pkg = any(k in target_scope for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ", "সেট"])
-    is_fita = any(k in target_scope for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"])
-    is_cover = any(k in target_scope for k in ["কভার", "হোল্ডার", "holder", "cover"])
-    is_id = any(k in target_scope for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"])
+    is_pkg = any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ"]) or (any(k in reply for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ"]) and not any(k in msg for k in ["ফিতা", "কভার", "কার্ড"]))
+    is_fita = any(k in msg for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"])
+    is_cover = any(k in msg for k in ["কভার", "হোল্ডার", "holder", "cover"])
+    is_id = any(k in msg for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"])
 
-    # If specific category found in target_scope:
+    # If specific category found:
     if is_pkg:
         for u in get_category_batch_images("PKG-COMBO", workspace_id=workspace_id):
             if u not in selected_images:
                 selected_images.append(u)
-
-    if is_fita:
+    elif is_fita:
         for u in get_category_batch_images("FITA-02", workspace_id=workspace_id):
             if u not in selected_images:
                 selected_images.append(u)
-
-    if is_cover:
+    elif is_cover:
         for u in get_category_batch_images("COV-03", workspace_id=workspace_id):
             if u not in selected_images:
                 selected_images.append(u)
-
-    if is_id and not is_pkg:
-        # Only add stand-alone ID cards if package wasn't the only requested item
+    elif is_id:
         for u in get_category_batch_images("IDC-01", workspace_id=workspace_id):
             if u not in selected_images:
                 selected_images.append(u)
@@ -420,7 +411,7 @@ def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", worksp
     # Workspace 1 (RS Graphics) specific fallbacks
     if int(workspace_id or 1) == 1:
         if any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo"]):
-            return f"জি {honorific}, আমাদের প্যাকেজ রেট: প্যাকেজ ০১ (৭০৳), প্যাকেজ ০২ (৭০৳), প্যাকেজ ০৩ (৮৩৳), প্যাকেজ ০৭ (৯১৳)। নিচে প্যাকেজের ছবি দেওয়া হলো।"
+            return f"জি {honorific}, অবশ্যই দিচ্ছি।"
 
         if any(k in msg for k in ["ফিতা", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]) and any(k in msg for k in ["ছবি", "স্যাম্পল", "photo", "picture"]):
             return f"জি {honorific}, নিচে আমাদের ডিজিটাল সাবলিমেশন ফিতার কিছু স্যাম্পল ছবি দেওয়া হলো। আপনার কত পিস ফিতা প্রয়োজন জানাবেন প্লিজ?"
@@ -611,11 +602,25 @@ async def process_customer_message(
 
         clean_reply = re.sub(r'\n{3,}', '\n\n', clean_reply).strip()
 
+        # Clean any lingering ভাইয়া / আপু with correct honorific (স্যার / ম্যাম)
+        honorific = detect_customer_gender_title(customer_name)
+        clean_reply = re.sub(r'\b(ভাইয়া|ভাই|আপু|আপা)\b', honorific, clean_reply)
+        clean_reply = re.sub(r'আপু/ভাইয়া', honorific, clean_reply)
+        clean_reply = re.sub(r'ভাইয়া/আপু', honorific, clean_reply)
+        clean_reply = re.sub(r'স্যার/ম্যাম', honorific, clean_reply)
+
+        # If sending package images (PKG-COMBO), eliminate long package lists and replace with clean polite prompt
+        if matched_images and any("pakage" in str(u).lower() or "pkg" in str(u).lower() for u in matched_images):
+            if "প্যাকেজ ০১" in clean_reply or "প্যাকেজ ০২" in clean_reply or "•" in clean_reply or "প্যাকেজ" in clean_reply or len(clean_reply) > 40:
+                clean_reply = f"জি {honorific}, অবশ্যই দিচ্ছি।"
+
         # If clean_reply became too brief after cleaning, provide polite human greeting
         if not clean_reply or len(clean_reply) < 6:
-            honorific = detect_customer_gender_title(customer_name)
             if matched_images:
-                clean_reply = f"জি {honorific}, নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো পাঠানো হলো। আপনার কত পিস প্রয়োজন জানাবেন প্লিজ।"
+                if any("pakage" in str(u).lower() or "pkg" in str(u).lower() for u in matched_images):
+                    clean_reply = f"জি {honorific}, অবশ্যই দিচ্ছি।"
+                else:
+                    clean_reply = f"জি {honorific}, নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো পাঠানো হলো।"
             else:
                 clean_reply = f"জি {honorific}, আমাদের প্রডাক্ট ও অর্ডার সম্পর্কে যেকোনো তথ্য প্রয়োজন হলে জানাবেন প্লিজ।"
 
