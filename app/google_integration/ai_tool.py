@@ -388,6 +388,7 @@ def resolve_google_form_workflow(
     is_awaiting_name = any(q in last_assistant_msg for q in ["প্রতিষ্ঠানের নামটি দিন", "প্রতিষ্ঠানের নাম দিন", "প্রতিষ্ঠানের নাম বলুন", "প্রতিষ্ঠানের নাম কী"])
     is_awaiting_mobile = any(q in last_assistant_msg for q in ["প্রতিষ্ঠানের মোবাইল নম্বরটি দিন", "মোবাইল নম্বরটি দিন", "মোবাইল নম্বর দিন", "মোবাইল নম্বর প্রদান করুন"])
     is_awaiting_fields = any(q in last_assistant_msg for q in ["কোন কোন তথ্য রাখতে চান", "কোন কোন তথ্য লাগবে", "কী কী তথ্য লাগবে", "তথ্য বা ফিল্ড লাগবে"])
+    is_offering_form = any(q in last_assistant_msg for q in ["গুগল ফর্ম বানিয়ে দেব", "গুগল ফরম বানিয়ে দেব", "গুগল ফর্ম তৈরি করে দেব", "গুগল ফরম তৈরি করে দেব", "ফর্ম বানিয়ে দেব", "ফরম বানিয়ে দেব", "গুগল ফর্মের ব্যবস্থা", "গুগল ফরমের ব্যবস্থা"])
 
     has_active_form_flow = is_awaiting_name or is_awaiting_mobile or is_awaiting_fields
 
@@ -402,6 +403,10 @@ def resolve_google_form_workflow(
         r'(?:ফর্মে|ফরমে)\s*(?:নাম|পিতার|শ্রেণি|ছবি|রোল|তথ্য)'
     ]
     has_explicit_form_intent = any(re.search(p, msg_lower, re.IGNORECASE) for p in form_explicit_triggers)
+
+    # If assistant previously offered to create a form and customer agrees (e.g. "হ্যাঁ", "জি", "বানিয়ে দাও")
+    if is_offering_form and re.search(r'^(?:হ্যাঁ|হ্যা|জি|হাঁ|অবশ্যই|বানিয়ে\s*দাও|বানিয়ে\s*দাও|বানাও|দিন|তৈরি\s*করেন|তৈরি\s*করুন|করুন|করেন|yes|ok|okay)', msg_lower):
+        has_explicit_form_intent = True
 
     is_question = bool(re.search(question_pattern, msg_lower))
 

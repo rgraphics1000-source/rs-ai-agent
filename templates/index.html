@@ -854,21 +854,21 @@
                             <div class="card-title" style="font-size: 15px;">
                                 <i class="fab fa-google-drive" style="color: #38bdf8;"></i> Google Account Connection
                             </div>
-                            <span id="gforms-conn-badge" class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.3); font-size: 11px;">Not Connected</span>
+                            <span id="gforms-conn-badge" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3); font-size: 11px;"><i class="fas fa-spinner fa-spin"></i> Checking...</span>
                         </div>
                         
-                        <div id="gforms-conn-msg" style="font-size: 13px; color: #f87171; margin-bottom: 10px; font-weight: 500;">
-                            Google Account is not connected.
+                        <div id="gforms-conn-msg" style="font-size: 13px; color: var(--text-muted); margin-bottom: 10px; font-weight: 500;">
+                            Checking Google connection status...
                         </div>
                         
                         <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-                            কানেক্টেড ইমেইল: <strong id="gforms-conn-email" style="color: #fff;">None</strong>
+                            কানেক্টেড ইমেইল: <strong id="gforms-conn-email" style="color: #fff;">-</strong>
                         </div>
                         
                         <div style="display: flex; gap: 12px; font-size: 11.5px; margin-bottom: 14px; flex-wrap: wrap;">
-                            <span id="gforms-drive-status" style="color: var(--text-dim);"><i class="fas fa-circle-notch"></i> Drive API: Pending</span>
-                            <span id="gforms-forms-status" style="color: var(--text-dim);"><i class="fas fa-circle-notch"></i> Forms API: Pending</span>
-                            <span id="gforms-sheets-status" style="color: var(--text-dim);"><i class="fas fa-circle-notch"></i> Sheets API: Pending</span>
+                            <span id="gforms-drive-status" style="color: var(--text-dim);"><i class="fas fa-circle-notch"></i> Drive API: Checking</span>
+                            <span id="gforms-forms-status" style="color: var(--text-dim);"><i class="fas fa-circle-notch"></i> Forms API: Checking</span>
+                            <span id="gforms-sheets-status" style="color: var(--text-dim);"><i class="fas fa-circle-notch"></i> Sheets API: Checking</span>
                         </div>
                         
                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -887,13 +887,13 @@
                             <div class="card-title" style="font-size: 15px;">
                                 <i class="fas fa-id-card-clip" style="color: #c084fc;"></i> Master Form Template
                             </div>
-                            <span id="gforms-master-badge" class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.3); font-size: 11px;">Not Configured</span>
+                            <span id="gforms-master-badge" class="badge" style="background: rgba(192, 132, 252, 0.15); color: #c084fc; border: 1px solid rgba(192,132,252,0.3); font-size: 11px;"><i class="fas fa-spinner fa-spin"></i> Checking...</span>
                         </div>
 
                         <!-- Status Message & Details -->
                         <div id="master-form-details-box" style="margin-bottom: 12px;">
-                            <div id="gforms-master-msg" style="font-size: 13px; color: #f87171; font-weight: 500; margin-bottom: 6px;">
-                                Master Form is not configured.
+                            <div id="gforms-master-msg" style="font-size: 13px; color: var(--text-muted); font-weight: 500; margin-bottom: 6px;">
+                                Checking template status...
                             </div>
                             
                             <div id="master-form-meta-grid" style="display: none; background: rgba(0,0,0,0.25); border-radius: 8px; padding: 10px; font-size: 12px;">
