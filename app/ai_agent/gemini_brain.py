@@ -172,6 +172,11 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
    - যে পণ্য, সেবা বা পলিসি সম্পর্কে তোমার ক্যাটালগে কোনো উল্লেখ নেই, সে বিষয়ে নিজে থেকে কোনো মনগড়া উত্তর দেবে না।
    - সরাসরি বলবে: "জি {honorific}, এই বিষয়টি আমাদের টিমকে জানিয়েছি। কিছুক্ষণের মধ্যে আমাদের টিম আপনার সাথে যোগাযোগ করে সঠিক তথ্যটি জানিয়ে দেবে।"
    - ⚠️ ব্যতিক্রম: গুগল ফর্ম (Google Form) আমাদের একটি আসল ও সক্রিয় সেবা। কাস্টমার গুগল ফর্ম চাইলে বা জানতে চাইলে কখনোই "আমাদের গুগল ফর্ম নেই" বলবে না। বরং সবসময় বলবে: "জি {honorific}, অবশ্যই আমরা আপনার প্রতিষ্ঠানের জন্য একটি গুগল ফর্ম তৈরি করে দিতে পারি। প্রতিষ্ঠানের নামটি দিন।"
+
+৯. গুগল ফর্ম তৈরির মিথ্যা প্রতিশ্রুতি নিষেধ (CRITICAL - No Fake Form Promises):
+   - কখনোই "ফর্ম তৈরি হচ্ছে", "৫ মিনিট লাগবে", "ফর্ম রেডি", "এই লিংকে প্রবেশ করুন" এমন বলবে না যতক্ষণ না ফর্মের আসল URL/লিংক তোমার কাছে থাকে।
+   - কাস্টমার ফর্ম চাইলে বলবে: "জি {honorific}, গুগল ফর্ম তৈরি করতে আপনার প্রতিষ্ঠানের নামটি টাইপ করে দিন, আমরা সাথে সাথে ফর্ম তৈরি করে দিচ্ছি।"
+   - কখনোই placeholder বা ভুয়া লিংক দেবে না। শুধুমাত্র আসল লিংকই দেবে।
 """
         return prompt
 
@@ -609,6 +614,39 @@ async def process_customer_message(
                 clean_reply = workflow_res["reply"]
         except Exception as e:
             print(f"[Google Form Workflow Error]: {e}")
+
+        # CRITICAL SAFETY: Intercept hallucinated fake form links or waiting promises
+        if "[এখানে" in clean_reply or "ফর্মের লিংকটি বসবে" in clean_reply or ("গুগল ফর্ম" in clean_reply and ("১০ থেকে ১৫ মিনিট" in clean_reply or "২-৩ মিনিট" in clean_reply or "১৫ মিনিট" in clean_reply)):
+            try:
+                from app.database import get_generated_forms_by_mobile
+                mobile_to_check = sender_id if (sender_id and str(sender_id).isdigit() and len(str(sender_id)) >= 10) else ""
+                existing_forms = get_generated_forms_by_mobile(workspace_id=ws_id, mobile=mobile_to_check) if mobile_to_check else []
+                if existing_forms:
+                    ef = existing_forms[0]
+                    form_url = ef.get("responder_uri") or ef.get("form_url") or ""
+                    sheet_url = ef.get("response_sheet_url") or ef.get("sheet_url") or ""
+                    clean_reply = (
+                        f"জি স্যার! আপনার প্রতিষ্ঠানের জন্য তৈরি করা Google Form নিচে দেওয়া হলো:\n\n"
+                        f"🏫 প্রতিষ্ঠান: {ef.get('institution_name', 'আপনার প্রতিষ্ঠান')}\n"
+                        f"📱 মোবাইল: {ef.get('institution_mobile', '')}\n\n"
+                        f"📋 ফর্ম লিংক:\n{form_url}\n\n"
+                        f"📊 রেসপন্স শিট:\n{sheet_url}\n\n"
+                        f"এই লিংকের মাধ্যমে খুব সহজেই ছাত্র-ছাত্রীদের তথ্য ও ছবি সংগ্রহ করতে পারবেন।"
+                    )
+                else:
+                    wf = resolve_google_form_workflow(
+                        user_message="আমার প্রতিষ্ঠানের জন্য গুগল ফর্ম তৈরি করে দাও",
+                        conversation_history=conversation_history,
+                        customer_phone=sender_id,
+                        customer_name=customer_name,
+                        workspace_id=ws_id
+                    )
+                    if wf and wf.get("reply") and "[এখানে" not in wf.get("reply"):
+                        clean_reply = wf["reply"]
+                    else:
+                        clean_reply = f"জি {detect_customer_gender_title(customer_name)}, গুগল ফর্ম তৈরি করতে শুধু আপনার প্রতিষ্ঠানের নাম ও মোবাইল নম্বরটি জানান, সাথে সাথে ফর্ম তৈরি করে লিংক দিয়ে দেওয়া হবে।"
+            except Exception as e:
+                print(f"[Fake Form Link Safety Interception Error]: {e}")
 
         # Clean markdown image tags & bracket tags from text
         matched_images = []

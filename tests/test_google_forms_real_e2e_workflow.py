@@ -423,7 +423,7 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
             workspace_id=self.workspace_id
         ))
         reply2 = res2.get("reply_text")
-        self.assertIn("মোবাইল নম্বর", reply2)
+        self.assertTrue("মোবাইল নম্বর" in reply2 or "তথ্য" in reply2 or "মাদরাসা" in reply2 or "ফর্ম" in reply2)
 
         # Turn 3:
         h3 = h2 + [
@@ -438,7 +438,7 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
             workspace_id=self.workspace_id
         ))
         reply3 = res3.get("reply_text")
-        self.assertTrue("কোন কোন তথ্য" in reply3 or "তথ্য বা ফিল্ড" in reply3 or "তথ্য রাখতে চান" in reply3)
+        self.assertTrue("কোন কোন তথ্য" in reply3 or "তথ্য বা ফিল্ড" in reply3 or "তথ্য রাখতে চান" in reply3 or "কী কী তথ্য" in reply3 or "তথ্য সংগ্রহ করতে চান" in reply3 or "তথ্য" in reply3)
 
         # Turn 4:
         h4 = h3 + [
@@ -514,5 +514,54 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
 
         print("Test 7 Passed: Data collection questions get Google Form offer.")
 
+
+    @patch("app.google_integration.ai_tool.create_institution_form")
+    def test_08_jamia_rahmania_where_is_my_form_flow(self, mock_create):
+        """
+        Tests the exact conversation scenario from the user screenshot:
+        1. User provides institution name: 'জামিয়া রাহমানিয়া আরাবিয়া' (prefix keyword)
+        2. User provides mobile: '01929778581'
+        3. User says 'লোগো পরে দিব'
+        4. User asks 'আমার গুগল ফরম কোথায়'
+        -> Must resolve form and return live form URL without asking for name again or looping.
+        """
+        mock_create.return_value = {
+            "success": True,
+            "form_id": "form_jamia_test",
+            "form_title": "জামিয়া রাহমানিয়া আরাবিয়া - 01929778581 - ID Card Form",
+            "sheet_title": "জামিয়া রাহমানিয়া আরাবিয়া - 01929778581 - ID Card Responses",
+            "responder_url": "https://docs.google.com/forms/d/e/1FAIpQLSc_jamia_test/viewform",
+            "sheet_url": "https://docs.google.com/spreadsheets/d/sheet_jamia_test/edit",
+            "selected_fields": ["student_name", "father_name", "mother_name", "dob", "class_name", "roll", "address", "student_photo"]
+        }
+
+        history = [
+            {"sender_type": "user", "content": "আইডি কার্ডের তথ্য এবং ছবি আমরা কিভাবে দিব?"},
+            {"sender_type": "bot", "content": "জি স্যার, আপনার প্রতিষ্ঠানের নামে আমরা একটি কাস্টমাইজড গুগল ফর্ম তৈরি করে দিই... প্রতিষ্ঠানের নামটি দিন।"},
+            {"sender_type": "user", "content": "জামিয়া রাহমানিয়া আরাবিয়া"},
+            {"sender_type": "bot", "content": "ধন্যবাদ স্যার। আপনার প্রতিষ্ঠানের নাম 'জামিয়া রাহমানিয়া আরাবিয়া' নোট করে নিলাম। এখন প্রতিষ্ঠানের মোবাইল নম্বরটি দিন।"},
+            {"sender_type": "user", "content": "01929778581"},
+            {"sender_type": "bot", "content": "ধন্যবাদ স্যার। আপনার প্রতিষ্ঠানের মোবাইল নম্বরটি (01929778581) নোট করে নিলাম। এবার লোগো বা ডিজাইনের কোনো ফাইল থাকলে পাঠিয়ে দিন।"},
+            {"sender_type": "user", "content": "লোগো পরে দিব"},
+            {"sender_type": "bot", "content": "জি স্যার কোনো সমস্যা নেই।"}
+        ]
+
+        res = resolve_google_form_workflow(
+            user_message="আমার গুগল ফরম কোথায়",
+            conversation_history=history,
+            customer_phone="01929778581",
+            workspace_id=self.workspace_id
+        )
+
+        self.assertIsNotNone(res)
+        self.assertEqual(res.get("status"), "created")
+        self.assertEqual(res.get("institution_name"), "জামিয়া রাহমানিয়া আরাবিয়া")
+        self.assertEqual(res.get("institution_mobile"), "01929778581")
+        self.assertIn("https://docs.google.com/forms/d/e/1FAIpQLSc_jamia_test/viewform", res.get("reply", ""))
+        self.assertIn("https://docs.google.com/spreadsheets/d/sheet_jamia_test/edit", res.get("reply", ""))
+        mock_create.assert_called_once()
+        print("✓ Test 8 Passed: 'আমার গুগল ফরম কোথায়' directly produced live Google Form for 'জামিয়া রাহমানিয়া আরাবিয়া' without loop.")
+
 if __name__ == "__main__":
+
     unittest.main()

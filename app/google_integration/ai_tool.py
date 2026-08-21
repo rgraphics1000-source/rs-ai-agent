@@ -396,9 +396,10 @@ def resolve_google_form_workflow(
     form_explicit_triggers = [
         r'গুগল\s*ফর্ম|গুগল\s*ফরম|google\s*for[mn]|google\s*from|gform|g-form',
         r'id\s*card\s*(?:এর\s*)?(?:form|ফর্ম|ফরম)',
-        r'(?:আইডি\s*কার্ড(?:ের)?\s*(?:জন্য\s*)?)?(?:ফর্ম|ফরম|form)\s*(?:বানাও|বানিয়ে|বানিয়ে|বানাতে|তৈরি|করতে|create|make|দিন|দাও|পাঠান|লিংক|লিঙ্ক|দেন|চাই|হবে|লাগবে)',
+        r'(?:আইডি\s*কার্ড(?:ের)?\s*(?:জন্য\s*)?)?(?:ফর্ম|ফরম|form)\s*(?:বানাও|বানিয়ে|বানিয়ে|বানাতে|তৈরি|করতে|create|make|দিন|দাও|পাঠান|লিংক|লিঙ্ক|দেন|চাই|হবে|লাগবে|কোথায়|কোথায়|রেডি|হয়েছে|হয়েছে কি|কবে)',
         r'(?:তথ্য|ডাটা)\s*(?:নেওয়ার|দেওয়ার|কালেক্ট\s*করার)\s*(?:জন্য\s*)?(?:গুগল\s*)?(?:ফর্ম|ফরম|form)',
-        r'(?:ফর্ম|ফরম|form)\s*(?:বানাতে|করতে|লাগবে|চাই|দিন|দাও|হবে)',
+        r'(?:আমার|আমাদের)\s*(?:গুগল\s*)?(?:ফর্ম|ফরম|form)',
+        r'(?:ফর্ম|ফরম|form)\s*(?:বানাতে|করতে|লাগবে|চাই|দিন|দাও|হবে|কোথায়|কোথায়|রেডি|কবে|পাঠান|লিংক|লিঙ্ক)',
         r'(?:ফর্ম|ফরম|form)\s*(?:এর\s*)?(?:লিংক|লিঙ্ক|link)',
         r'(?:ফর্মে|ফরমে)\s*(?:নাম|পিতার|শ্রেণি|ছবি|রোল|তথ্য)'
     ]
@@ -486,7 +487,7 @@ def resolve_google_form_workflow(
                 inst_name = cand
                 break
 
-        m_suf = re.search(r'([A-Za-z0-9\u0980-\u09FF\s\.\-]{2,40}\s*(?:মাদ্রাসা|মাদরাসা|স্কুল|School|College|কলেজ|Academy|একাডেমি|ইনস্টিটিউট|Institute|High School|Primary School|কিন্ডারগার্টেন|বিশ্ববিদ্যালয়))', t, re.IGNORECASE)
+        m_suf = re.search(r'((?:(?:জামিয়া|জামেয়া|মারকাজ|মারকায|মাদ্রাসা|মাদরাসা|মাদরাসাহ|দারুল|দারুল\s*উলুম|স্কুল|কলেজ|একাডেমি|একাডেমী|School|College|Academy|Institute)\s+[A-Za-z0-9\u0980-\u09FF\s\.\-]{2,40})|(?:[A-Za-z0-9\u0980-\u09FF\s\.\-]{2,40}\s*(?:মাদ্রাসা|মাদরাসা|মাদরাসাহ|জামিয়া|জামেয়া|মারকাজ|মারকায|স্কুল|School|College|কলেজ|Academy|একাডেমি|একাডেমী|ইনস্টিটিউট|Institute|High School|Primary School|কিন্ডারগার্টেন|বিশ্ববিদ্যালয়|University)))', t, re.IGNORECASE)
         if m_suf:
             cand = m_suf.group(1).strip()
             cand = re.sub(phone_pattern, '', cand).strip()
@@ -511,6 +512,32 @@ def resolve_google_form_workflow(
         if len(cand) >= 2 and not any(kw in cand.lower() for kw in ["ফর্ম", "ফরম", "আইডি কার্ড", "বানাতে", "কিভাবে", "কীভাবে", "দাম"]):
             inst_name = cand
 
+
+    # FALLBACK: Extract institution name from assistant's own previous messages
+    # Bot often says: "আপনার প্রতিষ্ঠানের নাম 'XYZ' নোট করে নিলাম"
+    if not inst_name:
+        for m in reversed(flat_history):
+            if m["role"] == "assistant":
+                bot_text = m["text"]
+                name_from_bot = re.search(r"প্রতিষ্ঠানের\s*নাম[টি]*\s*['\"\'\"\(]?\s*([^'\"\'\"।\n\(\)]+?)\s*['\"\'\"\)]?\s*(?:নোট|লিখে|রেকর্ড|সংগ্রহ)", bot_text)
+                if name_from_bot:
+                    cand = name_from_bot.group(1).strip().strip("'\"")
+                    if len(cand) >= 2 and cand not in ["আমাদের", "আপনার", "প্রতিষ্ঠান"]:
+                        inst_name = cand
+                        break
+
+    # FALLBACK: If a user message appears directly after a "নামটি দিন" prompt from bot,
+    # treat it as the institution name (even without institutional suffixes)
+    if not inst_name and has_explicit_form_intent:
+        for i, m in enumerate(flat_history):
+            if m["role"] == "assistant" and any(q in m["text"] for q in ["নামটি দিন", "নাম দিন", "নাম বলুন"]):
+                if i + 1 < len(flat_history) and flat_history[i + 1]["role"] == "user":
+                    cand = flat_history[i + 1]["text"].split("\n")[0].split(",")[0].strip()
+                    cand = re.sub(phone_pattern, '', cand).strip()
+                    if len(cand) >= 2 and not any(kw in cand.lower() for kw in ["ফর্ম", "ফরম", "দাম", "কত", "কিভাবে"]):
+                        inst_name = cand
+                        break
+
     # 4. Extract requested fields across thread
     all_detected_fields = []
     seen_keys = set()
@@ -522,7 +549,41 @@ def resolve_google_form_workflow(
                     seen_keys.add(f["key"])
                     all_detected_fields.append(f)
 
-    # 5. Evaluate state progression
+    # 5. Check if form already exists in database for this institution/mobile
+    from app.database import get_generated_form_by_institution, get_generated_forms_by_mobile
+    existing_form = None
+    if inst_mobile:
+        existing_form = get_generated_form_by_institution(workspace_id=int(workspace_id or 1), institution_name=inst_name or "", institution_mobile=inst_mobile)
+        if not existing_form:
+            mobile_forms = get_generated_forms_by_mobile(workspace_id=int(workspace_id or 1), mobile=inst_mobile)
+            if mobile_forms:
+                existing_form = mobile_forms[0]
+    elif inst_name:
+        existing_form = get_generated_form_by_institution(workspace_id=int(workspace_id or 1), institution_name=inst_name)
+
+    if existing_form and has_explicit_form_intent:
+        resp_url = existing_form.get("responder_uri") or existing_form.get("form_url") or ""
+        sheet_url = existing_form.get("response_sheet_url") or existing_form.get("sheet_url") or ""
+        return {
+            "status": "created",
+            "success": True,
+            "is_existing": True,
+            "institution_name": existing_form.get("institution_name") or inst_name,
+            "institution_mobile": existing_form.get("institution_mobile") or inst_mobile,
+            "form_id": existing_form.get("form_id"),
+            "form_url": resp_url,
+            "sheet_url": sheet_url,
+            "reply": (
+                f"জি স্যার! আপনার প্রতিষ্ঠানের জন্য তৈরি করা Google Form নিচে দেওয়া হলো:\n\n"
+                f"🏫 প্রতিষ্ঠান: {existing_form.get('institution_name') or inst_name}\n"
+                f"📱 মোবাইল: {existing_form.get('institution_mobile') or inst_mobile}\n\n"
+                f"📋 ফর্ম লিংক:\n{resp_url}\n\n"
+                f"📊 রেসপন্স শিট:\n{sheet_url}\n\n"
+                f"এই লিংকের মাধ্যমে খুব সহজেই ছাত্র-ছাত্রীদের তথ্য ও ছবি সংগ্রহ করতে পারবেন।"
+            )
+        }
+
+    # 6. Evaluate state progression
     if not inst_name:
         # If user explicitly asked for a form, prompt for name
         if has_explicit_form_intent:
@@ -533,12 +594,21 @@ def resolve_google_form_workflow(
                 "selected_fields": all_detected_fields,
                 "reply": "অবশ্যই স্যার। ফর্ম তৈরি করার জন্য প্রথমে আপনার প্রতিষ্ঠানের নামটি দিন।"
             }
-        # If user was asked for a name previously but asked a question or sent something else, allow Gemini to handle
         return None
 
+    # If user was asked for name (is_awaiting_name), prompt for mobile next
+    if is_awaiting_name:
+        return {
+            "status": "need_mobile",
+            "institution_name": inst_name,
+            "institution_mobile": inst_mobile,
+            "selected_fields": all_detected_fields,
+            "reply": "ধন্যবাদ স্যার। এখন প্রতিষ্ঠানের মোবাইল নম্বরটি দিন।"
+        }
+
     if not inst_mobile:
-        # If the user answered the name or has form intent, prompt for mobile
-        if is_awaiting_name or has_explicit_form_intent or is_awaiting_mobile:
+        # If user has form intent or is in mobile flow, prompt for mobile
+        if has_explicit_form_intent or is_awaiting_mobile:
             return {
                 "status": "need_mobile",
                 "institution_name": inst_name,
@@ -549,8 +619,8 @@ def resolve_google_form_workflow(
         return None
 
     if not all_detected_fields:
-        # If mobile is provided but fields are missing, prompt for fields
-        if is_awaiting_mobile or is_awaiting_fields or has_explicit_form_intent:
+        # If user was asked for mobile (is_awaiting_mobile), prompt for fields next
+        if is_awaiting_mobile or is_awaiting_fields:
             return {
                 "status": "need_fields",
                 "institution_name": inst_name,
@@ -558,7 +628,21 @@ def resolve_google_form_workflow(
                 "selected_fields": [],
                 "reply": "ধন্যবাদ স্যার। এবার বলুন, শিক্ষার্থীদের ফর্মে কোন কোন তথ্য রাখতে চান?\nযেমন: নাম, পিতার নাম, মাতার নাম, জন্মতারিখ, শ্রেণি, রোল, ঠিকানা, ছবি ইত্যাদি।"
             }
-        return None
+        elif has_explicit_form_intent:
+            # If customer has explicit form intent ("আমার গুগল ফরম কোথায়", "গুগল ফর্ম দাও") and we already have Name & Mobile:
+            # Auto-use standard default ID card fields so form is created immediately!
+            all_detected_fields = [
+                {"key": "student_name", "label": "শিক্ষার্থীর নাম"},
+                {"key": "father_name", "label": "পিতার নাম"},
+                {"key": "mother_name", "label": "মাতার নাম"},
+                {"key": "dob", "label": "জন্মতারিখ"},
+                {"key": "class_name", "label": "শ্রেণি"},
+                {"key": "roll", "label": "রোল"},
+                {"key": "address", "label": "ঠিকানা"},
+                {"key": "student_photo", "label": "ছবি"}
+            ]
+        else:
+            return None
 
     print(f"[GOOGLE_FORM_WORKFLOW] State = READY_TO_CREATE")
 
