@@ -12,7 +12,7 @@ from app.ai_agent.gemini_brain import process_customer_message
 from app.channels.whatsapp import handle_whatsapp_webhook_event, resolve_whatsapp_token
 from app.database import (
     save_google_connection, get_google_connection, get_generated_forms_by_mobile,
-    save_generated_form, get_db_connection, save_institution
+    save_generated_form, get_db_connection, save_institution, remove_muted_number
 )
 
 class TestProductionGoogleFormHardGuarantees(unittest.TestCase):
@@ -22,7 +22,7 @@ class TestProductionGoogleFormHardGuarantees(unittest.TestCase):
         try:
             cursor = conn.cursor()
             cursor.execute("INSERT OR IGNORE INTO workspaces (id, name, slug) VALUES (?, 'Test WS 9988', 'test-ws-9988')", (self.workspace_id,))
-            cursor.execute("UPDATE conversations SET human_takeover = 0 WHERE sender_id IN ('01929778581', '8801929778581', '01711001100', '01799999999', '01799887766')")
+            cursor.execute("UPDATE conversations SET human_takeover = 0 WHERE sender_id IN ('01929778581', '8801929778581', '8801929770001', '01711001100', '01799999999', '01799887766')")
             conn.commit()
         finally:
             conn.close()
@@ -234,10 +234,13 @@ class TestProductionGoogleFormHardGuarantees(unittest.TestCase):
     @patch("app.google_integration.ai_tool.create_institution_form")
     def test_134_full_whatsapp_webhook_integration_to_form_creation(self, mock_create, mock_send):
         """Integration test: resolve_google_form_workflow -> create_institution_form -> real result -> WhatsApp."""
+        remove_muted_number("8801929770001")
+        remove_muted_number("01929770001")
+        
         mock_create.return_value = {
             "success": True,
             "form_id": "form_wa_e2e",
-            "form_title": "জামিয়া উম্মুল কোরা মসজিদ - 8801929778581 - ID Card Form",
+            "form_title": "জামিয়া উম্মুল কোরা মসজিদ - 8801929770001 - ID Card Form",
             "responder_url": "https://docs.google.com/forms/d/e/1FAIpQLSc_wa_e2e/viewform",
             "sheet_url": "https://docs.google.com/spreadsheets/d/sheet_wa_e2e/edit",
             "selected_fields": ["student_name", "father_name", "class_name", "roll", "student_photo"]
@@ -254,10 +257,10 @@ class TestProductionGoogleFormHardGuarantees(unittest.TestCase):
                             "display_phone_number": "+8801816504097",
                             "phone_number_id": "4184514263660680"
                         },
-                        "contacts": [{"profile": {"name": "Maulana Mahmud"}, "wa_id": "8801929778581"}],
+                        "contacts": [{"profile": {"name": "Maulana Mahmud"}, "wa_id": "8801929770001"}],
                         "messages": [{
-                            "from": "8801929778581",
-                            "id": "wamid.HBgLODgwMTkyOTc3ODU4MRUCABEYEjA1OTgzOTAyOU",
+                            "from": "8801929770001",
+                            "id": "wamid.HBgLODgwMTkyOTc3MDAwMRUCABEYEjA1OTgzOTAyOU",
                             "timestamp": "1724240000",
                             "type": "text",
                             "text": {
@@ -277,7 +280,7 @@ class TestProductionGoogleFormHardGuarantees(unittest.TestCase):
         args, kwargs = mock_send.call_args
         sent_recipient = args[0]
         sent_reply = args[1]
-        self.assertEqual(sent_recipient, "8801929778581")
+        self.assertEqual(sent_recipient, "8801929770001")
         self.assertIn("https://docs.google.com/forms/d/e/1FAIpQLSc_wa_e2e/viewform", sent_reply)
         self.assertIn("https://docs.google.com/spreadsheets/d/sheet_wa_e2e/edit", sent_reply)
         print("✓ Integration Test 134 Passed: Real WhatsApp webhook directly executed create_institution_form() and delivered live Form URL to customer.")

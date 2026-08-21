@@ -2579,7 +2579,10 @@ async function loadMutedContacts() {
 
 async function handleManualAddMute() {
     const input = document.getElementById("manual-mute-phone-input");
-    if (!input || !input.value.trim()) return;
+    if (!input || !input.value.trim()) {
+        showToast("দয়া করে একটি নম্বর লিখুন (যেমন: 01816504097)", "warning");
+        return;
+    }
 
     const clean = input.value.trim();
     try {
@@ -2590,9 +2593,11 @@ async function handleManualAddMute() {
         });
         const data = await res.json();
         if (data.success) {
-            showToast(`✅ ${clean} এআই মিউট লিস্টে যুক্ত হয়েছে!`, "success");
+            showToast(`✅ ${clean} সফলভাবে এআই মিউট লিস্টে যুক্ত হয়েছে!`, "success");
             input.value = "";
             await loadMutedContacts();
+        } else {
+            showToast(data.message || "মিউট করতে সমস্যা হয়েছে", "danger");
         }
     } catch (e) {
         console.error("handleManualAddMute error:", e);
@@ -2789,6 +2794,12 @@ async function confirmChatSelectorMute() {
 }
 
 async function saveAllSettings() {
+    // Automatically add any number typed in the manual mute input before saving
+    const manualMuteEl = document.getElementById("manual-mute-phone-input");
+    if (manualMuteEl && manualMuteEl.value.trim()) {
+        await handleManualAddMute();
+    }
+
     const getVal = (id) => {
         const el = document.getElementById(id);
         return el ? el.value.trim() : "";

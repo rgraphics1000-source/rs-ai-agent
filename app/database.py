@@ -1101,16 +1101,28 @@ def add_muted_number(phone: str) -> list:
     if not phone:
         return get_muted_numbers()
     current = get_muted_numbers()
-    if phone not in current:
+    
+    clean_target = "".join([c for c in phone if c.isdigit()])
+    target_last10 = clean_target[-10:] if len(clean_target) >= 10 else clean_target
+    
+    # Check if already present under any format
+    already_present = False
+    for existing in current:
+        c_exist = "".join([c for c in str(existing) if c.isdigit()])
+        e_last10 = c_exist[-10:] if len(c_exist) >= 10 else c_exist
+        if clean_target and c_exist and (clean_target == c_exist or (target_last10 and target_last10 == e_last10)):
+            already_present = True
+            break
+            
+    if not already_present:
         current.append(phone)
         set_setting("blacklisted_ai_numbers", ", ".join(current))
     
-    clean_target = "".join([c for c in phone if c.isdigit()])
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        if clean_target:
-            cursor.execute("UPDATE conversations SET human_takeover = 1 WHERE sender_id LIKE ?", (f"%{clean_target}%",))
+        if target_last10:
+            cursor.execute("UPDATE conversations SET human_takeover = 1 WHERE sender_id LIKE ?", (f"%{target_last10}%",))
         else:
             cursor.execute("UPDATE conversations SET human_takeover = 1 WHERE sender_id = ?", (phone,))
         conn.commit()
@@ -1123,13 +1135,15 @@ def remove_muted_number(phone: str) -> list:
     phone = str(phone).strip()
     current = get_muted_numbers()
     clean_target = "".join([c for c in phone if c.isdigit()])
+    target_last10 = clean_target[-10:] if len(clean_target) >= 10 else clean_target
     
     def is_match(x):
         if x == phone:
             return True
         c_x = "".join([c for c in str(x) if c.isdigit()])
+        x_last10 = c_x[-10:] if len(c_x) >= 10 else c_x
         if clean_target and c_x:
-            return clean_target in c_x or c_x in clean_target
+            return clean_target == c_x or (target_last10 and target_last10 == x_last10)
         return False
 
     updated = [x for x in current if not is_match(x)]
@@ -1138,8 +1152,8 @@ def remove_muted_number(phone: str) -> list:
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        if clean_target:
-            cursor.execute("UPDATE conversations SET human_takeover = 0 WHERE sender_id LIKE ?", (f"%{clean_target}%",))
+        if target_last10:
+            cursor.execute("UPDATE conversations SET human_takeover = 0 WHERE sender_id LIKE ?", (f"%{target_last10}%",))
         else:
             cursor.execute("UPDATE conversations SET human_takeover = 0 WHERE sender_id = ?", (phone,))
         conn.commit()
