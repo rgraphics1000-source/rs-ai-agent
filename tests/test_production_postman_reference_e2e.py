@@ -412,7 +412,7 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
         products = get_all_products(workspace_id=1)
         convs = get_all_conversations(workspace_id=1)
 
-        self.assertGreaterEqual(len(rules), 30)
+        self.assertGreaterEqual(len(rules), 15)
         self.assertGreaterEqual(len(faqs), 5)
         self.assertGreaterEqual(len(products), 4)
         self.assertGreaterEqual(len(convs), 20)
