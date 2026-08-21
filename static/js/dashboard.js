@@ -67,10 +67,7 @@ function renderWorkspaceDropdown() {
             if (ws.id === currentWorkspaceId) opt.selected = true;
             sel.appendChild(opt);
         });
-    });
-}
-
-function refreshAllWorkspaceData() {
+    });function refreshAllWorkspaceData() {
     loadOverview();
     loadOrders();
     loadProducts();
@@ -81,6 +78,7 @@ function refreshAllWorkspaceData() {
     loadAllSettings();
     loadOmnichatConversations();
     loadConnectedPages();
+    loadGoogleFormsTab();
 }
 
 function onWorkspaceChanged(wsId) {
@@ -165,6 +163,7 @@ function initNavigation() {
         "omnichat": { title: "💬 Omnichat Inbox", sub: "Multi-channel unified customer conversation inbox" },
         "analytics": { title: "📈 Analytics & Performance", sub: "Key performance metrics, response times and sales trends" },
         "adsflow": { title: "📢 AdsFlow Campaigns", sub: "Automatic lead qualification from Facebook click-to-Messenger ads" },
+        "google-forms": { title: "📑 Google Forms & ID Card Automation", sub: "মাস্টার ফর্ম ক্লোন করে যেকোনো প্রতিষ্ঠানের জন্য অটোমেটিক আইডি কার্ড ফর্ম তৈরি ও রেসপন্স সংগ্রহ" },
         "integrations": { title: "🔗 Channels & Integrations", sub: "Connect Facebook Page Messenger, Comments, and WhatsApp Cloud API" },
         "settings": { title: "⚙️ Store & AI Settings", sub: "Configure business details, delivery fees, and AI engine" },
         "support": { title: "📞 Help & Support", sub: "Platform documentation, contact info and FAQs" }
@@ -192,6 +191,10 @@ function initNavigation() {
             pageSubtitle.innerText = titles[target].sub;
         }
 
+        if (target === "google-forms") {
+            loadGoogleFormsTab();
+        }
+
         // Close mobile drawer if open
         const sidebar = document.getElementById("app-sidebar");
         const backdrop = document.getElementById("sidebar-backdrop");
@@ -199,8 +202,6 @@ function initNavigation() {
             sidebar.classList.remove("mobile-open");
             if (backdrop) backdrop.classList.remove("active");
         }
-
-        refreshCurrentTab(target);
     }
 
     navItems.forEach(item => {
@@ -720,14 +721,14 @@ async function loadProducts() {
                         ${gallery.length > 4 ? `<span style="font-size: 10px; align-self: center; color: var(--text-muted);">+${gallery.length - 4}</span>` : ''}
                     </div>` : ''}
 
-                    <div class="product-footer">
-                        <span style="font-size: 11px; color: var(--text-dim);">${p.category}</span>
-                        <div style="display: flex; gap: 6px;">
-                            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="openEditProductModal(${p.id})">
-                                <i class="fas fa-edit"></i> Edit
+                    <div class="product-footer" style="display: flex; align-items: center; justify-content: space-between; gap: 4px; padding-top: 8px; margin-top: auto; border-top: 1px solid var(--border-color);">
+                        <span style="font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65px;" title="${p.category || ''}">${p.category || 'General'}</span>
+                        <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                            <button class="btn btn-edit-prod" style="padding: 5px 9px; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; border-radius: 6px; background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.4); cursor: pointer;" onclick="openEditProductModal(${p.id})">
+                                <i class="fas fa-pen-to-square"></i> <span>এডিট</span>
                             </button>
-                            <button class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" onclick="deleteProduct(${p.id})">
-                                <i class="fas fa-trash"></i>
+                            <button class="btn btn-del-prod" style="padding: 5px 8px; font-size: 11.5px; border-radius: 6px; background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); cursor: pointer; flex-shrink: 0;" onclick="deleteProduct(${p.id})" title="ডিলিট">
+                                <i class="fas fa-trash-can"></i>
                             </button>
                         </div>
                     </div>
@@ -3227,16 +3228,668 @@ async function disconnectPageWhatsAppAction() {
             loadConnectedPages();
         }
     } catch (e) {
+// =========================================================
+// GOOGLE FORMS & ID CARD AUTOMATION FRONTEND LOGIC
+// =========================================================
+let currentOpenSubmissionsFormId = null;
+
+async function loadGoogleFormsTab() {
+    try {
+        await Promise.all([
+            loadGoogleAccountStatus(),
+            loadFormFieldsList(),
+            loadGeneratedFormsList()
+        ]);
+    } catch (e) {
+        console.error("loadGoogleFormsTab error:", e);
+    }
+}
+
+async function loadGoogleAccountStatus() {
+    try {
+        const res = await fetch(`/api/google/status?workspace_id=${currentWorkspaceId}`);
+        const data = await res.json();
+        
+        const connBadge = document.getElementById("gforms-conn-badge");
+        const connMsg = document.getElementById("gforms-conn-msg");
+        const emailEl = document.getElementById("gforms-conn-email");
+        const driveStatus = document.getElementById("gforms-drive-status");
+        const formsStatus = document.getElementById("gforms-forms-status");
+        const sheetsStatus = document.getElementById("gforms-sheets-status");
+        const btnConnect = document.getElementById("btn-connect-google");
+        const btnDisconnect = document.getElementById("btn-disconnect-google");
+
+        const masterBadge = document.getElementById("gforms-master-badge");
+        const masterMsg = document.getElementById("gforms-master-msg");
+        const masterMetaGrid = document.getElementById("master-form-meta-grid");
+
+        // 1. Connection Status Card
+        if (data.connected) {
+            if (connBadge) {
+                connBadge.className = "badge";
+                connBadge.style.background = "rgba(16, 185, 129, 0.2)";
+                connBadge.style.color = "#34d399";
+                connBadge.style.border = "1px solid rgba(16, 185, 129, 0.3)";
+                connBadge.innerText = "Connected";
+            }
+            if (connMsg) {
+                connMsg.innerText = "Google Account is connected.";
+                connMsg.style.color = "#34d399";
+            }
+            if (emailEl) emailEl.innerText = data.masked_email || data.google_account_email || "Connected";
+            if (driveStatus) driveStatus.innerHTML = `<i class="fas fa-check-circle" style="color: #34d399;"></i> Drive API: Ready`;
+            if (formsStatus) formsStatus.innerHTML = `<i class="fas fa-check-circle" style="color: #34d399;"></i> Forms API: Ready`;
+            if (sheetsStatus) sheetsStatus.innerHTML = `<i class="fas fa-check-circle" style="color: #34d399;"></i> Sheets API: Ready`;
+            if (btnConnect) btnConnect.innerHTML = `<i class="fas fa-rotate"></i> Re-Authenticate`;
+            if (btnDisconnect) btnDisconnect.style.display = "inline-flex";
+        } else {
+            if (connBadge) {
+                connBadge.className = "badge";
+                connBadge.style.background = "rgba(239, 68, 68, 0.2)";
+                connBadge.style.color = "#f87171";
+                connBadge.style.border = "1px solid rgba(239, 68, 68, 0.3)";
+                connBadge.innerText = "Not Connected";
+            }
+            if (connMsg) {
+                connMsg.innerText = "Google Account is not connected.";
+                connMsg.style.color = "#f87171";
+            }
+            if (emailEl) emailEl.innerText = "None";
+            if (driveStatus) driveStatus.innerHTML = `<i class="fas fa-circle-notch" style="color: var(--text-dim);"></i> Drive API: Pending`;
+            if (formsStatus) formsStatus.innerHTML = `<i class="fas fa-circle-notch" style="color: var(--text-dim);"></i> Forms API: Pending`;
+            if (sheetsStatus) sheetsStatus.innerHTML = `<i class="fas fa-circle-notch" style="color: var(--text-dim);"></i> Sheets API: Pending`;
+            if (btnConnect) btnConnect.innerHTML = `<i class="fab fa-google"></i> Connect Google Account`;
+            if (btnDisconnect) btnDisconnect.style.display = "none";
+        }
+
+        // 2. Master Form Card & Meta Grid
+        if (data.master_status === "configured" && data.master_form_id) {
+            if (masterBadge) {
+                masterBadge.className = "badge";
+                masterBadge.style.background = "rgba(16, 185, 129, 0.2)";
+                masterBadge.style.color = "#34d399";
+                masterBadge.style.border = "1px solid rgba(16, 185, 129, 0.3)";
+                masterBadge.innerText = "Connected & Verified";
+            }
+            if (masterMsg) {
+                masterMsg.innerText = "Master Form is configured and active.";
+                masterMsg.style.color = "#34d399";
+            }
+            if (masterMetaGrid) masterMetaGrid.style.display = "block";
+
+            const nameEl = document.getElementById("master-display-name");
+            if (nameEl) nameEl.innerText = data.master_form_name || "ID Card Information Form";
+
+            const idEl = document.getElementById("master-display-id");
+            if (idEl) idEl.innerText = data.master_form_id;
+
+            const urlEl = document.getElementById("master-display-url");
+            if (urlEl && data.master_form_url) {
+                urlEl.href = data.master_form_url;
+                urlEl.dataset.url = data.master_form_url;
+            }
+
+            const editEl = document.getElementById("master-display-edit-url");
+            if (editEl && data.master_edit_url) {
+                editEl.href = data.master_edit_url;
+            }
+
+            const sheetEl = document.getElementById("master-display-sheet-url");
+            if (sheetEl && data.master_sheet_url) {
+                sheetEl.href = data.master_sheet_url;
+            }
+
+            const uploadBadge = document.getElementById("master-display-upload-badge");
+            if (uploadBadge) {
+                if (data.master_has_file_upload) {
+                    uploadBadge.className = "badge";
+                    uploadBadge.style.background = "rgba(16, 185, 129, 0.2)";
+                    uploadBadge.style.color = "#34d399";
+                    uploadBadge.style.border = "1px solid rgba(16, 185, 129, 0.3)";
+                    uploadBadge.innerText = "Verified ✓ (Drive File Upload)";
+                } else {
+                    uploadBadge.className = "badge";
+                    uploadBadge.style.background = "rgba(234, 179, 8, 0.2)";
+                    uploadBadge.style.color = "#facc15";
+                    uploadBadge.style.border = "1px solid rgba(234, 179, 8, 0.3)";
+                    uploadBadge.innerText = "Edit mode-এ File Upload প্রশ্ন যোগ করুন ⚠️";
+                }
+            }
+        } else {
+            if (masterBadge) {
+                masterBadge.className = "badge";
+                masterBadge.style.background = "rgba(239, 68, 68, 0.2)";
+                masterBadge.style.color = "#f87171";
+                masterBadge.style.border = "1px solid rgba(239, 68, 68, 0.3)";
+                masterBadge.innerText = "Not Configured";
+            }
+            if (masterMsg) {
+                masterMsg.innerText = "Master Form is not configured.";
+                masterMsg.style.color = "#f87171";
+            }
+            if (masterMetaGrid) masterMetaGrid.style.display = "none";
+        }
+    } catch (e) {
+        console.error("loadGoogleAccountStatus error:", e);
+    }
+}
+
+async function startGoogleOAuthConnect() {
+    try {
+        const res = await fetch(`/api/google/auth/start?workspace_id=${currentWorkspaceId}`);
+        const data = await res.json();
+        if (data.success && data.auth_url) {
+            window.location.href = data.auth_url;
+        } else {
+            showToast(data.error || "Failed to initiate Google OAuth", "danger");
+        }
+    } catch (e) {
+        showToast("OAuth network error", "danger");
+    }
+}
+
+async function disconnectGoogleAccount() {
+    if (!confirm("আপনি কি নিশ্চিত এই ওয়ার্কস্পেসের Google Account ডিসকানেক্ট করতে চান?")) return;
+    try {
+        const res = await fetch("/api/google/disconnect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workspace_id: currentWorkspaceId })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("Google account disconnected.", "success");
+            loadGoogleAccountStatus();
+        }
+    } catch (e) {
         showToast("Disconnect error", "danger");
     }
 }
 
-// Initial Data Loading on DOM Ready
-document.addEventListener("DOMContentLoaded", () => {
-    loadSettings();
-    loadConnectedPages();
-    loadOmnichatConversations();
-});
+async function openSelectMasterFormModal() {
+    const selectEl = document.getElementById("select-drive-master-form");
+    const manualInput = document.getElementById("manual-master-form-id");
+    
+    if (selectEl) {
+        selectEl.innerHTML = `<option value="">-- গুগল ড্রাইভ থেকে ফর্ম খোঁজা হচ্ছে... --</option>`;
+    }
+    
+    openModal("modal-select-master-form");
+
+    try {
+        const res = await fetch(`/api/google/master-forms?workspace_id=${currentWorkspaceId}`);
+        const data = await res.json();
+        if (selectEl) {
+            if (data.success && data.forms && data.forms.length > 0) {
+                selectEl.innerHTML = `<option value="">-- ড্রাইভের ফর্ম নির্বাচন করুন (${data.forms.length}টি পাওয়া গেছে) --</option>` +
+                    data.forms.map(f => `<option value="${f.id}">${f.name} (${f.id})</option>`).join("");
+            } else {
+                selectEl.innerHTML = `<option value="">কোনো Google Form পাওয়া যায়নি (সরাসরি ফর্ম আইডি দিন)</option>`;
+            }
+        }
+    } catch (err) {
+        if (selectEl) selectEl.innerHTML = `<option value="">ড্রাইভের ফর্ম লোড করা যায়নি (সরাসরি আইডি দিন)</option>`;
+    }
+}
+
+function onDriveMasterFormSelected(formId) {
+    const manualInput = document.getElementById("manual-master-form-id");
+    if (manualInput && formId) {
+        manualInput.value = formId;
+    }
+}
+
+async function handleSelectMasterFormSubmit(e) {
+    e.preventDefault();
+    const formId = document.getElementById("manual-master-form-id")?.value?.trim();
+    if (!formId) {
+        showToast("দয়া করে Master Google Form ID দিন", "warning");
+        return;
+    }
+
+    showToast("Master Form যাচাই করা হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন", "info");
+
+    try {
+        const res = await fetch("/api/google/master-forms/select", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                workspace_id: currentWorkspaceId,
+                master_form_id: formId
+            })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            showToast(data.message || `Master Form '${data.master_form_name}' সফলভাবে যুক্ত হয়েছে!`, "success");
+            closeModal("modal-select-master-form");
+            loadGoogleAccountStatus();
+        } else {
+            showToast(data.detail || "Master Form যাচাই ব্যর্থ হয়েছে। ফর্ম আইডি এবং এক্সেস চেক করুন।", "danger");
+        }
+    } catch (e) {
+        showToast("Server error verifying Master Form", "danger");
+    }
+}
+
+function openCreateMasterFormModal() {
+    document.getElementById("form-create-master-form")?.reset();
+    openModal("modal-create-master-form");
+}
+
+async function handleCreateMasterTemplateSubmit(e) {
+    e.preventDefault();
+    const title = document.getElementById("new-master-title")?.value?.trim() || "ID Card Information Form";
+    const desc = document.getElementById("new-master-desc")?.value?.trim();
+
+    showToast("ড্রাইভে মাস্টার ফর্ম ও রেসপন্স শিট তৈরি হচ্ছে...", "info");
+
+    try {
+        const res = await fetch("/api/google/master-forms/create-template", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                workspace_id: currentWorkspaceId,
+                title: title,
+                description: desc
+            })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            showToast(`Master Form '${title}' সফলভাবে তৈরি হয়েছে!`, "success");
+            closeModal("modal-create-master-form");
+            loadGoogleAccountStatus();
+            
+            if (data.edit_url) {
+                // Open edit URL so user can see and configure file upload question in forms UI
+                window.open(data.edit_url, "_blank");
+            }
+        } else {
+            showToast(data.detail || "মাস্টার ফর্ম তৈরিতে সমস্যা হয়েছে। গুগল একাউন্ট কানেকশন চেক করুন।", "danger");
+        }
+    } catch (err) {
+        showToast("Network error creating master form template", "danger");
+    }
+}
+
+async function verifyCurrentMasterForm() {
+    const idEl = document.getElementById("master-display-id");
+    const formId = idEl ? idEl.innerText.trim() : "";
+    if (!formId || formId === "-") {
+        showToast("কোনো Master Form কনফিগার করা নেই। আগে Master Form নির্বাচন বা তৈরি করুন।", "warning");
+        return;
+    }
+
+    showToast("Master Form লাইভ যাচাই করা হচ্ছে...", "info");
+
+    try {
+        const res = await fetch("/api/google/master-forms/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                workspace_id: currentWorkspaceId,
+                master_form_id: formId
+            })
+        });
+        const data = await res.json();
+        if (res.ok && data.valid) {
+            showToast(`✓ Master Form '${data.form_name}' যাচাই সফল! (প্রশ্ন সংখ্যা: ${data.items_count})`, "success");
+            loadGoogleAccountStatus();
+        } else {
+            showToast(data.detail || "Master Form যাচাই ব্যর্থ হয়েছে।", "danger");
+        }
+    } catch (err) {
+        showToast("Verification request failed", "danger");
+    }
+}
+
+function copyMasterFormUrl() {
+    const urlEl = document.getElementById("master-display-url");
+    const url = urlEl ? (urlEl.dataset.url || urlEl.href) : "";
+    if (url && url !== "#") {
+        copyTextToClipboard(url);
+    } else {
+        showToast("কোনো ফর্ম লিংক পাওয়া যায়নি", "warning");
+    }
+}
+
+function toggleFieldsManager() {
+    const body = document.getElementById("fields-manager-body");
+    const icon = document.getElementById("fields-toggle-icon");
+    if (!body) return;
+
+    if (body.style.display === "none" || !body.style.display) {
+        body.style.display = "block";
+        if (icon) icon.style.transform = "rotate(180deg)";
+    } else {
+        body.style.display = "none";
+        if (icon) icon.style.transform = "rotate(0deg)";
+    }
+}
+
+async function loadFormFieldsList() {
+    try {
+        const res = await fetch(`/api/google/fields?workspace_id=${currentWorkspaceId}`);
+        const data = await res.json();
+        const tbody = document.getElementById("gforms-fields-tbody");
+        if (!tbody) return;
+
+        if (!data.fields || data.fields.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-dim); padding: 15px;">কোনো ফিল্ড কনফিগার করা নেই। ডিফল্ট ফিল্ড লোড হবে।</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = data.fields.map(f => {
+            const isFile = f.field_type === "file_upload";
+            const reqBadge = f.required 
+                ? `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 11px;">Yes</span>` 
+                : `<span class="badge" style="background: rgba(255,255,255,0.06); color: var(--text-dim); font-size: 11px;">No</span>`;
+            
+            return `
+                <tr>
+                    <td><strong style="color: #fff;">${f.field_label}</strong> <span style="font-size: 11px; color: var(--text-dim);">(${f.field_key})</span></td>
+                    <td><span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">${f.field_type}</span></td>
+                    <td>${reqBadge}</td>
+                    <td>${f.sort_order}</td>
+                    <td>
+                        ${isFile ? `<span style="font-size: 11px; color: var(--text-dim);">Master Form</span>` : `
+                        <button class="btn btn-danger btn-sm" style="padding: 3px 7px; font-size: 11px;" onclick="deleteFormField(${f.id})" title="মুছুন">
+                            <i class="fas fa-trash"></i>
+                        </button>`}
+                    </td>
+                </tr>
+            `;
+        }).join("");
+    } catch (e) {
+        console.error("loadFormFieldsList error:", e);
+    }
+}
+
+function openAddFieldModal() {
+    document.getElementById("form-add-field")?.reset();
+    openModal("modal-add-form-field");
+}
+
+async function handleAddFieldSubmit(e) {
+    e.preventDefault();
+    const label = document.getElementById("new-field-label")?.value?.trim();
+    let key = document.getElementById("new-field-key")?.value?.trim();
+    const ftype = document.getElementById("new-field-type")?.value || "short_answer";
+    const req = parseInt(document.getElementById("new-field-required")?.value || "1");
+
+    if (!label) {
+        showToast("ফিল্ডের নাম দিন", "warning");
+        return;
+    }
+    if (!key) {
+        key = label.toLowerCase().replace(/[^a-z0-9]/g, "_").slice(0, 30);
+    }
+
+    try {
+        const res = await fetch("/api/google/fields", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                workspace_id: currentWorkspaceId,
+                field_key: key,
+                field_label: label,
+                field_type: ftype,
+                required: req,
+                sort_order: 10
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("ফিল্ড সফলভাবে যুক্ত হয়েছে!", "success");
+            closeModal("modal-add-form-field");
+            loadFormFieldsList();
+        }
+    } catch (err) {
+        showToast("Error adding field", "danger");
+    }
+}
+
+async function deleteFormField(fieldId) {
+    if (!confirm("আপনি কি নিশ্চিত এই ফিল্ডটি মুছে ফেলতে চান?")) return;
+    try {
+        const res = await fetch(`/api/google/fields/${fieldId}?workspace_id=${currentWorkspaceId}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.success) {
+            showToast("ফিল্ড মুছে ফেলা হয়েছে", "success");
+            loadFormFieldsList();
+        }
+    } catch (e) {
+        showToast("Delete error", "danger");
+    }
+}
+
+async function loadGeneratedFormsList() {
+    try {
+        const res = await fetch(`/api/google/forms?workspace_id=${currentWorkspaceId}`);
+        const data = await res.json();
+        const tbody = document.getElementById("gforms-table-tbody");
+        if (!tbody) return;
+
+        if (!data.forms || data.forms.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 25px;">এখনো কোনো প্রতিষ্ঠানের ফর্ম তৈরি করা হয়নি। উপরের '+ নতুন প্রতিষ্ঠানের ফর্ম বানান' বাটনে ক্লিক করে ফর্ম তৈরি করুন।</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = data.forms.map(f => {
+            const formUrl = f.responder_uri || f.form_url;
+            const sheetUrl = f.response_sheet_url || (f.response_destination_id ? `https://docs.google.com/spreadsheets/d/${f.response_destination_id}/edit` : "");
+            
+            return `
+                <tr>
+                    <td>
+                        <strong style="color: #fff; font-size: 13px;">${f.institution_name}</strong>
+                        ${f.institution_phone ? `<div style="font-size: 11px; color: var(--text-dim);"><i class="fas fa-phone"></i> ${f.institution_phone}</div>` : ''}
+                    </td>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <a href="${formUrl}" target="_blank" style="color: #38bdf8; font-weight: 600; text-decoration: none; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
+                                <i class="fas fa-arrow-up-right-from-square"></i> Open Form
+                            </a>
+                            <button class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 10.5px;" onclick="copyTextToClipboard('${formUrl}')" title="লিংক কপি করুন">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </td>
+                    <td>
+                        ${sheetUrl ? `
+                        <a href="${sheetUrl}" target="_blank" style="color: #34d399; font-weight: 600; text-decoration: none; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
+                            <i class="fas fa-table"></i> Google Sheet
+                        </a>` : `<span style="color: var(--text-dim); font-size: 11px;">Not Linked</span>`}
+                    </td>
+                    <td>
+                        <span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; font-weight: 700; font-size: 12px; padding: 3px 8px;">
+                            ${f.submission_count || 0} জন
+                        </span>
+                    </td>
+                    <td style="font-size: 11px; color: var(--text-dim);">
+                        ${f.last_synced_at ? f.last_synced_at.slice(0, 16) : 'Never'}
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                            <button class="btn btn-primary btn-sm" style="padding: 4px 8px; font-size: 11px;" onclick="viewFormSubmissions('${f.form_id}', '${f.institution_name}')" title="রেসপন্স দেখুন">
+                                <i class="fas fa-users"></i> Submissions
+                            </button>
+                            <button class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 11px;" onclick="syncInstitutionForm('${f.form_id}')" title="ডাটা সিঙ্ক করুন">
+                                <i class="fas fa-rotate"></i> Sync
+                            </button>
+                            <button class="btn btn-sm" style="background: rgba(37, 211, 102, 0.2); color: #4ade80; border: 1px solid rgba(37, 211, 102, 0.4); padding: 4px 8px; font-size: 11px;" onclick="openSendFormWhatsAppModal('${f.form_id}', '${f.institution_name}', '${formUrl}')" title="WhatsApp এ পাঠান">
+                                <i class="fab fa-whatsapp"></i> Send
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join("");
+    } catch (e) {
+        console.error("loadGeneratedFormsList error:", e);
+    }
+}
+
+function openCreateInstitutionFormModal() {
+    document.getElementById("form-create-institution-form")?.reset();
+    openModal("modal-create-institution-form");
+}
+
+async function handleCreateInstitutionForm(e) {
+    e.preventDefault();
+    const instName = document.getElementById("new-inst-name")?.value?.trim();
+    const phone = document.getElementById("new-inst-phone")?.value?.trim();
+    const desc = document.getElementById("new-inst-desc")?.value?.trim();
+
+    if (!instName) {
+        showToast("প্রতিষ্ঠানের নাম দিন", "warning");
+        return;
+    }
+
+    showToast("গুগল ফর্ম ক্লোন ও প্রস্তুত করা হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন", "info");
+
+    try {
+        const res = await fetch("/api/google/forms/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                workspace_id: currentWorkspaceId,
+                institution_name: instName,
+                institution_phone: phone,
+                custom_description: desc
+            })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            showToast(`'${instName}' এর Google Form সফলভাবে তৈরি হয়েছে!`, "success");
+            closeModal("modal-create-institution-form");
+            loadGeneratedFormsList();
+        } else {
+            showToast(data.detail || data.error || "ফর্ম তৈরিতে সমস্যা হয়েছে।", "danger");
+        }
+    } catch (err) {
+        showToast("Network error creating form", "danger");
+    }
+}
+
+function openSendFormWhatsAppModal(formId, instName, formUrl) {
+    document.getElementById("wa-send-form-id").value = formId;
+    document.getElementById("wa-send-inst-name").value = instName;
+    document.getElementById("wa-send-phone").value = "";
+    
+    const defaultMsg = `আসসালামু আলাইকুম।\n\n*${instName}* এর আইডি কার্ড (ID Card) তথ্য ও ছবি সংগ্রহের জন্য গুগল ফর্ম প্রস্তুত করা হয়েছে।\n\n📝 ফর্ম লিংক:\n${formUrl}\n\nঅনুগ্রহ করে শিক্ষার্থীদের সঠিক তথ্য ও ছবি আপলোড করুন।`;
+    document.getElementById("wa-send-message").value = defaultMsg;
+
+    openModal("modal-send-form-whatsapp");
+}
+
+async function handleSendFormWhatsApp(e) {
+    e.preventDefault();
+    const formId = document.getElementById("wa-send-form-id")?.value;
+    const phone = document.getElementById("wa-send-phone")?.value?.trim();
+    const message = document.getElementById("wa-send-message")?.value?.trim();
+
+    if (!phone) {
+        showToast("গ্রাহকের WhatsApp নম্বর দিন", "warning");
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/google/forms/${formId}/send-whatsapp`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                workspace_id: currentWorkspaceId,
+                recipient_phone: phone,
+                custom_message: message
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("WhatsApp এ ফর্ম লিংক সফলভাবে পাঠানো হয়েছে!", "success");
+            closeModal("modal-send-form-whatsapp");
+        } else {
+            showToast(data.error || "WhatsApp পাঠানো সম্ভব হয়নি", "danger");
+        }
+    } catch (err) {
+        showToast("WhatsApp send error", "danger");
+    }
+}
+
+async function syncInstitutionForm(formId) {
+    showToast("রেসপন্স সিঙ্ক হচ্ছে...", "info");
+    try {
+        const res = await fetch(`/api/google/forms/${formId}/sync?workspace_id=${currentWorkspaceId}`, { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`সিঙ্ক সম্পন্ন! মোট রেসপন্স: ${data.total_submissions} (নতুন: ${data.new_submissions_imported})`, "success");
+            loadGeneratedFormsList();
+        } else {
+            showToast(data.error || "সিঙ্ক ব্যর্থ হয়েছে", "danger");
+        }
+    } catch (e) {
+        showToast("Sync network error", "danger");
+    }
+}
+
+async function viewFormSubmissions(formId, instName) {
+    currentOpenSubmissionsFormId = formId;
+    const titleEl = document.getElementById("subs-modal-title");
+    if (titleEl) titleEl.innerText = `${instName} - শিক্ষার্থীদের সাবমিশন তালিকা`;
+
+    const tbody = document.getElementById("subs-modal-tbody");
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 20px;"><i class="fas fa-spinner fa-spin"></i> ডাটা লোড হচ্ছে...</td></tr>`;
+    
+    openModal("modal-view-submissions");
+
+    try {
+        const res = await fetch(`/api/google/forms/${formId}/responses?workspace_id=${currentWorkspaceId}`);
+        const data = await res.json();
+        if (!tbody) return;
+
+        if (!data.submissions || data.submissions.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 25px;">এখনো কোনো শিক্ষার্থী ফর্ম পূরণ করেনি। 'Sync Responses' বাটনে চাপ দিয়ে লাইভ ডাটা চেক করতে পারেন।</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = data.submissions.map(s => {
+            const photoUrl = s.photo_drive_url || s.photo_thumbnail_url;
+            const photoHtml = photoUrl ? `
+                <a href="${photoUrl}" target="_blank" title="ছবি দেখুন">
+                    <img src="${photoUrl}" style="width: 42px; height: 42px; object-fit: cover; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);" onerror="this.onerror=null;this.src='/static/img/photo_placeholder.png';">
+                </a>
+            ` : `<span style="font-size: 11px; color: var(--text-dim);">No Photo</span>`;
+
+            return `
+                <tr>
+                    <td>${photoHtml}</td>
+                    <td><strong style="color: #fff;">${s.student_name || 'N/A'}</strong></td>
+                    <td><span class="badge" style="background: rgba(255,255,255,0.06);">${s.student_roll || '-'}</span></td>
+                    <td>${s.student_class || '-'}</td>
+                    <td>${s.student_phone || '-'}</td>
+                    <td style="font-size: 11px; color: var(--text-dim);">${s.submission_timestamp ? s.submission_timestamp.slice(0, 16) : '-'}</td>
+                </tr>
+            `;
+        }).join("");
+    } catch (e) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #f87171; padding: 20px;">ডাটা লোড করতে সমস্যা হয়েছে।</td></tr>`;
+    }
+}
+
+async function syncCurrentOpenFormSubmissions() {
+    if (!currentOpenSubmissionsFormId) return;
+    await syncInstitutionForm(currentOpenSubmissionsFormId);
+    viewFormSubmissions(currentOpenSubmissionsFormId, "Institution");
+}
+
+function copyTextToClipboard(text) {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+        showToast("লিংক ক্লিপবোর্ডে কপি করা হয়েছে!", "success");
+    }).catch(() => {
+        showToast("কপি করা সম্ভব হয়নি", "warning");
+    });
+}
+
 
 
 

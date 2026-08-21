@@ -260,6 +260,168 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_webhook_events_id ON processed_webhook_events(event_id)")
 
+    # 15. Google Workspace Connections (OAuth & Drive/Form/Sheet Binding per Workspace)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS google_connections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER UNIQUE NOT NULL,
+        google_account_email TEXT,
+        access_token_encrypted TEXT,
+        refresh_token_encrypted TEXT,
+        token_expiry TIMESTAMP,
+        drive_root_folder_id TEXT,
+        master_form_id TEXT,
+        master_sheet_id TEXT,
+        master_form_name TEXT,
+        master_form_url TEXT,
+        master_edit_url TEXT,
+        master_has_file_upload INTEGER DEFAULT 0,
+        master_sheet_url TEXT,
+        master_verified_at TIMESTAMP,
+        status TEXT DEFAULT 'connected',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_google_conn_ws ON google_connections(workspace_id)")
+
+    # 16. Google Form Templates (Master Form Templates per Workspace)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS google_form_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        form_type TEXT DEFAULT 'id_card',
+        master_form_id TEXT NOT NULL,
+        description_template TEXT,
+        form_url TEXT,
+        edit_url TEXT,
+        spreadsheet_id TEXT,
+        spreadsheet_url TEXT,
+        has_file_upload INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gform_templates_ws ON google_form_templates(workspace_id)")
+
+    # 17. Institutions (Profile & Folder Scoping)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS institutions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        code TEXT,
+        contact_person TEXT,
+        phone TEXT,
+        address TEXT,
+        drive_folder_id TEXT,
+        active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_institutions_ws ON institutions(workspace_id)")
+
+    # 18. Generated Forms (Cloned Institution Google Forms)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS generated_forms (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER NOT NULL,
+        template_id INTEGER,
+        institution_id INTEGER,
+        institution_name TEXT NOT NULL,
+        form_id TEXT UNIQUE NOT NULL,
+        form_url TEXT NOT NULL,
+        responder_uri TEXT,
+        edit_url TEXT,
+        drive_folder_id TEXT,
+        response_destination_id TEXT,
+        response_sheet_url TEXT,
+        status TEXT DEFAULT 'active',
+        submission_count INTEGER DEFAULT 0,
+        last_synced_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (template_id) REFERENCES google_form_templates(id) ON DELETE SET NULL,
+        FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE SET NULL
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gforms_ws ON generated_forms(workspace_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gforms_form_id ON generated_forms(form_id)")
+
+    # 19. Google Form Fields (Dynamic Field Manager per Template / Workspace)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS google_form_fields (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER NOT NULL,
+        template_id INTEGER,
+        field_key TEXT NOT NULL,
+        field_label TEXT NOT NULL,
+        field_type TEXT NOT NULL,
+        required INTEGER DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        options_json TEXT DEFAULT '[]',
+        active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (template_id) REFERENCES google_form_templates(id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gform_fields_ws ON google_form_fields(workspace_id)")
+
+    # 20. Google Form Submissions (Idempotent Storage for Student Responses)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS google_form_submissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER NOT NULL,
+        generated_form_id INTEGER NOT NULL,
+        form_id TEXT NOT NULL,
+        response_id TEXT NOT NULL,
+        customer_id INTEGER,
+        student_name TEXT,
+        student_roll TEXT,
+        student_class TEXT,
+        student_phone TEXT,
+        submission_timestamp TIMESTAMP,
+        raw_response_json TEXT NOT NULL,
+        processed INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (generated_form_id) REFERENCES generated_forms(id) ON DELETE CASCADE,
+        UNIQUE(form_id, response_id)
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gform_subs_ws_form ON google_form_submissions(workspace_id, form_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gform_subs_resp_id ON google_form_submissions(form_id, response_id)")
+
+    # 21. Google Uploaded Files (Photos / Documents in Google Drive)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS google_uploaded_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER NOT NULL,
+        generated_form_id INTEGER NOT NULL,
+        response_id TEXT NOT NULL,
+        field_key TEXT,
+        file_id TEXT NOT NULL,
+        file_name TEXT,
+        drive_url TEXT,
+        mime_type TEXT,
+        thumbnail_url TEXT,
+        processed INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (generated_form_id) REFERENCES generated_forms(id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gupload_files_ws_form ON google_uploaded_files(workspace_id, generated_form_id)")
+
     # Multi-tenant scoping columns migration for all business tables
     scoped_tables = [
         "products", "orders", "conversations", "comment_logs", 
@@ -284,6 +446,35 @@ def init_db():
         cursor.execute("ALTER TABLE comment_logs ADD COLUMN page_id TEXT DEFAULT ''")
     except Exception:
         pass
+
+    # Auto-migration columns for google_connections (Master Form Metadata)
+    google_conn_cols = [
+        ("master_form_name", "TEXT"),
+        ("master_form_url", "TEXT"),
+        ("master_edit_url", "TEXT"),
+        ("master_has_file_upload", "INTEGER DEFAULT 0"),
+        ("master_sheet_url", "TEXT"),
+        ("master_verified_at", "TIMESTAMP")
+    ]
+    for col_name, col_type in google_conn_cols:
+        try:
+            cursor.execute(f"ALTER TABLE google_connections ADD COLUMN {col_name} {col_type}")
+        except Exception:
+            pass
+
+    # Auto-migration columns for google_form_templates
+    gtemplate_cols = [
+        ("form_url", "TEXT"),
+        ("edit_url", "TEXT"),
+        ("spreadsheet_id", "TEXT"),
+        ("spreadsheet_url", "TEXT"),
+        ("has_file_upload", "INTEGER DEFAULT 0")
+    ]
+    for col_name, col_type in gtemplate_cols:
+        try:
+            cursor.execute(f"ALTER TABLE google_form_templates ADD COLUMN {col_name} {col_type}")
+        except Exception:
+            pass
 
     # Migrate conversations table if legacy single-column UNIQUE(sender_id) exists
     try:
@@ -1948,3 +2139,642 @@ def update_media_delivery_status(
     except Exception as e:
         print(f"[DB update_media_delivery_status Error]: {e}")
         return False
+
+
+# =========================================================
+# Google Integration Database Helpers (Workspace Isolated)
+# =========================================================
+
+def get_google_connection(workspace_id: int = 1) -> Optional[dict]:
+    """Fetches the Google connection row for the specified workspace."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM google_connections WHERE workspace_id = ?", (int(workspace_id or 1),))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_google_connection Error]: {e}")
+        return None
+
+def save_google_connection(
+    workspace_id: int,
+    google_account_email: str,
+    access_token_encrypted: str = "",
+    refresh_token_encrypted: str = "",
+    token_expiry: str = None,
+    drive_root_folder_id: str = None,
+    master_form_id: str = None,
+    master_sheet_id: str = None,
+    status: str = "connected"
+) -> dict:
+    """Inserts or updates the Google connection for a workspace."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO google_connections (
+                workspace_id, google_account_email, access_token_encrypted,
+                refresh_token_encrypted, token_expiry, drive_root_folder_id,
+                master_form_id, master_sheet_id, status, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(workspace_id) DO UPDATE SET
+                google_account_email = excluded.google_account_email,
+                access_token_encrypted = CASE WHEN excluded.access_token_encrypted != '' THEN excluded.access_token_encrypted ELSE access_token_encrypted END,
+                refresh_token_encrypted = CASE WHEN excluded.refresh_token_encrypted != '' THEN excluded.refresh_token_encrypted ELSE refresh_token_encrypted END,
+                token_expiry = COALESCE(excluded.token_expiry, token_expiry),
+                drive_root_folder_id = COALESCE(excluded.drive_root_folder_id, drive_root_folder_id),
+                master_form_id = COALESCE(excluded.master_form_id, master_form_id),
+                master_sheet_id = COALESCE(excluded.master_sheet_id, master_sheet_id),
+                status = excluded.status,
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            int(workspace_id or 1),
+            google_account_email,
+            access_token_encrypted,
+            refresh_token_encrypted,
+            token_expiry,
+            drive_root_folder_id,
+            master_form_id,
+            master_sheet_id,
+            status
+        ))
+        conn.commit()
+        cursor.execute("SELECT * FROM google_connections WHERE workspace_id = ?", (int(workspace_id or 1),))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else {}
+    except Exception as e:
+        print(f"[DB save_google_connection Error]: {e}")
+        return {}
+
+def delete_google_connection(workspace_id: int) -> bool:
+    """Disconnects and removes Google connection for a workspace."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM google_connections WHERE workspace_id = ?", (int(workspace_id or 1),))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[DB delete_google_connection Error]: {e}")
+        return False
+
+def update_google_master_ids(
+    workspace_id: int,
+    master_form_id: str = None,
+    master_sheet_id: str = None,
+    drive_root_folder_id: str = None,
+    master_form_name: str = None,
+    master_form_url: str = None,
+    master_edit_url: str = None,
+    master_sheet_url: str = None,
+    master_has_file_upload: int = None
+) -> bool:
+    """Updates master form, sheet, or root folder ID and metadata for a workspace."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE google_connections SET
+                master_form_id = COALESCE(?, master_form_id),
+                master_sheet_id = COALESCE(?, master_sheet_id),
+                drive_root_folder_id = COALESCE(?, drive_root_folder_id),
+                master_form_name = COALESCE(?, master_form_name),
+                master_form_url = COALESCE(?, master_form_url),
+                master_edit_url = COALESCE(?, master_edit_url),
+                master_sheet_url = COALESCE(?, master_sheet_url),
+                master_has_file_upload = COALESCE(?, master_has_file_upload),
+                master_verified_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE workspace_id = ?
+        """, (
+            master_form_id, master_sheet_id, drive_root_folder_id,
+            master_form_name, master_form_url, master_edit_url,
+            master_sheet_url, master_has_file_upload,
+            int(workspace_id or 1)
+        ))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[DB update_google_master_ids Error]: {e}")
+        return False
+
+def save_master_form_template(
+    workspace_id: int,
+    name: str,
+    master_form_id: str,
+    form_type: str = "id_card",
+    description_template: str = None,
+    form_url: str = None,
+    edit_url: str = None,
+    spreadsheet_id: str = None,
+    spreadsheet_url: str = None,
+    has_file_upload: int = 1,
+    template_id: int = None
+) -> dict:
+    """Creates or updates a Master Form Template record."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if template_id:
+            cursor.execute("""
+                UPDATE google_form_templates SET
+                    name = ?, form_type = ?, master_form_id = ?,
+                    description_template = ?, form_url = ?, edit_url = ?,
+                    spreadsheet_id = ?, spreadsheet_url = ?,
+                    has_file_upload = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND workspace_id = ?
+            """, (
+                name, form_type, master_form_id, description_template,
+                form_url, edit_url, spreadsheet_id, spreadsheet_url,
+                has_file_upload, template_id, int(workspace_id or 1)
+            ))
+            t_id = template_id
+        else:
+            cursor.execute("""
+                INSERT INTO google_form_templates (
+                    workspace_id, name, form_type, master_form_id,
+                    description_template, form_url, edit_url,
+                    spreadsheet_id, spreadsheet_url, has_file_upload, active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            """, (
+                int(workspace_id or 1), name, form_type, master_form_id,
+                description_template, form_url, edit_url,
+                spreadsheet_id, spreadsheet_url, has_file_upload
+            ))
+            t_id = cursor.lastrowid
+        conn.commit()
+        cursor.execute("SELECT * FROM google_form_templates WHERE id = ?", (t_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else {}
+    except Exception as e:
+        print(f"[DB save_master_form_template Error]: {e}")
+        return {}
+
+def get_master_form_templates(workspace_id: int = 1) -> List[dict]:
+    """Lists all Master Form Templates for a workspace."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM google_form_templates 
+            WHERE workspace_id = ? AND active = 1 
+            ORDER BY id DESC
+        """, (int(workspace_id or 1),))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"[DB get_master_form_templates Error]: {e}")
+        return []
+
+def get_master_form_template_by_id(template_id: int, workspace_id: int = 1) -> Optional[dict]:
+    """Fetches a single Master Form Template."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM google_form_templates 
+            WHERE id = ? AND workspace_id = ?
+        """, (int(template_id), int(workspace_id or 1)))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_master_form_template_by_id Error]: {e}")
+        return None
+
+def get_institutions(workspace_id: int = 1) -> List[dict]:
+    """Fetches all institutions registered under the workspace."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM institutions WHERE workspace_id = ? ORDER BY id DESC", (int(workspace_id or 1),))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"[DB get_institutions Error]: {e}")
+        return []
+
+def get_institution_by_name(workspace_id: int, name: str) -> Optional[dict]:
+    """Fetches an institution by name under a specific workspace."""
+    if not name:
+        return None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM institutions WHERE workspace_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?))", (int(workspace_id or 1), name))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_institution_by_name Error]: {e}")
+        return None
+
+def save_institution(
+    workspace_id: int,
+    name: str,
+    code: str = None,
+    contact_person: str = None,
+    phone: str = None,
+    address: str = None,
+    drive_folder_id: str = None,
+    active: int = 1
+) -> dict:
+    """Creates or updates an institution record."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        existing = get_institution_by_name(workspace_id, name)
+        if existing:
+            cursor.execute("""
+                UPDATE institutions SET
+                    code = COALESCE(?, code),
+                    contact_person = COALESCE(?, contact_person),
+                    phone = COALESCE(?, phone),
+                    address = COALESCE(?, address),
+                    drive_folder_id = COALESCE(?, drive_folder_id),
+                    active = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (code, contact_person, phone, address, drive_folder_id, active, existing["id"]))
+            inst_id = existing["id"]
+        else:
+            cursor.execute("""
+                INSERT INTO institutions (
+                    workspace_id, name, code, contact_person, phone, address, drive_folder_id, active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (int(workspace_id or 1), name, code, contact_person, phone, address, drive_folder_id, active))
+            inst_id = cursor.lastrowid
+        conn.commit()
+        cursor.execute("SELECT * FROM institutions WHERE id = ?", (inst_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else {}
+    except Exception as e:
+        print(f"[DB save_institution Error]: {e}")
+        return {}
+
+def get_generated_forms(workspace_id: int = 1) -> List[dict]:
+    """Fetches all generated forms for a workspace."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT gf.*, inst.phone as institution_phone, inst.contact_person
+            FROM generated_forms gf
+            LEFT JOIN institutions inst ON gf.institution_id = inst.id
+            WHERE gf.workspace_id = ?
+            ORDER BY gf.id DESC
+        """, (int(workspace_id or 1),))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"[DB get_generated_forms Error]: {e}")
+        return []
+
+def get_generated_form_by_id(form_id: str) -> Optional[dict]:
+    """Fetches a generated form by its Google Form ID."""
+    if not form_id:
+        return None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM generated_forms WHERE form_id = ?", (str(form_id).strip(),))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_generated_form_by_id Error]: {e}")
+        return None
+
+def get_generated_form_by_institution(workspace_id: int, institution_name: str) -> Optional[dict]:
+    """Checks if a form already exists for an institution under the workspace."""
+    if not institution_name:
+        return None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM generated_forms 
+            WHERE workspace_id = ? AND LOWER(TRIM(institution_name)) = LOWER(TRIM(?))
+            ORDER BY id DESC LIMIT 1
+        """, (int(workspace_id or 1), institution_name))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB get_generated_form_by_institution Error]: {e}")
+        return None
+
+def save_generated_form(
+    workspace_id: int,
+    institution_name: str,
+    form_id: str,
+    form_url: str,
+    responder_uri: str = None,
+    edit_url: str = None,
+    template_id: int = None,
+    institution_id: int = None,
+    drive_folder_id: str = None,
+    response_destination_id: str = None,
+    response_sheet_url: str = None,
+    status: str = "active"
+) -> dict:
+    """Saves or updates a cloned Google Form metadata record."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO generated_forms (
+                workspace_id, template_id, institution_id, institution_name,
+                form_id, form_url, responder_uri, edit_url, drive_folder_id,
+                response_destination_id, response_sheet_url, status, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(form_id) DO UPDATE SET
+                institution_name = excluded.institution_name,
+                form_url = excluded.form_url,
+                responder_uri = COALESCE(excluded.responder_uri, responder_uri),
+                edit_url = COALESCE(excluded.edit_url, edit_url),
+                drive_folder_id = COALESCE(excluded.drive_folder_id, drive_folder_id),
+                response_destination_id = COALESCE(excluded.response_destination_id, response_destination_id),
+                response_sheet_url = COALESCE(excluded.response_sheet_url, response_sheet_url),
+                status = excluded.status,
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            int(workspace_id or 1),
+            template_id,
+            institution_id,
+            institution_name,
+            str(form_id).strip(),
+            str(form_url).strip(),
+            responder_uri,
+            edit_url,
+            drive_folder_id,
+            response_destination_id,
+            response_sheet_url,
+            status
+        ))
+        conn.commit()
+        cursor.execute("SELECT * FROM generated_forms WHERE form_id = ?", (str(form_id).strip(),))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else {}
+    except Exception as e:
+        print(f"[DB save_generated_form Error]: {e}")
+        return {}
+
+def update_generated_form_stats(form_id: str, submission_count: int, last_synced_at: str = None) -> bool:
+    """Updates the submission counter and sync timestamp for a generated form."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE generated_forms SET
+                submission_count = ?,
+                last_synced_at = COALESCE(?, CURRENT_TIMESTAMP),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE form_id = ?
+        """, (int(submission_count), last_synced_at, str(form_id).strip()))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[DB update_generated_form_stats Error]: {e}")
+        return False
+
+def get_google_form_fields(workspace_id: int = 1, template_id: int = None) -> List[dict]:
+    """Fetches configured form fields for a workspace / template, seeding defaults if none exist."""
+    seed_default_form_fields_if_needed(workspace_id=workspace_id, template_id=template_id)
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if template_id:
+            cursor.execute("""
+                SELECT * FROM google_form_fields 
+                WHERE workspace_id = ? AND (template_id = ? OR template_id IS NULL)
+                ORDER BY sort_order ASC, id ASC
+            """, (int(workspace_id or 1), int(template_id)))
+        else:
+            cursor.execute("""
+                SELECT * FROM google_form_fields 
+                WHERE workspace_id = ? 
+                ORDER BY sort_order ASC, id ASC
+            """, (int(workspace_id or 1),))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"[DB get_google_form_fields Error]: {e}")
+        return []
+
+def seed_default_form_fields_if_needed(workspace_id: int = 1, template_id: int = None):
+    """Seeds standard ID Card form questions if the workspace has no fields configured."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as cnt FROM google_form_fields WHERE workspace_id = ?", (int(workspace_id or 1),))
+        count = cursor.fetchone()["cnt"]
+        if count == 0:
+            default_fields = [
+                ("student_name", "শিক্ষার্থীর নাম (Student Name)", "short_answer", 1, 1, "[]"),
+                ("father_name", "পিতার নাম (Father's Name)", "short_answer", 1, 2, "[]"),
+                ("mother_name", "মাতার নাম (Mother's Name)", "short_answer", 0, 3, "[]"),
+                ("student_class", "শ্রেণি / জামাত (Class)", "short_answer", 1, 4, "[]"),
+                ("student_section", "শাখা (Section)", "short_answer", 0, 5, "[]"),
+                ("student_roll", "রোল নম্বর (Roll No)", "short_answer", 1, 6, "[]"),
+                ("student_id", "আইডি নম্বর (Student ID)", "short_answer", 0, 7, "[]"),
+                ("date_of_birth", "জন্মতারিখ (Date of Birth)", "date", 0, 8, "[]"),
+                ("blood_group", "রক্তের গ্রুপ (Blood Group)", "dropdown", 0, 9, json.dumps(["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"], ensure_ascii=False)),
+                ("guardian_phone", "অভিভাবকের মোবাইল নম্বর (Phone)", "short_answer", 1, 10, "[]"),
+                ("address", "পূর্ণাঙ্গ ঠিকানা (Address)", "paragraph", 1, 11, "[]"),
+                ("student_photo", "শিক্ষার্থীর পাসপোর্ট সাইজ ছবি আপলোড (Photo Upload)", "file_upload", 1, 12, "[]")
+            ]
+            for key, label, ftype, req, order, opts in default_fields:
+                cursor.execute("""
+                    INSERT INTO google_form_fields (
+                        workspace_id, template_id, field_key, field_label, field_type, required, sort_order, options_json, active
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                """, (int(workspace_id or 1), template_id, key, label, ftype, req, order, opts))
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[DB seed_default_form_fields_if_needed Error]: {e}")
+
+def save_google_form_field(
+    workspace_id: int,
+    field_key: str,
+    field_label: str,
+    field_type: str,
+    required: int = 1,
+    sort_order: int = 0,
+    options_json: str = "[]",
+    template_id: int = None,
+    field_id: int = None
+) -> dict:
+    """Inserts or updates a form field."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if field_id:
+            cursor.execute("""
+                UPDATE google_form_fields SET
+                    field_key = ?, field_label = ?, field_type = ?,
+                    required = ?, sort_order = ?, options_json = ?
+                WHERE id = ? AND workspace_id = ?
+            """, (field_key, field_label, field_type, required, sort_order, options_json, field_id, int(workspace_id or 1)))
+            f_id = field_id
+        else:
+            cursor.execute("""
+                INSERT INTO google_form_fields (
+                    workspace_id, template_id, field_key, field_label, field_type, required, sort_order, options_json, active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+            """, (int(workspace_id or 1), template_id, field_key, field_label, field_type, required, sort_order, options_json))
+            f_id = cursor.lastrowid
+        conn.commit()
+        cursor.execute("SELECT * FROM google_form_fields WHERE id = ?", (f_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else {}
+    except Exception as e:
+        print(f"[DB save_google_form_field Error]: {e}")
+        return {}
+
+def delete_google_form_field(field_id: int, workspace_id: int = 1) -> bool:
+    """Deletes a form field."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM google_form_fields WHERE id = ? AND workspace_id = ?", (field_id, int(workspace_id or 1)))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[DB delete_google_form_field Error]: {e}")
+        return False
+
+def save_form_submission(
+    workspace_id: int,
+    generated_form_id: int,
+    form_id: str,
+    response_id: str,
+    raw_response_json: str,
+    student_name: str = None,
+    student_roll: str = None,
+    student_class: str = None,
+    student_phone: str = None,
+    submission_timestamp: str = None,
+    customer_id: int = None
+) -> Tuple[bool, dict]:
+    """
+    Saves a form submission with idempotent deduplication.
+    Returns (is_new, record_dict).
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM google_form_submissions 
+            WHERE form_id = ? AND response_id = ?
+        """, (str(form_id).strip(), str(response_id).strip()))
+        existing = cursor.fetchone()
+        if existing:
+            conn.close()
+            return False, dict(existing)
+
+        cursor.execute("""
+            INSERT INTO google_form_submissions (
+                workspace_id, generated_form_id, form_id, response_id, customer_id,
+                student_name, student_roll, student_class, student_phone,
+                submission_timestamp, raw_response_json, processed, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?, 1, CURRENT_TIMESTAMP)
+        """, (
+            int(workspace_id or 1),
+            int(generated_form_id),
+            str(form_id).strip(),
+            str(response_id).strip(),
+            customer_id,
+            student_name,
+            student_roll,
+            student_class,
+            student_phone,
+            submission_timestamp,
+            raw_response_json
+        ))
+        sub_id = cursor.lastrowid
+        conn.commit()
+        cursor.execute("SELECT * FROM google_form_submissions WHERE id = ?", (sub_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return True, dict(row) if row else {}
+    except Exception as e:
+        print(f"[DB save_form_submission Error]: {e}")
+        return False, {}
+
+def get_form_submissions(form_id: str, workspace_id: int = 1) -> List[dict]:
+    """Fetches all submissions for a generated form with uploaded photo URLs."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.*, uf.drive_url as photo_drive_url, uf.thumbnail_url as photo_thumbnail_url, uf.file_name as photo_file_name
+            FROM google_form_submissions s
+            LEFT JOIN google_uploaded_files uf ON s.generated_form_id = uf.generated_form_id AND s.response_id = uf.response_id
+            WHERE s.workspace_id = ? AND s.form_id = ?
+            ORDER BY s.id DESC
+        """, (int(workspace_id or 1), str(form_id).strip()))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"[DB get_form_submissions Error]: {e}")
+        return []
+
+def save_uploaded_file(
+    workspace_id: int,
+    generated_form_id: int,
+    response_id: str,
+    file_id: str,
+    file_name: str = None,
+    drive_url: str = None,
+    mime_type: str = None,
+    thumbnail_url: str = None,
+    field_key: str = "student_photo"
+) -> dict:
+    """Saves metadata for a photo uploaded through the form."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO google_uploaded_files (
+                workspace_id, generated_form_id, response_id, field_key,
+                file_id, file_name, drive_url, mime_type, thumbnail_url, processed
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        """, (
+            int(workspace_id or 1),
+            int(generated_form_id),
+            str(response_id).strip(),
+            field_key,
+            str(file_id).strip(),
+            file_name,
+            drive_url,
+            mime_type,
+            thumbnail_url
+        ))
+        conn.commit()
+        u_id = cursor.lastrowid
+        cursor.execute("SELECT * FROM google_uploaded_files WHERE id = ?", (u_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else {}
+    except Exception as e:
+        print(f"[DB save_uploaded_file Error]: {e}")
+        return {}
+

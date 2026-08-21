@@ -69,6 +69,10 @@
                 <i class="fas fa-bullhorn"></i>
                 <span>AdsFlow</span>
             </li>
+            <li class="nav-item" data-tab="google-forms">
+                <i class="fab fa-google" style="color: #38bdf8;"></i>
+                <span>Google Forms</span>
+            </li>
             <li class="nav-item" data-tab="integrations">
                 <i class="fas fa-plug"></i>
                 <span>Integrations</span>
@@ -819,6 +823,201 @@
             </section>
 
             <!-- ==========================================
+                 TAB: GOOGLE FORMS & ID CARD AUTOMATION
+                 ========================================== -->
+            <section id="tab-google-forms" class="tab-pane">
+                <!-- Page Top Action Bar -->
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px;">
+                    <div>
+                        <h2 style="font-size: 20px; font-weight: 700; color: #fff; margin: 0; display: flex; align-items: center; gap: 8px;">
+                            <i class="fab fa-google" style="color: #38bdf8;"></i> Google Forms & ID Card Automation
+                        </h2>
+                        <p style="color: var(--text-muted); font-size: 13px; margin: 4px 0 0 0;">
+                            মাস্টার ফর্ম ক্লোন করে যেকোনো প্রতিষ্ঠানের জন্য অটোমেটিক ছবি আপলোড সহ ফর্ম তৈরি ও শিটে ডাটা সংরক্ষণ।
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="btn btn-secondary" onclick="loadGoogleFormsTab()" style="font-size: 12.5px; padding: 7px 12px;">
+                            <i class="fas fa-rotate"></i> রিফ্রেশ
+                        </button>
+                        <button class="btn btn-primary" onclick="openCreateInstitutionFormModal()" style="font-size: 12.5px; padding: 7px 15px; font-weight: 600;">
+                            <i class="fas fa-plus-circle"></i> + নতুন প্রতিষ্ঠানের ফর্ম বানান
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Google Connection & Master Form Setup Section -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                    <!-- Card 1: Google Account Connection -->
+                    <div class="glass-card" style="border: 1px solid rgba(56, 189, 248, 0.3); background: linear-gradient(180deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);">
+                        <div class="card-header" style="padding-bottom: 10px;">
+                            <div class="card-title" style="font-size: 15px;">
+                                <i class="fab fa-google-drive" style="color: #38bdf8;"></i> Google Account Connection
+                            </div>
+                            <span id="gforms-conn-badge" class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.3); font-size: 11px;">Not Connected</span>
+                        </div>
+                        
+                        <div id="gforms-conn-msg" style="font-size: 13px; color: #f87171; margin-bottom: 10px; font-weight: 500;">
+                            Google Account is not connected.
+                        </div>
+                        
+                        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+                            কানেক্টেড ইমেইল: <strong id="gforms-conn-email" style="color: #fff;">None</strong>
+                        </div>
+                        
+                        <div style="display: flex; gap: 12px; font-size: 11.5px; margin-bottom: 14px; flex-wrap: wrap;">
+                            <span id="gforms-drive-status" style="color: var(--text-dim);"><i class="fas fa-circle-notch"></i> Drive API: Pending</span>
+                            <span id="gforms-forms-status" style="color: var(--text-dim);"><i class="fas fa-circle-notch"></i> Forms API: Pending</span>
+                            <span id="gforms-sheets-status" style="color: var(--text-dim);"><i class="fas fa-circle-notch"></i> Sheets API: Pending</span>
+                        </div>
+                        
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button id="btn-connect-google" class="btn btn-primary btn-sm" onclick="startGoogleOAuthConnect()" style="font-weight: 600;">
+                                <i class="fab fa-google"></i> Connect Google Account
+                            </button>
+                            <button id="btn-disconnect-google" class="btn btn-danger btn-sm" onclick="disconnectGoogleAccount()" style="display: none;">
+                                <i class="fas fa-link-slash"></i> Disconnect
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Card 2: Master Form Configuration & Actions -->
+                    <div class="glass-card" style="border: 1px solid rgba(168, 85, 247, 0.3); background: linear-gradient(180deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);">
+                        <div class="card-header" style="padding-bottom: 8px;">
+                            <div class="card-title" style="font-size: 15px;">
+                                <i class="fas fa-id-card-clip" style="color: #c084fc;"></i> Master Form Template
+                            </div>
+                            <span id="gforms-master-badge" class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.3); font-size: 11px;">Not Configured</span>
+                        </div>
+
+                        <!-- Status Message & Details -->
+                        <div id="master-form-details-box" style="margin-bottom: 12px;">
+                            <div id="gforms-master-msg" style="font-size: 13px; color: #f87171; font-weight: 500; margin-bottom: 6px;">
+                                Master Form is not configured.
+                            </div>
+                            
+                            <div id="master-form-meta-grid" style="display: none; background: rgba(0,0,0,0.25); border-radius: 8px; padding: 10px; font-size: 12px;">
+                                <div style="margin-bottom: 4px;">
+                                    <span style="color: var(--text-dim);">নাম:</span> <strong id="master-display-name" style="color: #fff;">-</strong>
+                                </div>
+                                <div style="margin-bottom: 4px;">
+                                    <span style="color: var(--text-dim);">Form ID:</span> <code id="master-display-id" style="color: #38bdf8; font-size: 11px;">-</code>
+                                </div>
+                                <div style="margin-bottom: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                    <span style="color: var(--text-dim);">ফর্ম লিংক:</span>
+                                    <a id="master-display-url" href="#" target="_blank" style="color: #38bdf8; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                        <i class="fas fa-arrow-up-right-from-square"></i> Open Form
+                                    </a>
+                                    <button class="btn btn-secondary btn-sm" style="padding: 1px 6px; font-size: 10px;" onclick="copyMasterFormUrl()">
+                                        <i class="fas fa-copy"></i> কপি
+                                    </button>
+                                </div>
+                                <div style="margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: var(--text-dim);">এডিটর লিংক:</span>
+                                    <a id="master-display-edit-url" href="#" target="_blank" style="color: #c084fc; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                        <i class="fas fa-pen-to-square"></i> Edit in Google Forms
+                                    </a>
+                                </div>
+                                <div style="margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: var(--text-dim);">রেসপন্স শিট:</span>
+                                    <a id="master-display-sheet-url" href="#" target="_blank" style="color: #34d399; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                        <i class="fas fa-table"></i> Google Sheet
+                                    </a>
+                                </div>
+                                <div>
+                                    <span style="color: var(--text-dim);">File Upload প্রশ্ন:</span>
+                                    <span id="master-display-upload-badge" class="badge" style="font-size: 11px; padding: 2px 6px;">Checking...</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button class="btn btn-primary btn-sm" onclick="openSelectMasterFormModal()" style="font-weight: 600;">
+                                <i class="fas fa-folder-open"></i> Select Master Form
+                            </button>
+                            <button class="btn btn-secondary btn-sm" onclick="openCreateMasterFormModal()" style="font-weight: 600;">
+                                <i class="fas fa-plus-circle"></i> Create New Master Form
+                            </button>
+                            <button class="btn btn-secondary btn-sm" onclick="verifyCurrentMasterForm()" style="padding: 5px 10px;" title="যাচাই ও রিফ্রেশ করুন">
+                                <i class="fas fa-rotate"></i> Refresh / Verify
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Fields Manager Toggle Section -->
+                <div class="glass-card" style="margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.08);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleFieldsManager()">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <i class="fas fa-list-check" style="color: #38bdf8; font-size: 16px;"></i>
+                            <div>
+                                <strong style="color: #fff; font-size: 14px;">ID Card Form Questions & Fields (প্রশ্নমালা কনফিগারেশন)</strong>
+                                <p style="margin: 2px 0 0 0; font-size: 11.5px; color: var(--text-muted);">শিক্ষার্থীর নাম, পিতা, শ্রেণি, রোল, রক্তের গ্রুপ ও ছবি আপলোড ফিল্ডসমূহ</p>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); openAddFieldModal();" style="padding: 4px 10px; font-size: 11.5px;">
+                                <i class="fas fa-plus"></i> + নতুন ফিল্ড
+                            </button>
+                            <i id="fields-toggle-icon" class="fas fa-chevron-down" style="color: var(--text-dim); transition: transform 0.2s;"></i>
+                        </div>
+                    </div>
+                    <div id="fields-manager-body" style="display: none; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06);">
+                        <div class="table-responsive">
+                            <table class="custom-table" style="font-size: 12px;">
+                                <thead>
+                                    <tr>
+                                        <th>ফিল্ডের নাম (Label)</th>
+                                        <th>ধরন (Type)</th>
+                                        <th>বাধ্যতামূলক (Required)</th>
+                                        <th>ক্রম</th>
+                                        <th>অ্যাকশন</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="gforms-fields-tbody">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cloned Institution Forms List -->
+                <div class="glass-card" style="border: 1px solid rgba(255,255,255,0.08);">
+                    <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <div class="card-title" style="font-size: 16px;">
+                                <i class="fas fa-building-columns" style="color: var(--primary-light);"></i>
+                                তৈরি করা প্রতিষ্ঠানের ফর্ম ও রেসপন্স তালিকা (Generated Forms)
+                            </div>
+                            <p style="color: var(--text-muted); font-size: 12px; margin: 4px 0 0 0;">
+                                সকল প্রতিষ্ঠানের গুগল ফর্ম লিংক, রেসপন্স শিট ও ছাত্র-ছাত্রীদের ছবি এক নজরে দেখুন।
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive" style="margin-top: 12px;">
+                        <table class="custom-table" style="font-size: 12px;">
+                            <thead>
+                                <tr>
+                                    <th>প্রতিষ্ঠানের নাম</th>
+                                    <th>গুগল ফর্ম লিংক</th>
+                                    <th>রেসপন্স শিট</th>
+                                    <th>মোট সাবমিশন</th>
+                                    <th>লাস্ট সিঙ্ক</th>
+                                    <th>অ্যাকশন</th>
+                                </tr>
+                            </thead>
+                            <tbody id="gforms-table-tbody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==========================================
                  TAB 9: INTEGRATIONS
                  ========================================== -->
             <section id="tab-integrations" class="tab-pane">
@@ -988,57 +1187,61 @@
          ========================================== -->
     <!-- Add Product Modal -->
     <div id="modal-add-product" class="modal-overlay">
-        <div class="modal-content" style="max-width: 580px;">
+        <div class="modal-content modal-content-flex" style="max-width: 600px;">
             <div class="modal-header">
-                <h3><i class="fas fa-plus-circle" style="color:var(--primary-light);"></i> Add New Product (একাধিক ছবি সহ)</h3>
+                <h3><i class="fas fa-plus-circle" style="color:var(--primary-light);"></i> নতুন প্রডাক্ট যুক্ত করুন (Add Product)</h3>
                 <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-add-product')">&times;</button>
             </div>
-            <form id="form-add-product" onsubmit="handleAddProduct(event)">
-                <div class="form-group">
-                    <label>Product Name (পণ্যের নাম): *</label>
-                    <input type="text" name="name" class="form-control" required placeholder="যেমন: প্রিমিয়াম সুতি পাঞ্জাবি">
-                </div>
-                <div class="form-row">
+            <form id="form-add-product" onsubmit="handleAddProduct(event)" class="modal-form-container">
+                <div class="modal-scroll-body">
                     <div class="form-group">
-                        <label>SKU / Code: *</label>
-                        <input type="text" name="code" class="form-control" required placeholder="PJ-101">
+                        <label>Product Name (পণ্যের নাম): *</label>
+                        <input type="text" name="name" class="form-control" required placeholder="যেমন: প্রিমিয়াম সুতি পাঞ্জাবি">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>SKU / Code: *</label>
+                            <input type="text" name="code" class="form-control" required placeholder="PJ-101">
+                        </div>
+                        <div class="form-group">
+                            <label>Category:</label>
+                            <input type="text" name="category" class="form-control" value="Men" placeholder="Men / Women / Accessories">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Regular Price (৳): *</label>
+                            <input type="number" name="price" class="form-control" required placeholder="1450">
+                        </div>
+                        <div class="form-group">
+                            <label>Offer Price (৳):</label>
+                            <input type="number" name="discount_price" class="form-control" placeholder="1250">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Stock Count:</label>
+                            <input type="number" name="stock" class="form-control" value="15">
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-images"></i> Product Photos (একাধিক ছবি সিলেক্ট করুন):</label>
+                            <input type="file" id="add-prod-images-input" class="form-control" accept="image/*" multiple onchange="previewAddProductImages(event)">
+                        </div>
+                    </div>
+                    <div class="form-group" id="add-prod-preview-wrapper" style="display: none;">
+                        <label style="font-size: 12px; color: var(--text-muted);">Selected Photos Preview (ছবি প্রিভিউ):</label>
+                        <div id="add-prod-images-preview" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;"></div>
                     </div>
                     <div class="form-group">
-                        <label>Category:</label>
-                        <input type="text" name="category" class="form-control" value="Men" placeholder="Men / Women / Accessories">
+                        <label>Description & Sizes:</label>
+                        <textarea name="description" class="form-control" rows="3" placeholder="১০০% কটন কাপড়, সাইজ: M, L, XL..."></textarea>
                     </div>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Regular Price (৳): *</label>
-                        <input type="number" name="price" class="form-control" required placeholder="1450">
-                    </div>
-                    <div class="form-group">
-                        <label>Offer Price (৳):</label>
-                        <input type="number" name="discount_price" class="form-control" placeholder="1250">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Stock Count:</label>
-                        <input type="number" name="stock" class="form-control" value="15">
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-images"></i> Product Photos (একাধিক ছবি সিলেক্ট করুন):</label>
-                        <input type="file" id="add-prod-images-input" class="form-control" accept="image/*" multiple onchange="previewAddProductImages(event)">
-                    </div>
-                </div>
-                <div class="form-group" id="add-prod-preview-wrapper" style="display: none;">
-                    <label style="font-size: 12px; color: var(--text-muted);">Selected Photos Preview (ছবি প্রিভিউ):</label>
-                    <div id="add-prod-images-preview" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;"></div>
-                </div>
-                <div class="form-group">
-                    <label>Description & Sizes:</label>
-                    <textarea name="description" class="form-control" rows="2" placeholder="১০০% কটন কাপড়, সাইজ: M, L, XL..."></textarea>
-                </div>
-                <div class="modal-footer-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-product')">Cancel</button>
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Product</button>
+                <div class="modal-fixed-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-product')">বাতিল (Cancel)</button>
+                    <button type="submit" class="btn btn-save-modal">
+                        <i class="fas fa-save"></i> 💾 প্রডাক্ট সেভ করুন (Save Product)
+                    </button>
                 </div>
             </form>
         </div>
@@ -1046,58 +1249,62 @@
 
     <!-- Edit Product Modal -->
     <div id="modal-edit-product" class="modal-overlay">
-        <div class="modal-content" style="max-width: 580px;">
+        <div class="modal-content modal-content-flex" style="max-width: 600px;">
             <div class="modal-header">
-                <h3><i class="fas fa-edit" style="color:var(--primary-light);"></i> Edit Product</h3>
+                <h3><i class="fas fa-pen-to-square" style="color:var(--primary-light);"></i> প্রডাক্ট এডিট করুন (Edit Product)</h3>
                 <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-edit-product')">&times;</button>
             </div>
-            <form id="form-edit-product" onsubmit="handleEditProduct(event)">
-                <input type="hidden" id="edit-prod-id">
-                <div class="form-group">
-                    <label>Product Name: *</label>
-                    <input type="text" id="edit-prod-name" class="form-control" required>
-                </div>
-                <div class="form-row">
+            <form id="form-edit-product" onsubmit="handleEditProduct(event)" class="modal-form-container">
+                <div class="modal-scroll-body">
+                    <input type="hidden" id="edit-prod-id">
                     <div class="form-group">
-                        <label>SKU / Code: *</label>
-                        <input type="text" id="edit-prod-code" class="form-control" required>
+                        <label>Product Name (পণ্যের নাম): *</label>
+                        <input type="text" id="edit-prod-name" class="form-control" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>SKU / Code: *</label>
+                            <input type="text" id="edit-prod-code" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Category:</label>
+                            <input type="text" id="edit-prod-category" class="form-control">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Regular Price (৳): *</label>
+                            <input type="number" id="edit-prod-price" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Offer Price (৳):</label>
+                            <input type="number" id="edit-prod-discount-price" class="form-control">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Stock Count:</label>
+                            <input type="number" id="edit-prod-stock" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-plus"></i> Add More Photos:</label>
+                            <input type="file" id="edit-prod-images-input" class="form-control" accept="image/*" multiple onchange="previewEditProductImages(event)">
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label>Category:</label>
-                        <input type="text" id="edit-prod-category" class="form-control">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Regular Price (৳): *</label>
-                        <input type="number" id="edit-prod-price" class="form-control" required>
+                        <label style="font-size: 12px; color: var(--text-muted); font-weight: 600;">Product Gallery & Packages (ভ্যারিয়েশন ও আলাদা রেট):</label>
+                        <div id="edit-prod-images-preview" style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);"></div>
                     </div>
                     <div class="form-group">
-                        <label>Offer Price (৳):</label>
-                        <input type="number" id="edit-prod-discount-price" class="form-control">
+                        <label>Description & Sizes (বিবরণ ও সাইজ):</label>
+                        <textarea id="edit-prod-description" class="form-control" rows="3"></textarea>
                     </div>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Stock Count:</label>
-                        <input type="number" id="edit-prod-stock" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-plus"></i> Add More Photos:</label>
-                        <input type="file" id="edit-prod-images-input" class="form-control" accept="image/*" multiple onchange="previewEditProductImages(event)">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label style="font-size: 12px; color: var(--text-muted);">Product Gallery Photos (ছবি ডিলিট করতে ক্রসে ক্লিক করুন):</label>
-                    <div id="edit-prod-images-preview" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;"></div>
-                </div>
-                <div class="form-group">
-                    <label>Description & Sizes:</label>
-                    <textarea id="edit-prod-description" class="form-control" rows="2"></textarea>
-                </div>
-                <div class="modal-footer-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-edit-product')">Cancel</button>
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Update Product</button>
+                <div class="modal-fixed-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-edit-product')">বাতিল (Cancel)</button>
+                    <button type="submit" class="btn btn-save-modal">
+                        <i class="fas fa-save"></i> 💾 পরিবর্তন সেভ করুন (Save Changes)
+                    </button>
                 </div>
             </form>
         </div>
@@ -1492,6 +1699,243 @@
                     <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-workspace')">বাতিল</button>
                     <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">
                         <i class="fas fa-plus"></i> ওয়ার্কস্পেস তৈরি করুন
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Select Master Form from Google Drive -->
+    <div id="modal-select-master-form" class="modal-overlay">
+        <div class="modal-content modal-content-flex" style="max-width: 540px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-folder-open" style="color: #c084fc;"></i> Select Master Google Form</h3>
+                <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-select-master-form')">&times;</button>
+            </div>
+            <form id="form-select-master-form" onsubmit="handleSelectMasterFormSubmit(event)" class="modal-form-container">
+                <div class="modal-scroll-body">
+                    <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 12px;">
+                        আপনার কানেক্টেড গুগল ড্রাইভ থেকে তৈরি করা মাস্টার ফর্ম সিলেক্ট করুন অথবা সরাসরি ফর্ম আইডি দিন:
+                    </p>
+                    
+                    <div class="form-group">
+                        <label>Google Drive Forms (ড্রাইভের ফর্মসমূহ):</label>
+                        <select id="select-drive-master-form" class="form-control" onchange="onDriveMasterFormSelected(this.value)">
+                            <option value="">-- ড্রাইভের ফর্ম তালিকা লোড হচ্ছে... --</option>
+                        </select>
+                    </div>
+
+                    <div style="text-align: center; margin: 8px 0; color: var(--text-dim); font-size: 11px;">— অথবা সরাসরি ফর্ম আইডি লিখুন —</div>
+
+                    <div class="form-group">
+                        <label>Master Google Form ID <span style="color:#ef4444;">*</span>:</label>
+                        <input type="text" id="manual-master-form-id" class="form-control" placeholder="e.g. 1FAIpQLSc... বা 1AbCdEf..." required>
+                        <small style="color: var(--text-dim); font-size: 11px; display: block; margin-top: 4px;">
+                            ফর্মের লিংক থেকে আইডি কপি করতে পারেন (যেমন: docs.google.com/forms/d/<b>[Form ID]</b>/edit)
+                        </small>
+                    </div>
+
+                    <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 8px; padding: 10px; font-size: 11.5px; color: var(--text-muted);">
+                        <i class="fas fa-info-circle" style="color: #c084fc;"></i> সেভ করার সাথে সাথে সফটওয়্যার ফর্মের এক্সেস ও File Upload প্রশ্ন স্বয়ংক্রিয়ভাবে যাচাই করে নেবে।
+                    </div>
+                </div>
+                <div class="modal-fixed-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-select-master-form')">বাতিল</button>
+                    <button type="submit" class="btn btn-save-modal">
+                        <i class="fas fa-check-circle"></i> Save & Verify Master Form
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Create New Master Form Template -->
+    <div id="modal-create-master-form" class="modal-overlay">
+        <div class="modal-content modal-content-flex" style="max-width: 560px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-plus-circle" style="color: #38bdf8;"></i> Create New Master Form</h3>
+                <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-create-master-form')">&times;</button>
+            </div>
+            <form id="form-create-master-form" onsubmit="handleCreateMasterTemplateSubmit(event)" class="modal-form-container">
+                <div class="modal-scroll-body">
+                    <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 12px;">
+                        সফটওয়্যার স্বয়ংক্রিয়ভাবে আপনার গুগল ড্রাইভে একটি মাস্টার আইডি কার্ড ফর্ম ও রেসপন্স শিট তৈরি করবে:
+                    </p>
+
+                    <div class="form-group">
+                        <label>মাস্টার ফর্মের শিরোনাম (Title) <span style="color:#ef4444;">*</span>:</label>
+                        <input type="text" id="new-master-title" class="form-control" value="ID Card Information Form" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>বিবরণ ও নির্দেশাবলী (Description):</label>
+                        <textarea id="new-master-desc" class="form-control" rows="3">এই ফর্মের মাধ্যমে আপনার প্রতিষ্ঠানের ID Card তৈরির জন্য প্রয়োজনীয় তথ্য প্রদান করুন। অনুগ্রহ করে সকল তথ্য সঠিকভাবে পূরণ করুন এবং নির্ধারিত স্থানে পরিষ্কার ছবি আপলোড করুন।</textarea>
+                    </div>
+
+                    <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 12px; font-size: 12px; color: var(--text-muted);">
+                        <strong style="color: #38bdf8; display: block; margin-bottom: 4px;">
+                            <i class="fas fa-camera"></i> Student Photo Upload নির্দেশনা:
+                        </strong>
+                        গুগল পলিসি অনুযায়ী ফাইল আপলোড প্রশ্ন সরাসরি ড্রাইভ বাইন্ডিং সহ ওপেন করতে হয়। ফর্মটি তৈরি হওয়ার পর Edit Mode-এ গিয়ে 'শিক্ষার্থীর ছবি' প্রশ্নের ধরন <b>File Upload</b> করে দিন।
+                    </div>
+                </div>
+                <div class="modal-fixed-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-master-form')">বাতিল</button>
+                    <button type="submit" class="btn btn-save-modal">
+                        <i class="fas fa-magic"></i> ⚡ তৈরি করুন ও এডিটর খুলুন
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Create Institution Form -->
+    <div id="modal-create-institution-form" class="modal-overlay">
+        <div class="modal-content modal-content-flex" style="max-width: 580px;">
+            <div class="modal-header">
+                <h3><i class="fab fa-google" style="color: #38bdf8;"></i> নতুন প্রতিষ্ঠানের জন্য Google Form তৈরি করুন</h3>
+                <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-create-institution-form')">&times;</button>
+            </div>
+            <form id="form-create-institution-form" onsubmit="handleCreateInstitutionForm(event)" class="modal-form-container">
+                <div class="modal-scroll-body">
+                    <div class="form-group">
+                        <label>প্রতিষ্ঠানের নাম (যেমন: জামিয়া রাহমানিয়া আরাবিয়া) <span style="color:#ef4444;">*</span>:</label>
+                        <input type="text" id="new-inst-name" class="form-control" placeholder="যেমন: জামিয়া রাহমানিয়া আরাবিয়া" required>
+                    </div>
+                    <div class="form-group">
+                        <label>যোগাযোগের ফোন নম্বর (ঐচ্ছিক):</label>
+                        <input type="text" id="new-inst-phone" class="form-control" placeholder="017XXXXXXXX">
+                    </div>
+                    <div class="form-group">
+                        <label>ফর্মের বিবরণ ও নির্দেশাবলী (Description):</label>
+                        <textarea id="new-inst-desc" class="form-control" rows="3" placeholder="এই ফর্মটি সঠিকভাবে পূরণ করুন। প্রতিটি শিক্ষার্থীর তথ্য নির্ভুলভাবে প্রদান করুন। ছবি পরিষ্কার এবং নির্ধারিত নিয়ম অনুযায়ী আপলোড করুন।"></textarea>
+                    </div>
+                    <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 12px; font-size: 12px; color: var(--text-muted);">
+                        <i class="fas fa-shield-halved" style="color: #38bdf8;"></i> মাস্টার ফর্মের ছবি আপলোড (File Upload) প্রশ্ন স্বয়ংক্রিয়ভাবে ক্লোন হবে এবং এই প্রতিষ্ঠানের আলাদা ফোল্ডার ও গুগল শিট তৈরি হবে।
+                    </div>
+                </div>
+                <div class="modal-fixed-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-institution-form')">বাতিল</button>
+                    <button type="submit" class="btn btn-save-modal">
+                        <i class="fas fa-magic"></i> ⚡ গুগল ফর্ম তৈরি করুন
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Send Form via WhatsApp -->
+    <div id="modal-send-form-whatsapp" class="modal-overlay">
+        <div class="modal-content modal-content-flex" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3><i class="fab fa-whatsapp" style="color: #25d366;"></i> WhatsApp এ ফর্ম লিংক পাঠান</h3>
+                <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-send-form-whatsapp')">&times;</button>
+            </div>
+            <form id="form-send-form-whatsapp" onsubmit="handleSendFormWhatsApp(event)" class="modal-form-container">
+                <div class="modal-scroll-body">
+                    <input type="hidden" id="wa-send-form-id">
+                    <div class="form-group">
+                        <label>প্রতিষ্ঠানের নাম:</label>
+                        <input type="text" id="wa-send-inst-name" class="form-control" readonly style="background: rgba(0,0,0,0.3);">
+                    </div>
+                    <div class="form-group">
+                        <label>গ্রাহকের WhatsApp মোবাইল নম্বর <span style="color:#ef4444;">*</span>:</label>
+                        <input type="text" id="wa-send-phone" class="form-control" placeholder="017XXXXXXXX" required>
+                    </div>
+                    <div class="form-group">
+                        <label>মেসেজ প্রিভিউ:</label>
+                        <textarea id="wa-send-message" class="form-control" rows="5"></textarea>
+                    </div>
+                </div>
+                <div class="modal-fixed-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-send-form-whatsapp')">বাতিল</button>
+                    <button type="submit" class="btn btn-primary" style="background: #25d366; border: none; font-weight: 600;">
+                        <i class="fab fa-whatsapp"></i> পাঠাতে ক্লিক করুন
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: View Form Submissions -->
+    <div id="modal-view-submissions" class="modal-overlay">
+        <div class="modal-content modal-content-flex" style="max-width: 900px; width: 95%;">
+            <div class="modal-header">
+                <h3><i class="fas fa-users" style="color: #38bdf8;"></i> <span id="subs-modal-title">শিক্ষার্থীদের তথ্য ও রেসপন্স তালিকা</span></h3>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="btn btn-sm btn-secondary" onclick="syncCurrentOpenFormSubmissions()">
+                        <i class="fas fa-rotate"></i> Sync Responses
+                    </button>
+                    <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-view-submissions')">&times;</button>
+                </div>
+            </div>
+            <div class="modal-scroll-body">
+                <div class="table-responsive">
+                    <table class="custom-table" style="font-size: 12px;">
+                        <thead>
+                            <tr>
+                                <th>ছবি (Photo)</th>
+                                <th>শিক্ষার্থীর নাম</th>
+                                <th>রোল</th>
+                                <th>শ্রেণি</th>
+                                <th>ফোন নম্বর</th>
+                                <th>সাবমিট টাইম</th>
+                            </tr>
+                        </thead>
+                        <tbody id="subs-modal-tbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-fixed-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('modal-view-submissions')">বন্ধ করুন</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Add / Edit Form Field -->
+    <div id="modal-add-form-field" class="modal-overlay">
+        <div class="modal-content modal-content-flex" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-plus-circle" style="color: #38bdf8;"></i> নতুন ফর্ম ফিল্ড যুক্ত করুন</h3>
+                <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-add-form-field')">&times;</button>
+            </div>
+            <form id="form-add-field" onsubmit="handleAddFieldSubmit(event)" class="modal-form-container">
+                <div class="modal-scroll-body">
+                    <div class="form-group">
+                        <label>ফিল্ডের শিরোনাম (Label) <span style="color:#ef4444;">*</span>:</label>
+                        <input type="text" id="new-field-label" class="form-control" placeholder="যেমন: জন্মতারিখ, রক্তের গ্রুপ..." required>
+                    </div>
+                    <div class="form-group">
+                        <label>ফিল্ডের কি (Key / Code):</label>
+                        <input type="text" id="new-field-key" class="form-control" placeholder="e.g. date_of_birth, blood_group">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>ফিল্ডের ধরন (Type):</label>
+                            <select id="new-field-type" class="form-control">
+                                <option value="short_answer">Short Answer (ছোট লেখা)</option>
+                                <option value="paragraph">Paragraph (বড় বিবরণ/ঠিকানা)</option>
+                                <option value="date">Date (তারিখ)</option>
+                                <option value="dropdown">Dropdown (তালিকা নির্বাচন)</option>
+                                <option value="multiple_choice">Multiple Choice (রেডিও বাটন)</option>
+                                <option value="checkbox">Checkbox (টিক চিহ্ন)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>বাধ্যতামূলক (Required):</label>
+                            <select id="new-field-required" class="form-control">
+                                <option value="1">হ্যাঁ (Required)</option>
+                                <option value="0">না (Optional)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-fixed-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-form-field')">বাতিল</button>
+                    <button type="submit" class="btn btn-save-modal">
+                        <i class="fas fa-save"></i> ফিল্ড সেভ করুন
                     </button>
                 </div>
             </form>

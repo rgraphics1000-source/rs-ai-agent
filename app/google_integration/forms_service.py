@@ -1,0 +1,499 @@
+import time
+import json
+from typing import Optional, Dict, Any, List, Tuple
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+
+from app.google_integration.oauth_service import get_workspace_credentials
+from app.database import get_google_form_fields
+
+def get_forms_client(workspace_id: int = 1):
+    """Builds and returns the authenticated Google Forms API client."""
+    creds = get_workspace_credentials(workspace_id=workspace_id)
+    if not creds:
+        raise PermissionError(f"Workspace {workspace_id} does not have an active Google connection.")
+    return build("forms", "v1", credentials=creds, cache_discovery=False)
+
+def get_form_details(workspace_id: int, form_id: str) -> dict:
+    """Fetches form info, items, and responderUri using Google Forms API."""
+    forms_service = get_forms_client(workspace_id=workspace_id)
+    form_res = forms_service.forms().get(formId=str(form_id).strip()).execute()
+    return form_res
+
+def get_responder_url(workspace_id: int, form_id: str) -> str:
+    """Retrieves the official public responder URL for students and institutions."""
+    clean_id = str(form_id).strip()
+    try:
+        details = get_form_details(workspace_id, clean_id)
+        if details.get("responderUri"):
+            return details["responderUri"]
+    except Exception as e:
+        print(f"[Forms get_responder_url Warning]: {e}")
+    
+    # Fallback standard public Google Form URL
+    return f"https://docs.google.com/forms/d/{clean_id}/viewform"
+
+def update_form_title_and_description(
+    workspace_id: int,
+    form_id: str,
+    title: str,
+    description: str = None
+) -> dict:
+    """
+    Updates the Form's public title and instructions description via batchUpdate.
+    """
+    forms_service = get_forms_client(workspace_id=workspace_id)
+    
+    info_update = {
+        "title": title
+    }
+    update_mask = "title"
+    
+    if description is not None:
+        info_update["description"] = description
+        update_mask = "title,description"
+
+    body = {
+        "requests": [
+            {
+                "updateFormInfo": {
+                    "info": info_update,
+                    "updateMask": update_mask
+                }
+            }
+        ]
+    }
+
+    res = forms_service.forms().batchUpdate(
+        formId=str(form_id).strip(),
+        body=body
+    ).execute()
+    return res
+
+def customize_cloned_institution_form(
+    workspace_id: int,
+    form_id: str,
+    institution_name: str,
+    custom_description: str = None,
+    fields: List[dict] = None
+) -> dict:
+    """
+    Customizes the copied Master Form:
+    1. Sets Title to '[Institution Name] - ID Card Information'
+    2. Sets Description with student submission guidelines
+    3. PRESERVES File Upload questions completely (does not delete them)
+    4. Customizes text/choice questions to match the institution field configuration
+    """
+    forms_service = get_forms_client(workspace_id=workspace_id)
+    
+    # 1. Update Title and Description
+    default_desc = (
+        "এই ফর্মটি সঠিকভাবে পূরণ করুন।\n"
+        "প্রতিটি শিক্ষার্থীর তথ্য নির্ভুলভাবে প্রদান করুন।\n"
+        "ছবি পরিষ্কার এবং নির্ধারিত নিয়ম অনুযায়ী আপলোড করুন।"
+    )
+    final_desc = custom_description or default_desc
+    form_title = f"{institution_name} - ID Card Information"
+    
+    update_form_title_and_description(
+        workspace_id=workspace_id,
+        form_id=form_id,
+        title=form_title,
+        description=final_desc
+    )
+
+    # 2. Inspect existing form items
+    form_meta = get_form_details(workspace_id, form_id)
+    existing_items = form_meta.get("items", [])
+    
+    # Check which items are File Upload questions - MUST BE PRESERVED
+    file_upload_item_ids = set()
+    for itm in existing_items:
+        q_item = itm.get("questionItem", {})
+        q = q_item.get("question", {})
+        if "fileUploadQuestion" in q:
+            file_upload_item_ids.add(itm.get("itemId"))
+
+    # 3. Retrieve fields to ensure are present
+    if not fields:
+        fields = get_google_form_fields(workspace_id=workspace_id)
+
+    # Map existing item titles to avoid duplicate questions
+    existing_titles = {
+        itm.get("title", "").strip().lower(): itm 
+        for itm in existing_items
+    }
+
+    # Build requests to add any missing configured fields (except file_upload which is cloned from master)
+    requests_list = []
+    item_index = len(existing_items)
+
+    for f in fields:
+        f_type = f.get("field_type", "short_answer")
+        f_label = f.get("field_label", "")
+        f_req = bool(f.get("required", 1))
+        
+        # If this is file_upload, it is already preserved from Master Form
+        if f_type == "file_upload":
+            continue
+
+        # Check if question with similar title already exists in Master Form
+        clean_label = f_label.strip().lower()
+        if clean_label in existing_titles or any(clean_label in t or t in clean_label for t in existing_titles):
+            continue
+
+        # Construct question item based on type
+        question_payload = {
+            "required": f_req
+        }
+        
+        if f_type == "paragraph":
+            question_payload["textQuestion"] = {"paragraph": True}
+        elif f_type == "date":
+            question_payload["dateQuestion"] = {"includeTime": False, "includeYear": True}
+        elif f_type in ["dropdown", "multiple_choice", "checkbox"]:
+            options = []
+            try:
+                raw_opts = f.get("options_json") or "[]"
+                opt_list = raw_opts if isinstance(raw_opts, list) else json.loads(raw_opts)
+                options = [{"value": str(o)} for o in opt_list]
+            except Exception:
+                options = [{"value": "Option 1"}]
+                
+            choice_type = "DROP_DOWN" if f_type == "dropdown" else ("CHECKBOX" if f_type == "checkbox" else "RADIO")
+            question_payload["choiceQuestion"] = {
+                "type": choice_type,
+                "options": options if options else [{"value": "Option 1"}]
+            }
+        else:
+            # Default: Short Answer Text Question
+            question_payload["textQuestion"] = {"paragraph": False}
+
+        create_item_request = {
+            "createItem": {
+                "item": {
+                    "title": f_label,
+                    "questionItem": {
+                        "question": question_payload
+                    }
+                },
+                "location": {
+                    "index": item_index
+                }
+            }
+        }
+        requests_list.append(create_item_request)
+        item_index += 1
+
+    # Execute batchUpdate if new fields need to be appended
+    if requests_list:
+        try:
+            forms_service.forms().batchUpdate(
+                formId=str(form_id).strip(),
+                body={"requests": requests_list}
+            ).execute()
+        except Exception as e:
+            print(f"[Forms customize_cloned_institution_form Warning]: {e}")
+
+    responder_url = get_responder_url(workspace_id, form_id)
+    edit_url = f"https://docs.google.com/forms/d/{form_id}/edit"
+
+    return {
+        "success": True,
+        "form_id": form_id,
+        "title": form_title,
+        "responder_url": responder_url,
+        "edit_url": edit_url
+    }
+
+def create_base_master_form_template(
+    workspace_id: int,
+    title: str = "ID Card Information Form",
+    description: str = None
+) -> dict:
+    """
+    Creates a new base Master Google Form in Google Drive with reusable questions.
+    Creates linked Google Sheet and returns edit URL with guidance for File Upload question.
+    """
+    from app.google_integration.drive_service import (
+        get_or_create_workspace_root_folder, get_or_create_institution_folder, get_drive_client
+    )
+    from app.google_integration.sheets_service import create_institution_response_sheet
+    from app.database import (
+        save_master_form_template, update_google_master_ids
+    )
+
+    ws_id = int(workspace_id or 1)
+    forms_service = get_forms_client(workspace_id=ws_id)
+    drive_client = get_drive_client(workspace_id=ws_id)
+
+    # 1. Dedicated Master Templates folder in Drive
+    root_folder_id = get_or_create_workspace_root_folder(workspace_id=ws_id)
+    templates_folder_id = get_or_create_institution_folder(
+        workspace_id=ws_id,
+        institution_name="Master Form Templates",
+        parent_folder_id=root_folder_id
+    )
+
+    # 2. Create base Google Form
+    clean_title = (title or "ID Card Information Form").strip()
+    create_body = {
+        "info": {
+            "title": clean_title,
+            "documentTitle": clean_title
+        }
+    }
+    form_res = forms_service.forms().create(body=create_body).execute()
+    form_id = form_res.get("formId")
+
+    # Move created Form file to templates folder
+    try:
+        drive_client.files().update(
+            fileId=form_id,
+            addParents=templates_folder_id,
+            removeParents="root",
+            fields="id, parents"
+        ).execute()
+    except Exception as m_err:
+        print(f"[Drive Master Form move warning]: {m_err}")
+
+    # 3. Update description and standard questions
+    desc_text = description or "এই ফর্মের মাধ্যমে আপনার প্রতিষ্ঠানের ID Card তৈরির জন্য প্রয়োজনীয় তথ্য প্রদান করুন। অনুগ্রহ করে সকল তথ্য সঠিকভাবে পূরণ করুন এবং নির্ধারিত স্থানে পরিষ্কার ছবি আপলোড করুন।"
+    
+    # Standard questions list
+    standard_questions = [
+        ("প্রতিষ্ঠানের নাম (Institution Name)", "textQuestion", False),
+        ("শিক্ষার্থীর নাম (Student Name)", "textQuestion", False),
+        ("পিতার নাম (Father's Name)", "textQuestion", False),
+        ("মাতার নাম (Mother's Name)", "textQuestion", False),
+        ("শ্রেণি / জামাত (Class)", "textQuestion", False),
+        ("শাখা (Section)", "textQuestion", False),
+        ("রোল নম্বর (Roll No)", "textQuestion", False),
+        ("আইডি নম্বর (Student ID)", "textQuestion", False),
+        ("জন্মতারিখ (Date of Birth)", "textQuestion", False),
+        ("রক্তের গ্রুপ (Blood Group)", "choiceQuestion", ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"]),
+        ("অভিভাবকের মোবাইল নম্বর (Phone)", "textQuestion", False),
+        ("পূর্ণাঙ্গ ঠিকানা (Address)", "textQuestion", True),
+        ("শিক্ষার্থীর ছবি (Photo Upload - অনুগ্রহ করে এডিটরে গিয়ে এই প্রশ্নটি File Upload নির্বাচন করুন)", "textQuestion", False)
+    ]
+
+    requests_list = [
+        {
+            "updateFormInfo": {
+                "info": {
+                    "description": desc_text
+                },
+                "updateMask": "description"
+            }
+        }
+    ]
+
+    for idx, q_info in enumerate(standard_questions):
+        q_label = q_info[0]
+        q_kind = q_info[1]
+        
+        if q_kind == "choiceQuestion":
+            q_payload = {
+                "choiceQuestion": {
+                    "type": "DROP_DOWN",
+                    "options": [{"value": opt} for opt in q_info[2]]
+                }
+            }
+        else:
+            q_payload = {
+                "textQuestion": {
+                    "paragraph": bool(q_info[2])
+                }
+            }
+
+        requests_list.append({
+            "createItem": {
+                "item": {
+                    "title": q_label,
+                    "questionItem": {
+                        "question": q_payload
+                    }
+                },
+                "location": {
+                    "index": idx
+                }
+            }
+        })
+
+    try:
+        forms_service.forms().batchUpdate(
+            formId=form_id,
+            body={"requests": requests_list}
+        ).execute()
+    except Exception as b_err:
+        print(f"[Forms Master Template batchUpdate warning]: {b_err}")
+
+    # 4. Create response Google Sheet
+    sheet_data = {}
+    try:
+        sheet_data = create_institution_response_sheet(
+            workspace_id=ws_id,
+            institution_name="Master ID Card Form Responses",
+            folder_id=templates_folder_id
+        )
+    except Exception as s_err:
+        print(f"[Sheets Master response sheet warning]: {s_err}")
+
+    responder_url = get_responder_url(ws_id, form_id)
+    edit_url = f"https://docs.google.com/forms/d/{form_id}/edit"
+    sheet_id = sheet_data.get("spreadsheet_id")
+    sheet_url = sheet_data.get("sheet_url")
+
+    # 5. Save in database
+    template_record = save_master_form_template(
+        workspace_id=ws_id,
+        name=clean_title,
+        master_form_id=form_id,
+        description_template=desc_text,
+        form_url=responder_url,
+        edit_url=edit_url,
+        spreadsheet_id=sheet_id,
+        spreadsheet_url=sheet_url,
+        has_file_upload=0
+    )
+
+    update_google_master_ids(
+        workspace_id=ws_id,
+        master_form_id=form_id,
+        master_sheet_id=sheet_id,
+        drive_root_folder_id=root_folder_id,
+        master_form_name=clean_title,
+        master_form_url=responder_url,
+        master_edit_url=edit_url,
+        master_sheet_url=sheet_url,
+        master_has_file_upload=0
+    )
+
+    return {
+        "success": True,
+        "workspace_id": ws_id,
+        "form_id": form_id,
+        "form_name": clean_title,
+        "form_url": responder_url,
+        "edit_url": edit_url,
+        "spreadsheet_id": sheet_id,
+        "spreadsheet_url": sheet_url,
+        "drive_folder_id": templates_folder_id,
+        "template_id": template_record.get("id"),
+        "has_file_upload": False,
+        "message": f"Master Form '{clean_title}' সফলভাবে তৈরি হয়েছে।"
+    }
+
+def inspect_and_verify_master_form(workspace_id: int, form_id: str) -> dict:
+    """
+    Live verifies an existing Google Form ID:
+    - Checks form metadata and responderUri.
+    - Inspects items for native Google Drive File Upload question (fileUploadQuestion).
+    - Checks or creates response Google Sheet.
+    - Saves all verified metadata into database.
+    """
+    from app.google_integration.drive_service import verify_file_accessible, get_or_create_workspace_root_folder, get_or_create_institution_folder
+    from app.google_integration.sheets_service import create_institution_response_sheet
+    from app.database import save_master_form_template, update_google_master_ids
+
+    ws_id = int(workspace_id or 1)
+    clean_id = str(form_id).strip()
+    if not clean_id:
+        return {"valid": False, "error": "Form ID is required."}
+
+    # 1. Check drive accessibility
+    is_valid_drive, drive_meta = verify_file_accessible(workspace_id=ws_id, file_id=clean_id)
+    if not is_valid_drive:
+        return {
+            "valid": False,
+            "form_id": clean_id,
+            "error": f"Google Drive-এ ফাইলটি পাওয়া যায়নি বা এক্সেস নেই: {drive_meta.get('error')}"
+        }
+
+    # 2. Check Forms API details
+    try:
+        form_details = get_form_details(workspace_id=ws_id, form_id=clean_id)
+    except Exception as f_err:
+        return {
+            "valid": False,
+            "form_id": clean_id,
+            "error": f"Google Forms API দ্বারা ফর্মটি লোড করা যায়নি: {str(f_err)}"
+        }
+
+    info = form_details.get("info", {})
+    form_title = info.get("title") or drive_meta.get("name") or "ID Card Information Form"
+    responder_url = form_details.get("responderUri") or f"https://docs.google.com/forms/d/{clean_id}/viewform"
+    edit_url = f"https://docs.google.com/forms/d/{clean_id}/edit"
+    items = form_details.get("items", [])
+
+    # 3. Check for File Upload question
+    has_file_upload = False
+    for item in items:
+        q_item = item.get("questionItem", {})
+        q = q_item.get("question", {})
+        title_lower = item.get("title", "").lower()
+        if "fileUploadQuestion" in q or "file_upload" in str(q).lower() or any(k in title_lower for k in ["ছবি", "photo", "image", "file upload", "পাসপোর্ট"]):
+            has_file_upload = True
+            break
+
+    # 4. Check or create response sheet
+    root_folder_id = get_or_create_workspace_root_folder(workspace_id=ws_id)
+    templates_folder_id = get_or_create_institution_folder(
+        workspace_id=ws_id,
+        institution_name="Master Form Templates",
+        parent_folder_id=root_folder_id
+    )
+
+    sheet_data = {}
+    try:
+        sheet_data = create_institution_response_sheet(
+            workspace_id=ws_id,
+            institution_name=f"{form_title} Responses",
+            folder_id=templates_folder_id
+        )
+    except Exception as s_err:
+        print(f"[Verify master sheet warning]: {s_err}")
+
+    sheet_id = sheet_data.get("spreadsheet_id")
+    sheet_url = sheet_data.get("sheet_url")
+
+    # 5. Save in database
+    template_record = save_master_form_template(
+        workspace_id=ws_id,
+        name=form_title,
+        master_form_id=clean_id,
+        description_template=info.get("description", ""),
+        form_url=responder_url,
+        edit_url=edit_url,
+        spreadsheet_id=sheet_id,
+        spreadsheet_url=sheet_url,
+        has_file_upload=1 if has_file_upload else 0
+    )
+
+    update_google_master_ids(
+        workspace_id=ws_id,
+        master_form_id=clean_id,
+        master_sheet_id=sheet_id,
+        drive_root_folder_id=root_folder_id,
+        master_form_name=form_title,
+        master_form_url=responder_url,
+        master_edit_url=edit_url,
+        master_sheet_url=sheet_url,
+        master_has_file_upload=1 if has_file_upload else 0
+    )
+
+    return {
+        "valid": True,
+        "workspace_id": ws_id,
+        "form_id": clean_id,
+        "form_name": form_title,
+        "form_url": responder_url,
+        "edit_url": edit_url,
+        "has_file_upload": has_file_upload,
+        "items_count": len(items),
+        "spreadsheet_id": sheet_id,
+        "spreadsheet_url": sheet_url,
+        "template_id": template_record.get("id"),
+        "message": f"Master Form '{form_title}' সফলভাবে যাচাই ও সেভ হয়েছে।"
+    }
+

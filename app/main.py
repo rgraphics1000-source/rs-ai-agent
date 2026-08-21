@@ -85,6 +85,10 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=str(settings.STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
 
+# Mount Google Integration Router (Forms + Sheets + Drive)
+from app.google_integration.routes import router as google_router
+app.include_router(google_router)
+
 # Ensure database tables are created on startup
 @app.on_event("startup")
 def startup_event():

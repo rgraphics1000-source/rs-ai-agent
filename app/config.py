@@ -41,6 +41,12 @@ class Settings:
     WHATSAPP_DISPLAY_PHONE_NUMBER: str = os.getenv("WHATSAPP_DISPLAY_PHONE_NUMBER", "+8801816504097")
     META_GRAPH_VERSION: str = os.getenv("META_GRAPH_VERSION", "v23.0")
     
+    # Google Workspace & Forms Automation
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "https://rs-ai-agent.onrender.com/api/google/auth/callback")
+    GOOGLE_ENCRYPTION_KEY: str = os.getenv("GOOGLE_ENCRYPTION_KEY", "")
+
     # Shop Default Settings
     SHOP_NAME: str = os.getenv("SHOP_NAME", "RS Graphics (আরএস গ্রাফিক্স)")
     SHOP_PHONE: str = os.getenv("SHOP_PHONE", "01816504097")
