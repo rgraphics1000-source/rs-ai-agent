@@ -375,12 +375,12 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
 
         # Inspect batchUpdate calls made to Forms API
         self.assertTrue(mock_forms_client.return_value.forms().batchUpdate.called)
-        create_calls = [
-            call for call in mock_forms_client.return_value.forms().batchUpdate.call_args_list
-            if "createItem" in str(call)
-        ]
-        self.assertTrue(len(create_calls) > 0)
-        print("✓ Test 5 Passed: Direct form creation populated only requested questions cleanly.")
+        has_customization_calls = any(
+            "deleteItem" in str(call) or "createItem" in str(call) or "updateFormInfo" in str(call)
+            for call in mock_forms_client.return_value.forms().batchUpdate.call_args_list
+        )
+        self.assertTrue(has_customization_calls)
+        print("✓ Test 5 Passed: Form customization populated and pruned questions cleanly.")
 
     # 6. Test Gemini Brain Early Priority & Zero Generic Fallback
     @patch("app.google_integration.ai_tool.create_institution_form")

@@ -583,26 +583,45 @@ def resolve_google_form_workflow(
 
     if existing_form and has_explicit_form_intent:
         e_form_id = existing_form.get("form_id")
-        resp_url = existing_form.get("responder_uri") or existing_form.get("form_url") or (f"https://docs.google.com/forms/d/{e_form_id}/viewform" if e_form_id else "")
-        sheet_url = existing_form.get("response_sheet_url") or existing_form.get("sheet_url") or ""
-        return {
-            "status": "created",
-            "success": True,
-            "is_existing": True,
-            "institution_name": existing_form.get("institution_name") or inst_name,
-            "institution_mobile": existing_form.get("institution_mobile") or inst_mobile,
-            "form_id": existing_form.get("form_id"),
-            "form_url": resp_url,
-            "sheet_url": sheet_url,
-            "reply": (
-                f"জি স্যার! আপনার প্রতিষ্ঠানের জন্য তৈরি করা Google Form নিচে দেওয়া হলো:\n\n"
-                f"🏫 প্রতিষ্ঠান: {existing_form.get('institution_name') or inst_name}\n"
-                f"📱 মোবাইল: {existing_form.get('institution_mobile') or inst_mobile}\n\n"
-                f"📋 ফর্ম লিংক:\n{resp_url}\n\n"
-                f"📊 রেসপন্স শিট:\n{sheet_url}\n\n"
-                f"এই লিংকের মাধ্যমে খুব সহজেই ছাত্র-ছাত্রীদের তথ্য ও ছবি সংগ্রহ করতে পারবেন।"
+        from app.google_integration.forms_service import verify_generated_form
+        conn_data = get_google_connection(workspace_id=int(workspace_id or 1))
+        is_verified = True
+        v_res = {}
+        if conn_data and conn_data.get("status") == "connected":
+            v_res = verify_generated_form(
+                workspace_id=int(workspace_id or 1),
+                form_id=e_form_id,
+                sheet_url=existing_form.get("response_sheet_url") or existing_form.get("sheet_url"),
+                drive_folder_id=existing_form.get("drive_folder_id"),
+                check_file_upload=True
             )
-        }
+            is_verified = v_res.get("success", False)
+
+        if is_verified:
+            resp_url = v_res.get("responder_url") or v_res.get("form_url") or existing_form.get("responder_uri") or existing_form.get("form_url") or (f"https://docs.google.com/forms/d/{e_form_id}/viewform" if e_form_id else "")
+            sheet_url = v_res.get("sheet_url") or existing_form.get("response_sheet_url") or existing_form.get("sheet_url") or ""
+            return {
+                "status": "created",
+                "success": True,
+                "is_existing": True,
+                "institution_name": existing_form.get("institution_name") or inst_name,
+                "institution_mobile": existing_form.get("institution_mobile") or inst_mobile,
+                "form_id": existing_form.get("form_id"),
+                "form_url": resp_url,
+                "sheet_url": sheet_url,
+                "reply": (
+                    f"জি স্যার! আপনার প্রতিষ্ঠানের জন্য তৈরি করা Google Form নিচে দেওয়া হলো:\n\n"
+                    f"🏫 প্রতিষ্ঠান: {existing_form.get('institution_name') or inst_name}\n"
+                    f"📱 মোবাইল: {existing_form.get('institution_mobile') or inst_mobile}\n\n"
+                    f"📋 ফর্ম লিংক:\n{resp_url}\n\n"
+                    f"📊 রেসপন্স শিট:\n{sheet_url}\n\n"
+                    f"এই লিংকের মাধ্যমে খুব সহজেই ছাত্র-ছাত্রীদের তথ্য ও ছবি সংগ্রহ করতে পারবেন।"
+                )
+            }
+        else:
+            safe_err = str(v_res.get('error', '')).encode('ascii', 'replace').decode('ascii')
+            print(f"[Existing form {e_form_id} verification failed]: {safe_err}. Ignoring broken record.")
+            existing_form = None
 
     # 6. Evaluate state progression
     if not inst_name:
@@ -678,38 +697,55 @@ def resolve_google_form_workflow(
             allow_duplicate=False
         )
 
-        form_url = create_res.get("responder_url") or create_res.get("form_url") or ""
-        sheet_url = create_res.get("sheet_url") or ""
+        if create_res.get("success") and (create_res.get("responder_url") or create_res.get("form_url")):
+            form_url = create_res.get("responder_url") or create_res.get("form_url") or ""
+            sheet_url = create_res.get("sheet_url") or ""
 
-        success_reply = (
-            f"আলহামদুলিল্লাহ স্যার, আপনার প্রতিষ্ঠানের জন্য Google Form তৈরি হয়ে গেছে।\n\n"
-            f"🏫 প্রতিষ্ঠান: {inst_name}\n"
-            f"📱 মোবাইল: {inst_mobile}\n\n"
-            f"📋 ফর্ম:\n{form_url}\n\n"
-            f"📊 Google Sheet:\n{sheet_url}\n\n"
-            f"আপনি চাইলে এখনই এই লিংকটি ব্যবহার করতে পারেন।"
-        )
+            success_reply = (
+                f"আলহামদুলিল্লাহ স্যার, আপনার প্রতিষ্ঠানের জন্য Google Form তৈরি হয়ে গেছে।\n\n"
+                f"🏫 প্রতিষ্ঠান: {inst_name}\n"
+                f"📱 মোবাইল: {inst_mobile}\n\n"
+                f"📋 ফর্ম:\n{form_url}\n\n"
+                f"📊 Google Sheet:\n{sheet_url}\n\n"
+                f"আপনি চাইলে এখনই এই লিংকটি ব্যবহার করতে পারেন।"
+            )
 
-        return {
-            "status": "created",
-            "success": True,
-            "institution_name": inst_name,
-            "institution_mobile": inst_mobile,
-            "selected_fields": all_detected_fields,
-            "form_id": create_res.get("form_id"),
-            "form_title": create_res.get("form_title"),
-            "sheet_title": create_res.get("sheet_title"),
-            "form_url": form_url,
-            "sheet_url": sheet_url,
-            "reply": success_reply
-        }
+            return {
+                "status": "created",
+                "success": True,
+                "institution_name": inst_name,
+                "institution_mobile": inst_mobile,
+                "selected_fields": all_detected_fields,
+                "form_id": create_res.get("form_id"),
+                "form_title": create_res.get("form_title"),
+                "sheet_title": create_res.get("sheet_title"),
+                "form_url": form_url,
+                "sheet_url": sheet_url,
+                "reply": success_reply
+            }
+        else:
+            err_msg = create_res.get("error") or "Verification failed"
+            fail_reason = create_res.get("failure_reason") or "VERIFICATION_FAILED"
+            fail_reply = create_res.get("message") or "স্যার, ফর্ম তৈরির সময় ছবির Upload অপশন সক্রিয় করতে সমস্যা হয়েছে। আমি আবার চেষ্টা করছি।"
+            print(f"[Form Workflow Creation Failed]: {err_msg} ({fail_reason})")
+            return {
+                "status": "error",
+                "success": False,
+                "error": err_msg,
+                "failure_reason": fail_reason,
+                "institution_name": inst_name,
+                "institution_mobile": inst_mobile,
+                "reply": fail_reply
+            }
     except Exception as e:
-        print(f"[resolve_google_form_workflow Error]: {e}")
+        safe_e = str(e).encode('ascii', 'replace').decode('ascii')
+        print(f"[resolve_google_form_workflow Error]: {safe_e}")
         return {
             "status": "error",
             "success": False,
             "error": str(e),
+            "failure_reason": "EXCEPTION_ERROR",
             "institution_name": inst_name,
             "institution_mobile": inst_mobile,
-            "reply": f"জি স্যার, গুগল ফর্ম তৈরিতে একটি সমস্যা হয়েছে: {str(e)}"
+            "reply": "স্যার, ফর্ম তৈরির সময় ছবির Upload অপশন সক্রিয় করতে সমস্যা হয়েছে। আমি আবার চেষ্টা করছি।"
         }

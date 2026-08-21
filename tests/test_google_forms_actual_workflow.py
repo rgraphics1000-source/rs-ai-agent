@@ -131,6 +131,7 @@ class TestGoogleFormsActualWorkflow(unittest.TestCase):
         # Verify batchUpdate was called
         self.assertTrue(mock_forms.forms().batchUpdate.called)
 
+    @patch("app.google_integration.form_manager.verify_generated_form", return_value={"success": True, "valid": True})
     @patch("app.google_integration.form_manager.get_google_connection")
     @patch("app.google_integration.form_manager.get_or_create_workspace_root_folder")
     @patch("app.google_integration.form_manager.get_or_create_institution_folder")
@@ -142,7 +143,7 @@ class TestGoogleFormsActualWorkflow(unittest.TestCase):
     @patch("app.google_integration.form_manager.get_generated_form_by_institution", return_value=None)
     def test_create_institution_form_end_to_end_naming_conventions(
         self, mock_get_exist, mock_save_inst, mock_save_form, mock_sheet, mock_custom, mock_copy,
-        mock_inst_folder, mock_root_folder, mock_conn
+        mock_inst_folder, mock_root_folder, mock_conn, mock_verify
     ):
         mock_conn.return_value = {
             "status": "connected",
@@ -181,8 +182,9 @@ class TestGoogleFormsActualWorkflow(unittest.TestCase):
         self.assertEqual(result["sheet_title"], "আল-আমিন মাদ্রাসা - 01712345678 - ID Card Responses")
         self.assertEqual(result["responder_url"], "https://docs.google.com/forms/d/e/cloned-form-999/viewform")
 
+    @patch("app.google_integration.form_manager.verify_generated_form", return_value={"success": True, "valid": True})
     @patch("app.google_integration.form_manager.get_generated_form_by_institution")
-    def test_create_institution_form_duplicate_detection(self, mock_get_existing):
+    def test_create_institution_form_duplicate_detection(self, mock_get_existing, mock_verify):
         mock_get_existing.return_value = {
             "institution_id": 101,
             "form_id": "existing-form-777",

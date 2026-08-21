@@ -12,7 +12,8 @@ from app.google_integration.drive_service import (
     copy_master_form_file, verify_file_accessible
 )
 from app.google_integration.forms_service import (
-    customize_cloned_institution_form, get_responder_url, create_direct_institution_form
+    customize_cloned_institution_form, get_responder_url, create_direct_institution_form,
+    verify_generated_form, get_form_details
 )
 from app.google_integration.sheets_service import create_institution_response_sheet
 
@@ -30,7 +31,8 @@ def create_institution_form(
     """
     Main Business Service:
     Clones the configured Workspace Master Form, customizes it for the institution,
-    preserves File Upload, sets up Google Sheets & Drive folders, and returns public URL.
+    preserves File Upload, sets up Google Sheets & Drive folders, performs strict
+    production verification, and returns public URL.
     Identifies institution by BOTH Name and Mobile Number.
     """
     ws_id = int(workspace_id or 1)
@@ -54,31 +56,42 @@ def create_institution_form(
 
     if existing_form and existing_form.get("form_id") != master_form_id and not allow_duplicate:
         e_form_id = existing_form["form_id"]
-        try:
-            cloned_meta = get_form_details(workspace_id=ws_id, form_id=e_form_id)
-            cloned_responder_uri = cloned_meta.get("responderUri")
-        except Exception:
-            cloned_responder_uri = None
-        canonical_resp_url = cloned_responder_uri or f"https://docs.google.com/forms/d/{e_form_id}/viewform"
+        is_verified = True
+        v_res = {}
+        if conn_data and conn_data.get("status") == "connected":
+            v_res = verify_generated_form(
+                workspace_id=ws_id,
+                form_id=e_form_id,
+                expected_fields=selected_fields,
+                sheet_url=existing_form.get("response_sheet_url") or existing_form.get("sheet_url"),
+                drive_folder_id=existing_form.get("drive_folder_id"),
+                check_file_upload=True
+            )
+            is_verified = v_res.get("success", False)
 
-        return {
-            "success": True,
-            "is_existing": True,
-            "workspace_id": ws_id,
-            "institution_id": existing_form.get("institution_id"),
-            "institution_name": clean_inst_name,
-            "institution_mobile": canonical_mobile,
-            "form_id": e_form_id,
-            "form_title": existing_form.get("form_title") or f"{clean_inst_name} - {canonical_mobile} - ID Card Form",
-            "sheet_title": existing_form.get("sheet_title") or f"{clean_inst_name} - {canonical_mobile} - ID Card Responses",
-            "form_url": canonical_resp_url,
-            "responder_url": canonical_resp_url,
-            "edit_url": existing_form.get("edit_url") or f"https://docs.google.com/forms/d/{e_form_id}/edit",
-            "sheet_url": existing_form.get("response_sheet_url"),
-            "drive_folder_id": existing_form.get("drive_folder_id"),
-            "selected_fields": existing_form.get("selected_fields"),
-            "message": f"এই মোবাইল নম্বরের একটি প্রতিষ্ঠান ইতোমধ্যে আছে:\n\nপ্রতিষ্ঠান: {clean_inst_name}\nমোবাইল: {canonical_mobile}\n\nপূর্বের তৈরি ফর্মটি ব্যবহার করতে পারেন অথবা নতুন ফর্ম তৈরি করুন।"
-        }
+        if is_verified:
+            canonical_resp_url = v_res.get("responder_url") or v_res.get("form_url") or existing_form.get("responder_uri") or existing_form.get("form_url") or f"https://docs.google.com/forms/d/{e_form_id}/viewform"
+            return {
+                "success": True,
+                "is_existing": True,
+                "workspace_id": ws_id,
+                "institution_id": existing_form.get("institution_id"),
+                "institution_name": clean_inst_name,
+                "institution_mobile": canonical_mobile,
+                "form_id": e_form_id,
+                "form_title": existing_form.get("form_title") or f"{clean_inst_name} - {canonical_mobile} - ID Card Form",
+                "sheet_title": existing_form.get("sheet_title") or f"{clean_inst_name} - {canonical_mobile} - ID Card Responses",
+                "form_url": canonical_resp_url,
+                "responder_url": canonical_resp_url,
+                "edit_url": existing_form.get("edit_url") or f"https://docs.google.com/forms/d/{e_form_id}/edit",
+                "sheet_url": v_res.get("sheet_url") or existing_form.get("response_sheet_url"),
+                "drive_folder_id": existing_form.get("drive_folder_id"),
+                "selected_fields": existing_form.get("selected_fields"),
+                "message": f"এই মোবাইল নম্বরের একটি প্রতিষ্ঠান ইতোমধ্যে আছে:\n\nপ্রতিষ্ঠান: {clean_inst_name}\nমোবাইল: {canonical_mobile}\n\nপূর্বের তৈরি ফর্মটি ব্যবহার করতে পারেন অথবা নতুন ফর্ম তৈরি করুন।"
+            }
+        else:
+            safe_err = str(v_res.get('error', '')).encode('ascii', 'replace').decode('ascii')
+            print(f"[Existing form {e_form_id} verification failed]: {safe_err}. Creating fresh form...")
 
     # 2. Validate Google connection and Master Form ID
     conn_data = get_google_connection(workspace_id=ws_id)
@@ -107,31 +120,51 @@ def create_institution_form(
         drive_folder_id=inst_folder_id
     )
 
-    # 5. Create 100% Published Google Form directly via Forms API
-    # (Avoids broken Drive copy 'Missing File Upload folders' & 'This document is not published' errors)
-    custom_res = create_direct_institution_form(
-        workspace_id=ws_id,
-        institution_name=clean_inst_name,
-        institution_mobile=canonical_mobile,
-        custom_description=custom_description,
-        fields=fields,
-        selected_fields=selected_fields,
-        destination_folder_id=inst_folder_id
-    )
-
-    cloned_form_id = custom_res["form_id"]
-    form_title = custom_res.get("title") or f"{clean_inst_name} - {canonical_mobile} - ID Card Form"
+    form_title = f"{clean_inst_name} - {canonical_mobile} - ID Card Form"
     sheet_title = f"{clean_inst_name} - {canonical_mobile} - ID Card Responses"
+    cloned_form_id = None
+    custom_res = {}
+
+    # 5. Primary Method: Clone Master Form to preserve native File Upload question
+    try:
+        copied_meta = copy_master_form_file(
+            workspace_id=ws_id,
+            master_form_id=master_form_id,
+            new_title=form_title,
+            destination_folder_id=inst_folder_id
+        )
+        cloned_form_id = copied_meta["form_id"]
+        custom_res = customize_cloned_institution_form(
+            workspace_id=ws_id,
+            form_id=cloned_form_id,
+            institution_name=clean_inst_name,
+            institution_mobile=canonical_mobile,
+            custom_description=custom_description,
+            fields=fields,
+            selected_fields=selected_fields
+        )
+    except Exception as copy_err:
+        print(f"[Master Form Copy notice]: {copy_err}. Creating direct institution form...")
+        custom_res = create_direct_institution_form(
+            workspace_id=ws_id,
+            institution_name=clean_inst_name,
+            institution_mobile=canonical_mobile,
+            custom_description=custom_description,
+            fields=fields,
+            selected_fields=selected_fields,
+            destination_folder_id=inst_folder_id
+        )
+        cloned_form_id = custom_res["form_id"]
+
     responder_url = custom_res.get("responder_url") or custom_res.get("form_url") or f"https://docs.google.com/forms/d/{cloned_form_id}/viewform"
     edit_url = custom_res.get("edit_url") or f"https://docs.google.com/forms/d/{cloned_form_id}/edit"
     final_selected_fields = custom_res.get("selected_fields") or selected_fields or []
 
-    # 7. Create dedicated Google Response Sheet with strictly the requested fields
+    # 6. Create dedicated Google Response Sheet with strictly the requested fields
     sheet_data = {}
     try:
         from app.google_integration.ai_tool import STANDARD_ID_CARD_FIELDS
         
-        # Build dynamic column headers based strictly on final_selected_fields
         sheet_headers = ["Submission ID", "Timestamp"]
         for sf in final_selected_fields:
             sf_key = sf.get("key") if isinstance(sf, dict) else str(sf)
@@ -146,7 +179,7 @@ def create_institution_form(
                 sf_label = sf_key
                 
             if sf_key == "student_photo" or "photo" in sf_key or "ছবি" in sf_label:
-                header_name = "ছবির লিংক (Google Drive)"
+                header_name = "ছবি (Google Drive Upload)"
             else:
                 header_name = sf_label
                 
@@ -164,8 +197,36 @@ def create_institution_form(
         print(f"[Sheets creation warning for {clean_inst_name}]: {s_err}")
 
     sheet_title = sheet_data.get("title") or f"{clean_inst_name} - {canonical_mobile} - ID Card Responses"
+    sheet_url = sheet_data.get("sheet_url")
+    spreadsheet_id = sheet_data.get("spreadsheet_id")
 
-    # 8. Save generated form record in database
+    # 7. Strict Production Verification: Form, File Upload, Sheet, and Folder
+    verification = verify_generated_form(
+        workspace_id=ws_id,
+        form_id=cloned_form_id,
+        expected_fields=final_selected_fields,
+        sheet_id=spreadsheet_id,
+        sheet_url=sheet_url,
+        drive_folder_id=inst_folder_id,
+        check_file_upload=True
+    )
+
+    if not verification.get("success"):
+        failure_reason = verification.get("failure_reason") or "VERIFICATION_FAILED"
+        err_msg = verification.get("error") or "Form verification failed"
+        safe_err = str(err_msg).encode('ascii', 'replace').decode('ascii')
+        print(f"[create_institution_form Verification FAILED]: {safe_err} ({failure_reason})")
+        return {
+            "success": False,
+            "error": err_msg,
+            "failure_reason": failure_reason,
+            "workspace_id": ws_id,
+            "institution_name": clean_inst_name,
+            "institution_mobile": canonical_mobile,
+            "message": "স্যার, ফর্ম তৈরির সময় ছবির Upload অপশন সক্রিয় করতে সমস্যা হয়েছে। আমি আবার চেষ্টা করছি।"
+        }
+
+    # 8. Verification PASSED: Save generated form record in database
     selected_fields_str = json.dumps(final_selected_fields, ensure_ascii=False) if isinstance(final_selected_fields, (list, dict)) else str(final_selected_fields or "")
     saved_form = save_generated_form(
         workspace_id=ws_id,
@@ -178,8 +239,8 @@ def create_institution_form(
         template_id=template_id,
         institution_id=inst_record.get("id"),
         drive_folder_id=inst_folder_id,
-        response_destination_id=sheet_data.get("spreadsheet_id"),
-        response_sheet_url=sheet_data.get("sheet_url"),
+        response_destination_id=spreadsheet_id,
+        response_sheet_url=sheet_url,
         status="active"
     )
 
@@ -196,10 +257,10 @@ def create_institution_form(
         "form_url": responder_url,
         "responder_url": responder_url,
         "edit_url": edit_url,
-        "sheet_url": sheet_data.get("sheet_url"),
+        "sheet_url": sheet_url,
         "drive_folder_id": inst_folder_id,
         "selected_fields": final_selected_fields,
-        "message": f"'{clean_inst_name}' এর জন্য নতুন Google Form ও Google Sheet সফলভাবে তৈরি হয়েছে।"
+        "message": f"'{clean_inst_name}' এর জন্য নতুন Google Form ও Google Sheet সফলভাবে তৈরি ও যাচাই করা হয়েছে।"
     }
 
 def send_form_link_via_whatsapp(

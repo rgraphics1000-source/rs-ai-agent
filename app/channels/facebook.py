@@ -268,16 +268,25 @@ def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, p
         clean_token = clean_token[7:].strip()
 
     if not clean_token or not comment_id:
+        print(f"[Facebook Comment Reply Error]: Missing token or comment_id (comment_id={comment_id})")
         return False
 
     url = f"{GRAPH_API_URL}/{comment_id}/comments"
     params = {"access_token": clean_token}
     payload = {"message": message}
     try:
-        r = requests.post(url, params=params, data=payload, timeout=10)
-        return r.status_code == 200
+        r = requests.post(url, params=params, json=payload, timeout=10)
+        if r.status_code != 200:
+            # Fallback to form-data if json payload fails
+            r = requests.post(url, params=params, data=payload, timeout=10)
+        if r.status_code == 200:
+            print(f"[Facebook Comment Reply SUCCESS]: Replied to comment {comment_id}")
+            return True
+        else:
+            print(f"[Facebook Comment Reply Error {r.status_code}]: {r.text}")
+            return False
     except Exception as e:
-        print(f"[Facebook Comment Reply Error]: {e}")
+        print(f"[Facebook Comment Reply Exception]: {e}")
         return False
 
 def send_fb_private_reply_to_comment(comment_id: str, message: str, page_token: str = None, page_id: str = None) -> bool:
@@ -288,6 +297,7 @@ def send_fb_private_reply_to_comment(comment_id: str, message: str, page_token: 
         clean_token = clean_token[7:].strip()
 
     if not clean_token or not comment_id:
+        print(f"[Facebook Private Reply Error]: Missing token or comment_id (comment_id={comment_id})")
         return False
 
     url = f"{GRAPH_API_URL}/me/messages"
@@ -298,9 +308,14 @@ def send_fb_private_reply_to_comment(comment_id: str, message: str, page_token: 
     }
     try:
         r = requests.post(url, params=params, json=payload, timeout=10)
-        return r.status_code == 200
+        if r.status_code == 200:
+            print(f"[Facebook Private Reply SUCCESS]: Sent private reply to comment {comment_id}")
+            return True
+        else:
+            print(f"[Facebook Private Reply Error {r.status_code}]: {r.text}")
+            return False
     except Exception as e:
-        print(f"[Facebook Private Reply Error]: {e}")
+        print(f"[Facebook Private Reply Exception]: {e}")
         return False
 
 async def handle_facebook_webhook_event(data: dict):
@@ -526,101 +541,115 @@ async def handle_facebook_webhook_event(data: dict):
                 page_token = page_conn.get("page_access_token")
                 page_name = page_conn.get("page_name", "Facebook Page")
 
-                for change in entry["changes"]:
+                for change in entry.get("changes", []):
                     field = change.get("field")
                     value = change.get("value", {})
                     
-                    if field == "feed" and value.get("item") == "comment" and value.get("verb") == "add":
-                        comment_id = value.get("comment_id")
-                        post_id = value.get("post_id")
-                        from_user = value.get("from", {})
-                        user_name = from_user.get("name", "কাস্টমার")
-                        user_id = from_user.get("id")
-                        comment_text = value.get("message", "")
+                    verb = value.get("verb", "add")
+                    if verb in ["remove", "hide", "block", "unlike", "delete"]:
+                        continue
 
-                        # Prevent replying to own page comments
-                        if user_id == page_id or (page_conn and user_id == page_conn.get("page_id")):
-                            continue
+                    is_comment = (
+                        (field in ["feed", "comments"]) and 
+                        (value.get("item") == "comment" or bool(value.get("comment_id")))
+                    )
+                    if not is_comment:
+                        continue
 
-                        # Check settings
-                        ai_enabled = bool(page_conn.get("ai_enabled", 1))
-                        if not ai_enabled:
-                            continue
+                    comment_id = str(value.get("comment_id") or value.get("id") or "").strip()
+                    if not comment_id:
+                        continue
 
-                        auto_comment = get_setting("comment_auto_reply", "true").lower() == "true"
-                        send_private = get_setting("private_message_on_comment", "true").lower() == "true"
-                        comment_ai_mode = get_setting("comment_ai_mode", "ai_smart").lower()
-                        honorific = detect_customer_gender_title(user_name)
+                    post_id = str(value.get("post_id") or value.get("parent_id") or "").strip()
+                    from_user = value.get("from") or {}
+                    user_name = from_user.get("name") or value.get("sender_name") or "কাস্টমার"
+                    user_id = str(from_user.get("id") or value.get("sender_id") or "").strip()
+                    comment_text = str(value.get("message") or value.get("comment_text") or value.get("text") or "").strip()
 
-                        # Generate AI Smart Comment Reply or Template Reply
-                        public_reply_text = ""
-                        if auto_comment and comment_id:
-                            if comment_ai_mode == "ai_smart":
-                                comment_prompt = (
-                                    f"কাস্টমার '{user_name}' ফেসবুক পেজ '{page_name}'-এর পোস্টে কমেন্ট করেছেন: '{comment_text}'। "
-                                    f"আপনি {page_name}-এর নম্র ও বিশ্বস্ত সেলস রিপ্রেজেন্টেটিভ হিসেবে এই কমেন্টের খুব সুন্দর, প্রাসঙ্গিক ও চমৎকার একটি পাবলিক উত্তর দিন। "
-                                    f"কাস্টমারকে সম্মান জানিয়ে {honorific} সম্বোধন করবেন (ভাইয়া/আপু বলবেন না)। "
-                                    f"সংক্ষিপ্ত ও অমায়িক ভাষায় কথা বলবেন এবং প্রয়োজনে ইনবক্স চেক করতে বলবেন।"
-                                )
-                                ai_comment_res = await process_customer_message(
-                                    message_text=comment_prompt,
-                                    channel="facebook",
-                                    sender_id=user_id or comment_id,
-                                    customer_name=user_name,
-                                    workspace_id=workspace_id,
-                                    page_id=page_id
-                                )
-                                public_reply_text = ai_comment_res.get("reply_text", "")
-                                if not public_reply_text:
-                                    public_reply_text = f"ধন্যবাদ {user_name} {honorific}! বিস্তারিত তথ্য আপনার ইনবক্সে পাঠানো হয়েছে 🥰"
-                            else:
-                                template = get_setting("comment_reply_template", f"ধন্যবাদ {{name}} {honorific}! বিস্তারিত তথ্য আপনার ইনবক্সে পাঠানো হয়েছে 🥰")
-                                public_reply_text = template.replace("{name}", user_name)
+                    # Prevent replying to own page comments
+                    if user_id and (user_id == page_id or (page_conn and user_id == str(page_conn.get("page_id")))):
+                        continue
 
-                            if public_reply_text:
-                                print(f"[Facebook Comment AI Reply on Workspace {workspace_id} ('{page_name}')]: '{public_reply_text[:60]}...' to comment {comment_id}")
-                                reply_to_fb_comment(comment_id, public_reply_text, page_token=page_token, page_id=page_id)
+                    # Check settings
+                    ai_enabled = bool(page_conn.get("ai_enabled", 1))
+                    comments_enabled = bool(page_conn.get("comments_enabled", 1))
+                    if not ai_enabled or not comments_enabled:
+                        print(f"[Facebook Comment Skipped]: AI ({ai_enabled}) or Comments ({comments_enabled}) disabled for page {page_id}")
+                        continue
 
-                        # Private inbox reply
-                        private_reply_text = ""
-                        if send_private and comment_id:
-                            # Generate tailored inbox message scoped to workspace
-                            inbox_prompt = (
-                                f"কাস্টমার '{user_name}' পেজ '{page_name}'-এর পোস্টে কমেন্ট করেছেন: '{comment_text}'। "
-                                f"তাকে ইনবক্সে প্রডাক্টের বিস্তারিত দাম, অফার ও অর্ডার করার নিয়ম জানিয়ে একটি আকর্ষণীয় প্রাইভেট মেসেজ দিন (সম্বোধন {honorific})।"
+                    auto_comment = get_setting("comment_auto_reply", "true").lower() == "true"
+                    send_private = get_setting("private_message_on_comment", "true").lower() == "true"
+                    comment_ai_mode = get_setting("comment_ai_mode", "ai_smart").lower()
+                    honorific = detect_customer_gender_title(user_name)
+
+                    # Generate AI Smart Comment Reply or Template Reply
+                    public_reply_text = ""
+                    if auto_comment and comment_id:
+                        if comment_ai_mode == "ai_smart":
+                            comment_prompt = (
+                                f"কাস্টমার '{user_name}' ফেসবুক পেজ '{page_name}'-এর পোস্টে কমেন্ট করেছেন: '{comment_text or '[ছবি/স্টিকার/জিজ্ঞাসা]'}'। "
+                                f"আপনি {page_name}-এর নম্র ও বিশ্বস্ত সেলস রিপ্রেজেন্টেটিভ হিসেবে এই কমেন্টের খুব সুন্দর, প্রাসঙ্গিক ও চমৎকার একটি পাবলিক উত্তর দিন। "
+                                f"কাস্টমারকে সম্মান জানিয়ে {honorific} সম্বোধন করবেন (ভাইয়া/আপু বলবেন না)। "
+                                f"সংক্ষিপ্ত ও অমায়িক ভাষায় কথা বলবেন এবং প্রয়োজনে ইনবক্স চেক করতে বলবেন।"
                             )
-                            inbox_res = await process_customer_message(
-                                message_text=inbox_prompt,
+                            ai_comment_res = await process_customer_message(
+                                message_text=comment_prompt,
                                 channel="facebook",
-                                sender_id=user_id or comment_id,
+                                sender_id=f"comment_{comment_id}",
                                 customer_name=user_name,
                                 workspace_id=workspace_id,
                                 page_id=page_id
                             )
-                            private_reply_text = inbox_res.get("reply_text", "")
-                            if private_reply_text:
-                                send_fb_private_reply_to_comment(comment_id, private_reply_text, page_token=page_token, page_id=page_id)
+                            public_reply_text = (ai_comment_res.get("reply_text") or "").strip()
+                            if not public_reply_text:
+                                public_reply_text = f"ধন্যবাদ {user_name} {honorific}! বিস্তারিত তথ্য আপনার ইনবক্সে পাঠানো হয়েছে 🥰"
+                        else:
+                            template = get_setting("comment_reply_template", f"ধন্যবাদ {{name}} {honorific}! বিস্তারিত তথ্য আপনার ইনবক্সে পাঠানো হয়েছে 🥰")
+                            public_reply_text = template.replace("{name}", user_name)
 
-                        # Log to database scoped by workspace_id and page_id
-                        conn = get_db_connection()
-                        cursor = conn.cursor()
-                        cursor.execute("""
-                            INSERT OR IGNORE INTO comment_logs (
-                                workspace_id, post_id, comment_id, user_id, user_name, comment_text, public_reply, private_reply, page_id
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            workspace_id,
-                            post_id,
-                            comment_id,
-                            user_id,
-                            user_name,
-                            comment_text,
-                            public_reply_text if auto_comment else "",
-                            private_reply_text if send_private else "",
-                            page_id
-                        ))
-                        conn.commit()
-                        conn.close()
+                        if public_reply_text:
+                            print(f"[Facebook Comment AI Reply on Workspace {workspace_id} ('{page_name}')]: '{public_reply_text[:60]}...' to comment {comment_id}")
+                            reply_to_fb_comment(comment_id, public_reply_text, page_token=page_token, page_id=page_id)
+
+                    # Private inbox reply
+                    private_reply_text = ""
+                    if send_private and comment_id:
+                        inbox_prompt = (
+                            f"কাস্টমার '{user_name}' পেজ '{page_name}'-এর পোস্টে কমেন্ট করেছেন: '{comment_text or '[পণ্য অনুসন্ধান]'}'। "
+                            f"তাকে ইনবক্সে প্রডাক্টের বিস্তারিত দাম, অফার ও অর্ডার করার নিয়ম জানিয়ে একটি আকর্ষণীয় প্রাইভেট মেসেজ দিন (সম্বোধন {honorific})।"
+                        )
+                        inbox_res = await process_customer_message(
+                            message_text=inbox_prompt,
+                            channel="facebook",
+                            sender_id=f"comment_{comment_id}",
+                            customer_name=user_name,
+                            workspace_id=workspace_id,
+                            page_id=page_id
+                        )
+                        private_reply_text = (inbox_res.get("reply_text") or "").strip()
+                        if private_reply_text:
+                            send_fb_private_reply_to_comment(comment_id, private_reply_text, page_token=page_token, page_id=page_id)
+
+                    # Log to database scoped by workspace_id and page_id
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO comment_logs (
+                            workspace_id, post_id, comment_id, user_id, user_name, comment_text, public_reply, private_reply, page_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        workspace_id,
+                        post_id,
+                        comment_id,
+                        user_id,
+                        user_name,
+                        comment_text,
+                        public_reply_text if auto_comment else "",
+                        private_reply_text if send_private else "",
+                        page_id
+                    ))
+                    conn.commit()
+                    conn.close()
 
     except Exception as e:
         print(f"[Facebook Webhook Handler Error]: {e}")

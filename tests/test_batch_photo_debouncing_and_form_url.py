@@ -111,14 +111,15 @@ class TestBatchPhotoDebouncingAndFormUrl(unittest.TestCase):
         mock_send.assert_not_called()
         print("✓ Test 2 Passed: Stale message (>5m) skipped AI reply generation without back-to-back storm.")
 
-    def test_03_existing_form_returns_canonical_form_id_url(self):
+    @patch("app.google_integration.forms_service.verify_generated_form", return_value={"success": True, "valid": True})
+    def test_03_existing_form_returns_canonical_form_id_url(self, mock_verify):
         """Verify existing form returns https://docs.google.com/forms/d/{form_id}/viewform."""
         # Save a record with published responder URI in DB
         published_url = "https://docs.google.com/forms/d/e/1FAIpQLSc_1rMRMmos/viewform"
         save_generated_form(
             workspace_id=1,
             institution_name="খাদিমুল কুরআন মাদ্রাসা",
-            institution_mobile="01929778581",
+            institution_mobile="01929778999",
             form_id="1rMRMmos-MBWXyX2U3NT7IptnofTn7lV7CyN8bsh1r3E",
             form_url=published_url,
             responder_uri=published_url,
@@ -128,7 +129,7 @@ class TestBatchPhotoDebouncingAndFormUrl(unittest.TestCase):
         res = resolve_google_form_workflow(
             user_message="আমার গুগল ফর্মের লিঙ্ক দেন",
             conversation_history=[],
-            customer_phone="01929778581",
+            customer_phone="01929778999",
             workspace_id=1
         )
 

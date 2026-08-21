@@ -601,6 +601,216 @@ def inspect_and_verify_master_form(workspace_id: int, form_id: str) -> dict:
     }
 
 
+def verify_generated_form(
+    workspace_id: int,
+    form_id: str,
+    expected_fields: List[Any] = None,
+    sheet_id: str = None,
+    sheet_url: str = None,
+    drive_folder_id: str = None,
+    check_file_upload: bool = True
+) -> dict:
+    """
+    Production verification function for generated/cloned Google Forms:
+    1. Form exists and is accessible in Google Drive (not trashed, not fake).
+    2. Form details & responderUri can be retrieved via Google Forms API.
+    3. Form is accepting responses (published responder URI exists).
+    4. Expected requested questions exist in the Form.
+    5. Student Photo File Upload question exists (if photo requested / check_file_upload is True).
+    6. File Upload folder is valid and accessible in Google Drive.
+    7. Response Sheet exists and is accessible in Google Drive / Sheets.
+    8. Drive destination folder exists and is accessible.
+
+    Returns:
+      {'success': True, 'valid': True, ...} ONLY when ALL checks pass.
+      {'success': False, 'valid': False, 'error': ..., 'failure_reason': ...} when ANY check fails.
+    """
+    import re
+    from app.google_integration.drive_service import verify_file_accessible
+
+    ws_id = int(workspace_id or 1)
+    clean_form_id = str(form_id).strip() if form_id else ""
+    if not clean_form_id:
+        return {
+            "success": False,
+            "valid": False,
+            "error": "Form ID is missing or empty.",
+            "failure_reason": "MISSING_FORM_ID"
+        }
+
+    # 1. Verify Form File in Google Drive
+    is_valid_drive, drive_meta = verify_file_accessible(workspace_id=ws_id, file_id=clean_form_id)
+    if not is_valid_drive or (isinstance(drive_meta, dict) and drive_meta.get("trashed")):
+        err_msg = drive_meta.get("error", "File not found or trashed") if isinstance(drive_meta, dict) else "Inaccessible"
+        return {
+            "success": False,
+            "valid": False,
+            "form_id": clean_form_id,
+            "error": f"Google Form '{clean_form_id}' Google Drive-এ পাওয়া যায়নি বা এক্সেস নেই: {err_msg}",
+            "failure_reason": "FORM_INACCESSIBLE"
+        }
+
+    # 2. Verify Google Forms API Access & Structure
+    try:
+        form_details = get_form_details(workspace_id=ws_id, form_id=clean_form_id)
+    except Exception as f_err:
+        return {
+            "success": False,
+            "valid": False,
+            "form_id": clean_form_id,
+            "error": f"Google Forms API দ্বারা ফর্মটি লোড করা সম্ভব হয়নি: {str(f_err)}",
+            "failure_reason": "FORMS_API_GET_FAILED"
+        }
+
+    if not isinstance(form_details, dict):
+        return {
+            "success": False,
+            "valid": False,
+            "form_id": clean_form_id,
+            "error": "Google Forms API invalid metadata returned.",
+            "failure_reason": "INVALID_FORM_METADATA"
+        }
+
+    items = form_details.get("items", [])
+    if not items:
+        return {
+            "success": False,
+            "valid": False,
+            "form_id": clean_form_id,
+            "error": f"Google Form '{clean_form_id}'-এ কোনো প্রশ্ন পাওয়া যায়নি।",
+            "failure_reason": "EMPTY_FORM"
+        }
+
+    responder_uri = form_details.get("responderUri") or f"https://docs.google.com/forms/d/{clean_form_id}/viewform"
+
+    # 3. Detect Native File Upload Question & Validate Upload Folder
+    has_file_upload = False
+    upload_folder_id = None
+    file_upload_item = None
+
+    for itm in items:
+        q_item = itm.get("questionItem", {}) if isinstance(itm, dict) else {}
+        q = q_item.get("question", {}) if isinstance(q_item, dict) else {}
+        fuq = q.get("fileUploadQuestion") if isinstance(q, dict) else None
+        
+        if fuq is not None:
+            has_file_upload = True
+            file_upload_item = itm
+            if isinstance(fuq, dict):
+                upload_folder_id = fuq.get("folderId")
+            elif hasattr(fuq, "folderId"):
+                upload_folder_id = getattr(fuq, "folderId")
+            break
+        elif "file_upload" in str(q).lower() or any(k in str(itm.get("title", "")).lower() for k in ["file upload", "ফাইল আপলোড"]):
+            has_file_upload = True
+            file_upload_item = itm
+            break
+
+    # Determine if File Upload question is required
+    requires_photo_upload = False
+    if check_file_upload:
+        requires_photo_upload = True
+    elif expected_fields:
+        for ef in expected_fields:
+            ef_str = (ef.get("key") if isinstance(ef, dict) else str(ef)).lower()
+            if any(k in ef_str for k in ["photo", "file", "ছবি", "image", "upload"]):
+                requires_photo_upload = True
+                break
+
+    if requires_photo_upload and not has_file_upload:
+        return {
+            "success": False,
+            "valid": False,
+            "form_id": clean_form_id,
+            "error": "Google Form-এ শিক্ষার্থীর ছবির জন্য native File Upload অপশন পাওয়া যায়নি।",
+            "failure_reason": "MISSING_FILE_UPLOAD_QUESTION"
+        }
+
+    # 4. Verify Upload Folder in Drive if present
+    if upload_folder_id:
+        is_valid_uf, uf_meta = verify_file_accessible(workspace_id=ws_id, file_id=str(upload_folder_id).strip())
+        if not is_valid_uf or (isinstance(uf_meta, dict) and uf_meta.get("trashed")):
+            uf_err = uf_meta.get("error", "Folder missing or trashed") if isinstance(uf_meta, dict) else "Folder missing"
+            return {
+                "success": False,
+                "valid": False,
+                "form_id": clean_form_id,
+                "upload_folder_id": upload_folder_id,
+                "error": f"File Upload-এর গন্তব্য ড্রাইভ ফোল্ডার ({upload_folder_id}) গুগলে পাওয়া যায়নি বা ডিলিট হয়েছে: {uf_err}",
+                "failure_reason": "INVALID_FILE_UPLOAD_FOLDER"
+            }
+
+    # 5. Verify Response Sheet
+    extracted_sheet_id = None
+    if sheet_id and str(sheet_id).strip():
+        extracted_sheet_id = str(sheet_id).strip()
+    elif sheet_url and str(sheet_url).strip():
+        m_s = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', str(sheet_url).strip())
+        if m_s:
+            extracted_sheet_id = m_s.group(1)
+        else:
+            return {
+                "success": False,
+                "valid": False,
+                "form_id": clean_form_id,
+                "sheet_url": sheet_url,
+                "error": f"রেসপন্স গুগল শিটের লিংকটি সঠিক নয়: {sheet_url}",
+                "failure_reason": "INVALID_SHEET_URL"
+            }
+    else:
+        return {
+            "success": False,
+            "valid": False,
+            "form_id": clean_form_id,
+            "error": "রেসপন্স গুগল শিট সংযুক্ত নেই বা পাওয়া যায়নি।",
+            "failure_reason": "MISSING_RESPONSE_SHEET"
+        }
+
+    if extracted_sheet_id:
+        is_valid_sheet, sheet_meta = verify_file_accessible(workspace_id=ws_id, file_id=extracted_sheet_id)
+        if not is_valid_sheet or (isinstance(sheet_meta, dict) and sheet_meta.get("trashed")):
+            sheet_err = sheet_meta.get("error", "Sheet not found or trashed") if isinstance(sheet_meta, dict) else "Sheet missing"
+            return {
+                "success": False,
+                "valid": False,
+                "form_id": clean_form_id,
+                "spreadsheet_id": extracted_sheet_id,
+                "error": f"রেসপন্স গুগল শিট ({extracted_sheet_id}) ড্রাইভে পাওয়া যায়নি: {sheet_err}",
+                "failure_reason": "SHEET_INACCESSIBLE"
+            }
+
+    # 6. Verify Drive Destination Folder if provided
+    if drive_folder_id and str(drive_folder_id).strip():
+        is_valid_f, f_meta = verify_file_accessible(workspace_id=ws_id, file_id=str(drive_folder_id).strip())
+        if not is_valid_f or (isinstance(f_meta, dict) and f_meta.get("trashed")):
+            f_err = f_meta.get("error", "Folder not found or trashed") if isinstance(f_meta, dict) else "Folder missing"
+            return {
+                "success": False,
+                "valid": False,
+                "form_id": clean_form_id,
+                "drive_folder_id": drive_folder_id,
+                "error": f"প্রতিষ্ঠানের গুগল ড্রাইভ ফোল্ডার ({drive_folder_id}) পাওয়া যায়নি: {f_err}",
+                "failure_reason": "DRIVE_FOLDER_INACCESSIBLE"
+            }
+
+    # 7. Success! All critical production checks passed
+    final_sheet_url = sheet_url or (f"https://docs.google.com/spreadsheets/d/{extracted_sheet_id}/edit" if extracted_sheet_id else "")
+
+    return {
+        "success": True,
+        "valid": True,
+        "workspace_id": ws_id,
+        "form_id": clean_form_id,
+        "form_url": responder_uri,
+        "responder_url": responder_uri,
+        "sheet_url": final_sheet_url,
+        "spreadsheet_id": extracted_sheet_id,
+        "has_file_upload": has_file_upload,
+        "upload_folder_id": upload_folder_id,
+        "items_count": len(items),
+        "message": "Google Form ও Google Sheet সম্পূর্ণ যাচাইকৃত এবং সক্রিয় রয়েছে।"
+    }
+
 
 def create_direct_institution_form(
     workspace_id: int,

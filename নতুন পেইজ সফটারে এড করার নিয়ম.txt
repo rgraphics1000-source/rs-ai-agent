@@ -1,0 +1,59 @@
+📘 নতুন পেজ ও হোয়াটসঅ্যাপ কানেক্ট করার সম্পূর্ণ ডিরেকশন গাইড
+ভবিষ্যতে যেকোনো নতুন ফেসবুক পেজ বা নতুন হোয়াটসঅ্যাপ নম্বর যুক্ত করার সময় নিচের ৪টি ধাপ অনুসরণ করবেন।
+
+🔹 ধাপ ১: মেটা (Meta) থেকে তথ্য সংগ্রহ
+একটি নতুন পেজ কানেক্ট করতে মেটা থেকে মোট ৩ থেকে ৪টি তথ্য সংগ্রহ করতে হবে:
+
+১. Facebook Page ID বের করার নিয়ম:
+আপনার ফেসবুক একাউন্ট থেকে সংশ্লিষ্ট পেজে যান।
+পেজের প্রোফাইলে গিয়ে About সেকশনে যান অথবা পেজ সেটিংসে Page Transparency তে ক্লিক করুন।
+নিচে Page ID দেখতে পাবেন (যেমন: 102938475610293)। এটি কপি করে রাখুন।
+
+২. Facebook Page Access Token বের করার নিয়ম:
+ব্রাউজারে যান: 👉 https://developers.facebook.com/tools/explorer
+উপরে ডানপাশে Meta App ড্রপডাউনে আপনার অ্যাপটি সিলেক্ট করুন।
+User or Page ড্রপডাউনে ক্লিক করে আপনার নতুন Facebook Page সিলেক্ট করুন।
+Permissions বক্সে নিচের অনুমতিগুলো সিলেক্ট করুন:
+pages_messaging
+pages_show_list
+pages_read_engagement
+pages_manage_metadata
+pages_manage_posts
+নিচে নীল রঙের Generate Access Token বাটনে ক্লিক করুন এবং ফেসবুকের অনুমতি দিন।
+এরপর Access Token বক্সে যে বড় কোডটি আসবে, সেটি কপি করে রাখুন।
+
+৩. WhatsApp Credentials বের করার নিয়ম (যদি ভিন্ন হোয়াটসঅ্যাপ থাকে):
+যান: 👉 https://developers.facebook.com/apps ➔ আপনার অ্যাপে ক্লিক করুন।
+বাঁদিকের মেনু থেকে WhatsApp ➔ API Setup এ যান।
+স্ক্রিনে সরাসরি দেখতে পাবেন:
+Phone number ID: (যেমন: 418451426636680)
+WhatsApp Business Account ID (WABA ID): (যেমন: 271335301757320)
+Display phone number: আপনার হোয়াটসঅ্যাপ নম্বরটি।
+
+🔹 ধাপ ২: আমাদের সফটওয়্যারে নতুন পেজ যুক্ত করা
+সফটওয়্যার ড্যাশবোর্ডে যান: 👉 https://rs-ai-agent.onrender.com/
+উপরে ড্রপডাউনের পাশে থাকা [+ নতুন পেজ] বাটনে ক্লিক করুন।
+বক্সে পেজের নাম (যেমন: SmartTech Store), দোকানের নাম, ফোন নম্বর ও ডেলিভারি চার্জ লিখে Create Business Page দিন।
+এবার বাঁদিকের মেনু থেকে Integrations ট্যাবে যান।
+[+ নতুন ফেসবুক পেজ ও হোয়াটসঅ্যাপ যুক্ত করুন] বাটনে ক্লিক করুন:
+Page Name: পেজের নাম লিখুন।
+Page ID: ধাপ ১ থেকে পাওয়া Page ID দিন।
+Page Access Token: ধাপ ১ থেকে পাওয়া Access Token দিন।
+WhatsApp Details (যদি থাকে): Phone Number ID, WABA ID এবং মোবাইল নম্বর দিয়ে Connect Page বাটনে চাপুন।
+
+🔹 ধাপ ৩: মেটা অ্যাপে Webhook কানেক্ট করা (মেসেজ পাওয়ার জন্য)
+মেটা ডেভেলপার পোর্টালে গিয়ে Webhook সেকশনে নিচের লিংকগুলো বসিয়ে দিন:
+
+প্ল্যাটফর্ম	Webhook Callback URL	Verify Token	সাবস্ক্রিপশন ফিল্ডস (Fields)
+Facebook Messenger	https://rs-ai-agent.onrender.com/webhook/facebook	rs_secure_verify_token_2026	messages, messaging_postbacks, feed
+WhatsApp Business	https://rs-ai-agent.onrender.com/webhook/whatsapp	rs_whatsapp_token_2026	messages
+
+🔹 ধাপ ৪: নতুন পেজের প্রোডাক্ট ও এআই ট্রেনিং দেওয়া
+যেহেতু নতুন পেজটি সম্পূর্ণ ফ্রেশ ও শূন্য থাকবে:
+
+ড্যাশবোর্ডের উপরে ড্রপডাউন থেকে আপনার নতুন পেজটি সিলেক্ট করুন।
+Products ট্যাবে গিয়ে + Add Product দিয়ে নতুন প্রোডাক্ট ও ছবি আপলোড করুন।
+Train Content ট্যাবে গিয়ে আপনার দোকানের নিয়ম বাংলায় লিখে 🧠 অটো-সিন্থেসাইজ ও এআই ট্রেইন করুন বাটনে চাপুন।
+💡 টিপস: আপনার মূল পেজ RS Graphics সবসময় অক্ষত থাকবে এবং নতুন পেজে যাই করবেন তা শুধুমাত্র সেই নতুন পেজের ভেতরেই থাকবে।
+
+New Page Connection Guide

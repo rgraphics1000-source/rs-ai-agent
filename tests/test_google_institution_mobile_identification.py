@@ -107,13 +107,14 @@ class TestGoogleInstitutionMobileIdentification(unittest.TestCase):
         print("✓ Test 2 Passed: Bangladeshi mobile number normalization to canonical format is 100% accurate.")
 
     # Test 3: Google Form title format contains Name and Mobile
+    @patch("app.google_integration.form_manager.verify_generated_form", return_value={"success": True, "valid": True})
     @patch("app.google_integration.form_manager.create_direct_institution_form")
     @patch("app.google_integration.form_manager.create_institution_response_sheet")
     @patch("app.google_integration.form_manager.get_or_create_institution_folder")
     @patch("app.google_integration.form_manager.get_or_create_workspace_root_folder")
     @patch("app.google_integration.form_manager.get_responder_url")
     def test_03_google_form_title_format_contains_name_and_mobile(
-        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_direct
+        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_direct, mock_verify
     ):
         self._setup_mock_connection(self.ws1)
         mock_root.return_value = "root_123"
@@ -255,13 +256,14 @@ class TestGoogleInstitutionMobileIdentification(unittest.TestCase):
         print("✓ Test 8 Passed: Search by mobile number resolves institution and generated forms accurately.")
 
     # Test 9: Duplicate mobile detection in same workspace
+    @patch("app.google_integration.form_manager.verify_generated_form", return_value={"success": True, "valid": True})
     @patch("app.google_integration.form_manager.create_direct_institution_form")
     @patch("app.google_integration.form_manager.create_institution_response_sheet")
     @patch("app.google_integration.form_manager.get_or_create_institution_folder")
     @patch("app.google_integration.form_manager.get_or_create_workspace_root_folder")
     @patch("app.google_integration.form_manager.get_responder_url")
     def test_09_duplicate_mobile_detection_in_same_workspace(
-        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_direct
+        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_direct, mock_verify
     ):
         self._setup_mock_connection(self.ws1)
         mock_root.return_value = "root_dup"
@@ -292,13 +294,14 @@ class TestGoogleInstitutionMobileIdentification(unittest.TestCase):
         print("✓ Test 9 Passed: Duplicate mobile number detected within same workspace.")
 
     # Test 10: Same mobile allowed across different workspaces (Workspace Isolation)
+    @patch("app.google_integration.form_manager.verify_generated_form", return_value={"success": True, "valid": True})
     @patch("app.google_integration.form_manager.create_direct_institution_form")
     @patch("app.google_integration.form_manager.create_institution_response_sheet")
     @patch("app.google_integration.form_manager.get_or_create_institution_folder")
     @patch("app.google_integration.form_manager.get_or_create_workspace_root_folder")
     @patch("app.google_integration.form_manager.get_responder_url")
     def test_10_same_mobile_allowed_across_different_workspaces(
-        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_direct
+        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_direct, mock_verify
     ):
         self._setup_mock_connection(self.ws1, master_id="master_ws1")
         self._setup_mock_connection(self.ws2, master_id="master_ws2")
@@ -381,14 +384,15 @@ class TestGoogleInstitutionMobileIdentification(unittest.TestCase):
         self.assertIn("01712345678", called_title)
         print("✓ Test 12 Passed: Institution Name and Mobile Number remain system metadata and are not injected as student questions.")
 
-    # Test 13: allow_duplicate=True creates additional form for existing institution
+    # Test 13: allow_duplicate flag creates additional form for same institution
+    @patch("app.google_integration.form_manager.verify_generated_form", return_value={"success": True, "valid": True})
     @patch("app.google_integration.form_manager.create_direct_institution_form")
     @patch("app.google_integration.form_manager.create_institution_response_sheet")
     @patch("app.google_integration.form_manager.get_or_create_institution_folder")
     @patch("app.google_integration.form_manager.get_or_create_workspace_root_folder")
     @patch("app.google_integration.form_manager.get_responder_url")
     def test_13_allow_duplicate_flag_creates_additional_form_for_existing_institution(
-        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_direct
+        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_direct, mock_verify
     ):
         self._setup_mock_connection(self.ws1)
         mock_root.return_value = "root_dup_allow"

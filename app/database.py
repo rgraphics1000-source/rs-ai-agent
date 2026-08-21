@@ -2256,8 +2256,8 @@ def get_google_connection(workspace_id: int = 1) -> Optional[dict]:
         return None
 
 def save_google_connection(
-    workspace_id: int,
-    google_account_email: str,
+    workspace_id: Any = 1,
+    google_account_email: str = "",
     access_token_encrypted: str = "",
     refresh_token_encrypted: str = "",
     token_expiry: str = None,
@@ -2267,6 +2267,21 @@ def save_google_connection(
     status: str = "connected"
 ) -> dict:
     """Inserts or updates the Google connection for a workspace."""
+    if isinstance(workspace_id, dict):
+        d = workspace_id
+        ws_id = int(d.get("workspace_id", 1))
+        google_account_email = str(d.get("google_account_email") or d.get("account_email") or "")
+        access_token_encrypted = str(d.get("access_token_encrypted") or d.get("access_token") or "")
+        refresh_token_encrypted = str(d.get("refresh_token_encrypted") or d.get("refresh_token") or "")
+        token_expiry = d.get("token_expiry")
+        drive_root_folder_id = d.get("drive_root_folder_id")
+        master_form_id = d.get("master_form_id")
+        master_sheet_id = d.get("master_sheet_id")
+        status = str(d.get("status", "connected"))
+    else:
+        ws_id = int(workspace_id or 1)
+        google_account_email = str(google_account_email or "")
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -2287,7 +2302,7 @@ def save_google_connection(
                 status = excluded.status,
                 updated_at = CURRENT_TIMESTAMP
         """, (
-            int(workspace_id or 1),
+            ws_id,
             google_account_email,
             access_token_encrypted,
             refresh_token_encrypted,
@@ -2298,7 +2313,7 @@ def save_google_connection(
             status
         ))
         conn.commit()
-        cursor.execute("SELECT * FROM google_connections WHERE workspace_id = ?", (int(workspace_id or 1),))
+        cursor.execute("SELECT * FROM google_connections WHERE workspace_id = ?", (ws_id,))
         row = cursor.fetchone()
         conn.close()
         return dict(row) if row else {}
@@ -2332,27 +2347,43 @@ def update_google_master_ids(
 ) -> bool:
     """Updates master form, sheet, or root folder ID and metadata for a workspace."""
     try:
+        ws_id = int(workspace_id or 1)
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE google_connections SET
-                master_form_id = COALESCE(?, master_form_id),
-                master_sheet_id = COALESCE(?, master_sheet_id),
-                drive_root_folder_id = COALESCE(?, drive_root_folder_id),
-                master_form_name = COALESCE(?, master_form_name),
-                master_form_url = COALESCE(?, master_form_url),
-                master_edit_url = COALESCE(?, master_edit_url),
-                master_sheet_url = COALESCE(?, master_sheet_url),
-                master_has_file_upload = COALESCE(?, master_has_file_upload),
-                master_verified_at = CURRENT_TIMESTAMP,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE workspace_id = ?
-        """, (
-            master_form_id, master_sheet_id, drive_root_folder_id,
-            master_form_name, master_form_url, master_edit_url,
-            master_sheet_url, master_has_file_upload,
-            int(workspace_id or 1)
-        ))
+        cursor.execute("SELECT workspace_id FROM google_connections WHERE workspace_id = ?", (ws_id,))
+        if not cursor.fetchone():
+            cursor.execute("""
+                INSERT INTO google_connections (
+                    workspace_id, google_account_email, access_token_encrypted, refresh_token_encrypted,
+                    status, master_form_id, master_sheet_id, drive_root_folder_id,
+                    master_form_name, master_form_url, master_edit_url, master_sheet_url,
+                    master_has_file_upload, master_verified_at, updated_at
+                ) VALUES (?, '', '', '', 'connected', ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """, (
+                ws_id, master_form_id, master_sheet_id, drive_root_folder_id,
+                master_form_name, master_form_url, master_edit_url, master_sheet_url,
+                master_has_file_upload
+            ))
+        else:
+            cursor.execute("""
+                UPDATE google_connections SET
+                    master_form_id = COALESCE(?, master_form_id),
+                    master_sheet_id = COALESCE(?, master_sheet_id),
+                    drive_root_folder_id = COALESCE(?, drive_root_folder_id),
+                    master_form_name = COALESCE(?, master_form_name),
+                    master_form_url = COALESCE(?, master_form_url),
+                    master_edit_url = COALESCE(?, master_edit_url),
+                    master_sheet_url = COALESCE(?, master_sheet_url),
+                    master_has_file_upload = COALESCE(?, master_has_file_upload),
+                    master_verified_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE workspace_id = ?
+            """, (
+                master_form_id, master_sheet_id, drive_root_folder_id,
+                master_form_name, master_form_url, master_edit_url,
+                master_sheet_url, master_has_file_upload,
+                ws_id
+            ))
         conn.commit()
         conn.close()
         return True
