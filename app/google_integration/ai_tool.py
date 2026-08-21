@@ -410,7 +410,25 @@ def resolve_google_form_workflow(
 
     is_question = bool(re.search(question_pattern, msg_lower))
 
-    # If the user is asking a general question (e.g., "আইডি কার্ডের তথ্য কিভাবে নেন আপনারা?")
+    # DETERMINISTIC: Data collection questions → always mention Google Form + offer to create
+    # Catches: "তথ্য কিভাবে দিব", "তথ্য কিভাবে নেন", "ছবি কিভাবে পাঠাব", "ডাটা কিভাবে দিব",
+    #          "আইডি কার্ডের তথ্য এবং ছবি আম্রা কিভাবে দিব আপনাদেরকে?" etc.
+    data_collection_pattern = r'(?:তথ্য|ছবি|ডাটা|data|photo|ইনফরমেশন|ইনফো)(?:\s*(?:এবং|ও|আর|and)\s*(?:ছবি|তথ্য|ডাটা))?\s*(?:আম্রা\s*|আমরা\s*|আমি\s*)?(?:কিভাবে|কীভাবে|কেমনে|কেমন\s*করে)\s*(?:দিব|দেবো|দিবো|দিতে\s*হবে|নেন|নেবেন|নিবেন|পাঠাব|পাঠাবো|পাঠাই|দেই|সংগ্রহ|কালেক্ট|জমা|submit|send|collect)'
+    data_collection_pattern2 = r'(?:কিভাবে|কীভাবে|কেমনে|কেমন\s*করে)\s*(?:তথ্য|ছবি|ডাটা|data|photo|ইনফরমেশন|ইনফো)(?:\s*(?:এবং|ও|আর|and)\s*(?:ছবি|তথ্য|ডাটা))?\s*(?:দিব|দেবো|দিবো|দিতে\s*হবে|নেন|নেবেন|নিবেন|পাঠাব|পাঠাবো|পাঠাই|দেই|সংগ্রহ|কালেক্ট|জমা|submit|send|collect)'
+    if (re.search(data_collection_pattern, msg_lower) or re.search(data_collection_pattern2, msg_lower)) and not has_explicit_form_intent:
+        return {
+            "reply": (
+                "জি স্যার, আইডি কার্ডের তথ্য ও ছবি সংগ্রহের জন্য আমাদের সবচেয়ে সহজ ব্যবস্থা হলো **গুগল ফর্ম (Google Form)**। "
+                "আপনার প্রতিষ্ঠানের নামে আমরা একটি কাস্টমাইজড গুগল ফর্ম তৈরি করে দিই, "
+                "যেখানে শিক্ষার্থী/স্টাফরা নিজেরাই নাম, পিতার নাম, ছবি সহ সব তথ্য সুন্দরভাবে জমা দিতে পারেন।\n\n"
+                "এছাড়াও আপনি চাইলে সরাসরি এই হোয়াটসঅ্যাপে এক্সেল/ওয়ার্ড ফাইল বা ছবি পাঠিয়েও দিতে পারেন।\n\n"
+                "আপনার প্রতিষ্ঠানের জন্য কি একটি গুগল ফর্ম বানিয়ে দেব স্যার?"
+            ),
+            "action": "data_collection_offer",
+            "step": "offered_google_form"
+        }
+
+    # If the user is asking a general question (e.g., "আইডি কার্ডের দাম কত?")
     # and has not issued an explicit form creation command, let Gemini AI answer naturally!
     if is_question and not has_explicit_form_intent:
         return None
