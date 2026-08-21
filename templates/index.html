@@ -93,14 +93,17 @@
     <div class="main-wrapper">
         <!-- Mobile Top Nav Header -->
         <div class="mobile-top-bar" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: rgba(13, 17, 28, 0.95); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.08); position: sticky; top: 0; z-index: 40;">
-            <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
                 <button class="mobile-menu-btn" onclick="toggleMobileSidebar()" aria-label="Open Menu" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: #fff; cursor: pointer;">
                     <i class="fas fa-bars"></i>
                 </button>
-                <img src="/static/img/logo.png" alt="RS AI Logo" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(59, 130, 246, 0.7); box-shadow: 0 0 12px rgba(59, 130, 246, 0.5); display: inline-block; vertical-align: middle;">
-                <select id="mobile-workspace-select" class="form-control" style="font-size: 12px; font-weight: 700; background: rgba(30, 41, 59, 0.9); color: #fff; border: 1px solid rgba(59, 130, 246, 0.5); border-radius: 6px; padding: 4px 8px; max-width: 140px;" onchange="onWorkspaceChanged(this.value)">
+                <img src="/static/img/logo.png" alt="RS AI Logo" style="width: 34px; height: 34px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(59, 130, 246, 0.7); box-shadow: 0 0 12px rgba(59, 130, 246, 0.5); display: inline-block; vertical-align: middle;">
+                <select id="mobile-workspace-select" class="form-control" style="font-size: 12px; font-weight: 700; background: rgba(30, 41, 59, 0.9); color: #fff; border: 1px solid rgba(59, 130, 246, 0.5); border-radius: 6px; padding: 4px 6px; max-width: 125px;" onchange="onWorkspaceChanged(this.value)">
                     <option value="1">🏢 RS Graphics</option>
                 </select>
+                <button class="btn btn-sm btn-primary" onclick="openCreateWorkspaceModal()" title="নতুন পেজ যুক্ত করুন" style="padding: 4px 7px; font-size: 11px; border-radius: 6px;">
+                    <i class="fas fa-plus"></i>
+                </button>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
                 <button class="btn btn-sm" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239,68,68,0.4); color: #fca5a5; font-size: 11px; padding: 5px 9px; border-radius: 16px; display: flex; align-items: center; gap: 4px;" onclick="openChatSelectorModal()">
@@ -120,13 +123,13 @@
             </div>
             <div class="header-actions" style="display: flex; align-items: center; gap: 8px;">
                 <!-- Workspace / Business Switcher -->
-                <div class="workspace-switcher-wrapper" style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 4px 8px; border-radius: 10px;">
-                    <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;"><i class="fas fa-building" style="color: #60a5fa;"></i> Business:</span>
-                    <select id="global-workspace-select" class="form-control" style="font-size: 12.5px; font-weight: 600; background: rgba(15, 23, 42, 0.9); color: #fff; border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 6px; padding: 4px 8px; min-width: 160px;" onchange="onWorkspaceChanged(this.value)">
+                <div class="workspace-switcher-wrapper" style="display: flex; align-items: center; gap: 6px; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(59, 130, 246, 0.35); padding: 4px 10px; border-radius: 10px;">
+                    <span style="font-size: 12px; font-weight: 700; color: #93c5fd; letter-spacing: 0.3px;"><i class="fas fa-building" style="color: #60a5fa;"></i> পেজ / বিজনেস:</span>
+                    <select id="global-workspace-select" class="form-control" style="font-size: 13px; font-weight: 600; background: rgba(15, 23, 42, 0.95); color: #fff; border: 1px solid rgba(59, 130, 246, 0.5); border-radius: 6px; padding: 5px 10px; min-width: 170px;" onchange="onWorkspaceChanged(this.value)">
                         <option value="1">🏢 RS Graphics (Primary)</option>
                     </select>
-                    <button class="btn btn-sm btn-secondary" onclick="openCreateWorkspaceModal()" title="Add New Business Workspace" style="padding: 4px 8px; font-size: 11px;">
-                        <i class="fas fa-plus"></i> New
+                    <button class="btn btn-sm btn-primary" onclick="openCreateWorkspaceModal()" title="নতুন ফেসবুক পেজ / বিজনেস যুক্ত করুন" style="padding: 5px 10px; font-size: 12px; font-weight: 600; background: linear-gradient(135deg, #2563eb, #06b6d4); display: flex; align-items: center; gap: 5px;">
+                        <i class="fas fa-plus"></i> + নতুন পেজ
                     </button>
                 </div>
 
