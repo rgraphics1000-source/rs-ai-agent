@@ -931,6 +931,34 @@ async def handle_whatsapp_webhook_event(data: dict):
                         )
 
                         reply_text = ai_result.get("reply_text", "")
+                        
+                        # Structured Production Transition Logging (Google Form & AI routing tracking)
+                        gw = ai_result.get("google_form_workflow") or {}
+                        gw_status = gw.get("status", "none")
+                        gw_name = gw.get("institution_name", "")
+                        gw_mobile = gw.get("institution_mobile", "")
+                        gw_fields = gw.get("selected_fields", [])
+                        gw_success = gw.get("success", False)
+                        gw_err = gw.get("error", "none")
+                        final_source = ai_result.get("response_source") or ("deterministic_google_form" if gw_status in ["created", "need_name", "need_mobile", "need_fields", "already_exists", "data_collection_offer"] else "gemini_brain")
+
+                        print(
+                            f"[WhatsApp Webhook Transition] "
+                            f"workspace_id={workspace_id} "
+                            f"sender_phone={masked_sender} "
+                            f"message_text={repr(msg_text[:40])} "
+                            f"conversation_id=whatsapp_{sender_phone} "
+                            f"detected_intent={gw_status} "
+                            f"workflow_state={gw_status} "
+                            f"extracted_institution_name={repr(gw_name)} "
+                            f"extracted_mobile={repr(gw_mobile)} "
+                            f"extracted_fields={len(gw_fields)} "
+                            f"should_create_form={bool(gw_status == 'created')} "
+                            f"create_institution_form_called={bool(gw_status == 'created')} "
+                            f"create_institution_form_result={gw_success} "
+                            f"exception_error={repr(gw_err)} "
+                            f"final_response_source={final_source}"
+                        )
                         print(f"[AI Reply on Workspace {workspace_id} WA {effective_phone_id}] generated for={masked_sender}: {reply_text[:60] if reply_text else 'None'}...")
 
                         if reply_text and sender_phone:

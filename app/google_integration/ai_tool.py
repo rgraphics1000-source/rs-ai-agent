@@ -178,6 +178,8 @@ def detect_fields_from_natural_language(text: str, fallback_to_defaults: bool = 
         return []
 
     text_lower = text.lower().strip()
+    # Strip institutional name references so 'প্রতিষ্ঠানের নাম' does not trigger 'student_name' field
+    field_text = re.sub(r'(?:প্রতিষ্ঠানের|স্কুলের|মাদ্রাসার|মাদরাসার|কলেজের|আমাদের|আপনার|দোকানের)\s*নাম[টি]*', '', text_lower)
     detected_fields = []
     detected_keys = set()
 
@@ -188,7 +190,7 @@ def detect_fields_from_natural_language(text: str, fallback_to_defaults: bool = 
         for alias in field["aliases"]:
             alias_lower = alias.lower()
             pattern = r'(?<![a-zA-Z0-9\u0980-\u09FF])' + re.escape(alias_lower) + r'(?![a-zA-Z0-9\u0980-\u09FF])'
-            if re.search(pattern, text_lower):
+            if re.search(pattern, field_text):
                 matched = True
                 break
 
@@ -392,7 +394,7 @@ def resolve_google_form_workflow(
 
     has_active_form_flow = is_awaiting_name or is_awaiting_mobile or is_awaiting_fields
 
-    # Check for explicit form creation command in current user message
+    # Check for explicit form creation command or institution configuration in current user message
     form_explicit_triggers = [
         r'গুগল\s*ফর্ম|গুগল\s*ফরম|google\s*for[mn]|google\s*from|gform|g-form',
         r'id\s*card\s*(?:এর\s*)?(?:form|ফর্ম|ফরম)',
@@ -403,7 +405,8 @@ def resolve_google_form_workflow(
         r'(?:ফর্ম|ফরম|form)\s*(?:এর\s*)?(?:লিংক|লিঙ্ক|link)',
         r'(?:ফর্মে|ফরমে)\s*(?:নাম|পিতার|শ্রেণি|ছবি|রোল|তথ্য)',
         r'প্রতিষ্ঠানের\s*নাম|স্কুলের\s*নাম|মাদ্রাসার\s*নাম|মাদরাসার\s*নাম|কলেজের\s*নাম',
-        r'(?:নাম|পিতা|শ্রেণি|শ্রেণী|রোল|ছবি|জন্মতারিখ).*(?:থাকবে|রাখব|রাখবো|নেব|নেবো|কালেক্ট|ফিল্ড)'
+        r'(?:নাম|পিতা|শ্রেণি|শ্রেণী|রোল|ছবি|জন্মতারিখ).*(?:থাকবে|রাখব|রাখবো|নেব|নেবো|কালেক্ট|ফিল্ড)',
+        r'(?:জামিয়া|জামেয়া|মারকাজ|মারকায|মাদ্রাসা|মাদরাসা|স্কুল|School|College).*(?:নাম|পিতা|শ্রেণি|শ্রেণী|রোল|ছবি)'
     ]
     has_explicit_form_intent = any(re.search(p, msg_lower, re.IGNORECASE) for p in form_explicit_triggers)
 

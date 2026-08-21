@@ -489,6 +489,7 @@ async def process_customer_message(
                 "video_url": "",
                 "order_created": None,
                 "matched_images": [],
+                "response_source": "deterministic_google_form",
                 "google_form_workflow": workflow_res
             }
     except Exception as e:
