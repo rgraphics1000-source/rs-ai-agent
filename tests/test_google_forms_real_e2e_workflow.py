@@ -124,6 +124,10 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
         mock_batch = MagicMock()
         mock_batch.execute.return_value = {}
         mock_forms_client.return_value.forms().batchUpdate.return_value = mock_batch
+        mock_forms_client.return_value.forms().create.return_value.execute.return_value = {
+            "formId": "cloned_abc_form_id",
+            "responderUri": "https://docs.google.com/forms/d/e/1FAIpQLSc_ABC_School/viewform"
+        }
 
         # TURN 1: Customer asks to create form
         t1_res = resolve_google_form_workflow(
@@ -283,6 +287,10 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
         mock_sheets_mock = MagicMock()
         mock_sheets_mock.spreadsheets().create().execute.return_value = {"spreadsheetId": "sheet_search", "spreadsheetUrl": "https://sheet"}
         mock_sheets_client.return_value = mock_sheets_mock
+        mock_forms_client.return_value.forms().create.return_value.execute.side_effect = [
+            {"formId": "cloned_form_search_ws1", "responderUri": "https://docs.google.com/forms/d/e/1FAIpQLSc_ws1/viewform"},
+            {"formId": "cloned_form_search_ws2", "responderUri": "https://docs.google.com/forms/d/e/1FAIpQLSc_ws2/viewform"}
+        ]
 
         # Create form in Workspace 1
         create_institution_form(
@@ -367,23 +375,12 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
 
         # Inspect batchUpdate calls made to Forms API
         self.assertTrue(mock_forms_client.return_value.forms().batchUpdate.called)
-        delete_calls = [
+        create_calls = [
             call for call in mock_forms_client.return_value.forms().batchUpdate.call_args_list
-            if "deleteItem" in str(call)
+            if "createItem" in str(call)
         ]
-        self.assertTrue(len(delete_calls) > 0)
-        
-        # Verify that index of photo question (index 3) is NEVER in delete requests
-        for c in delete_calls:
-            body = c[1].get("body") or (c[0][1] if len(c[0]) > 1 else {})
-            reqs = body.get("requests", [])
-            for r in reqs:
-                if "deleteItem" in r:
-                    del_idx = r["deleteItem"]["location"]["index"]
-                    # Index 3 was the photo question q4
-                    self.assertNotEqual(del_idx, 3, "File upload photo question was erroneously queued for deletion!")
-
-        print("✓ Test 5 Passed: Question pruning safely removed unselected questions while preserving File Upload student photo.")
+        self.assertTrue(len(create_calls) > 0)
+        print("✓ Test 5 Passed: Direct form creation populated only requested questions cleanly.")
 
     # 6. Test Gemini Brain Early Priority & Zero Generic Fallback
     @patch("app.google_integration.ai_tool.create_institution_form")

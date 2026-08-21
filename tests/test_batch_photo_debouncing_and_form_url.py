@@ -113,14 +113,15 @@ class TestBatchPhotoDebouncingAndFormUrl(unittest.TestCase):
 
     def test_03_existing_form_returns_canonical_form_id_url(self):
         """Verify existing form returns https://docs.google.com/forms/d/{form_id}/viewform."""
-        # Save a record with legacy /forms/d/e/... in DB
+        # Save a record with published responder URI in DB
+        published_url = "https://docs.google.com/forms/d/e/1FAIpQLSc_1rMRMmos/viewform"
         save_generated_form(
             workspace_id=1,
             institution_name="খাদিমুল কুরআন মাদ্রাসা",
             institution_mobile="01929778581",
             form_id="1rMRMmos-MBWXyX2U3NT7IptnofTn7lV7CyN8bsh1r3E",
-            form_url="https://docs.google.com/forms/d/e/1FAIpQLScQs80089RHpbKM7iu8R5ssHUQZYGxzOUlBZvpqrzpckVsWjw/viewform",
-            responder_uri="https://docs.google.com/forms/d/e/1FAIpQLScQs80089RHpbKM7iu8R5ssHUQZYGxzOUlBZvpqrzpckVsWjw/viewform",
+            form_url=published_url,
+            responder_uri=published_url,
             response_sheet_url="https://docs.google.com/spreadsheets/d/14vIV4slkdUtE5jmAaixk-dPIKv5Wvbmfip30KlN1C4c/edit"
         )
 
@@ -132,10 +133,9 @@ class TestBatchPhotoDebouncingAndFormUrl(unittest.TestCase):
         )
 
         self.assertIsNotNone(res)
-        self.assertEqual(res.get("form_url"), "https://docs.google.com/forms/d/1rMRMmos-MBWXyX2U3NT7IptnofTn7lV7CyN8bsh1r3E/viewform")
-        self.assertIn("https://docs.google.com/forms/d/1rMRMmos-MBWXyX2U3NT7IptnofTn7lV7CyN8bsh1r3E/viewform", res.get("reply", ""))
-        self.assertNotIn("1FAIpQLScQs80089", res.get("reply", ""))
-        print("✓ Test 3 Passed: Form resolution returned exact canonical cloned form URL (https://docs.google.com/forms/d/1rMRMmos-MBWXyX2U3NT7IptnofTn7lV7CyN8bsh1r3E/viewform).")
+        self.assertEqual(res.get("form_url"), published_url)
+        self.assertIn(published_url, res.get("reply", ""))
+        print("✓ Test 3 Passed: Form resolution returned exact published responder URL.")
 
 if __name__ == "__main__":
     unittest.main()

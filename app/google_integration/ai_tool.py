@@ -583,10 +583,7 @@ def resolve_google_form_workflow(
 
     if existing_form and has_explicit_form_intent:
         e_form_id = existing_form.get("form_id")
-        if e_form_id:
-            resp_url = f"https://docs.google.com/forms/d/{e_form_id}/viewform"
-        else:
-            resp_url = existing_form.get("responder_uri") or existing_form.get("form_url") or ""
+        resp_url = existing_form.get("responder_uri") or existing_form.get("form_url") or (f"https://docs.google.com/forms/d/{e_form_id}/viewform" if e_form_id else "")
         sheet_url = existing_form.get("response_sheet_url") or existing_form.get("sheet_url") or ""
         return {
             "status": "created",

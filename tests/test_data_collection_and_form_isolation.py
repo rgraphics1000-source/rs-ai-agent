@@ -81,23 +81,19 @@ class TestDataCollectionAndFormIsolation(unittest.TestCase):
     @patch("app.google_integration.form_manager.get_or_create_workspace_root_folder", return_value="root_123")
     @patch("app.google_integration.form_manager.get_or_create_institution_folder", return_value="folder_456")
     @patch("app.google_integration.form_manager.save_institution", return_value={"id": 10})
-    @patch("app.google_integration.form_manager.copy_master_form_file")
-    @patch("app.google_integration.form_manager.customize_cloned_institution_form")
+    @patch("app.google_integration.form_manager.create_direct_institution_form")
     @patch("app.google_integration.form_manager.create_institution_response_sheet")
     def test_03_cloned_form_creates_new_unique_form_with_responder_url(
-        self, mock_sheet, mock_custom, mock_copy, mock_inst, mock_folder, mock_root
+        self, mock_sheet, mock_direct, mock_inst, mock_folder, mock_root
     ):
         """When creating a form, a new cloned form ID is generated and returned."""
         cloned_id = "1rMRMmos-MBWXyX2U3NT7IptnofTn7lV7CyN8bsh1r3E"
-        mock_copy.return_value = {
+        mock_direct.return_value = {
             "success": True,
             "form_id": cloned_id,
-            "title": "খাদিমুল কুরআন মাদ্রাসা - 01929778581 - ID Card Form"
-        }
-        mock_custom.return_value = {
-            "success": True,
-            "form_id": cloned_id,
-            "responder_url": f"https://docs.google.com/forms/d/{cloned_id}/viewform",
+            "title": "খাদিমুল কুরআন মাদ্রাসা - 01929778581 - ID Card Form",
+            "responder_url": f"https://docs.google.com/forms/d/e/1FAIpQLSc_{cloned_id}/viewform",
+            "form_url": f"https://docs.google.com/forms/d/e/1FAIpQLSc_{cloned_id}/viewform",
             "edit_url": f"https://docs.google.com/forms/d/{cloned_id}/edit",
             "selected_fields": ["student_name", "father_name", "student_photo"]
         }
@@ -115,7 +111,7 @@ class TestDataCollectionAndFormIsolation(unittest.TestCase):
 
         self.assertTrue(res.get("success"))
         self.assertEqual(res.get("form_id"), cloned_id)
-        self.assertEqual(res.get("responder_url"), f"https://docs.google.com/forms/d/{cloned_id}/viewform")
+        self.assertEqual(res.get("responder_url"), f"https://docs.google.com/forms/d/e/1FAIpQLSc_{cloned_id}/viewform")
         self.assertNotEqual(res.get("form_id"), self.master_form_id)
         print("✓ Test 3 Passed: Cloned Form creation generated unique cloned form URL without master template pollution.")
 

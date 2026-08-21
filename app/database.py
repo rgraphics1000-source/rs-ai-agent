@@ -2728,19 +2728,19 @@ def save_generated_form(
                 updated_at = CURRENT_TIMESTAMP
         """, (
             int(workspace_id or 1),
-            template_id,
-            institution_id,
-            institution_name,
+            int(template_id) if template_id and str(template_id).isdigit() else None,
+            int(institution_id) if institution_id and str(institution_id).isdigit() else None,
+            str(institution_name or "").strip(),
             norm_mobile,
             str(form_id).strip(),
-            str(form_url).strip(),
-            responder_uri,
-            edit_url,
-            drive_folder_id,
-            response_destination_id,
-            response_sheet_url,
-            selected_fields,
-            status
+            str(form_url).strip() if form_url else "",
+            str(responder_uri).strip() if responder_uri is not None else None,
+            str(edit_url).strip() if edit_url is not None else None,
+            str(drive_folder_id).strip() if drive_folder_id is not None else None,
+            str(response_destination_id).strip() if response_destination_id is not None else None,
+            str(response_sheet_url).strip() if response_sheet_url is not None else None,
+            str(selected_fields) if selected_fields is not None else None,
+            str(status or "active")
         ))
         conn.commit()
         cursor.execute("SELECT * FROM generated_forms WHERE form_id = ?", (str(form_id).strip(),))

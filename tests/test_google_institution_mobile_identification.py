@@ -107,20 +107,24 @@ class TestGoogleInstitutionMobileIdentification(unittest.TestCase):
         print("✓ Test 2 Passed: Bangladeshi mobile number normalization to canonical format is 100% accurate.")
 
     # Test 3: Google Form title format contains Name and Mobile
-    @patch("app.google_integration.form_manager.copy_master_form_file")
-    @patch("app.google_integration.form_manager.customize_cloned_institution_form")
+    @patch("app.google_integration.form_manager.create_direct_institution_form")
     @patch("app.google_integration.form_manager.create_institution_response_sheet")
     @patch("app.google_integration.form_manager.get_or_create_institution_folder")
     @patch("app.google_integration.form_manager.get_or_create_workspace_root_folder")
     @patch("app.google_integration.form_manager.get_responder_url")
     def test_03_google_form_title_format_contains_name_and_mobile(
-        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_custom, mock_copy
+        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_direct
     ):
         self._setup_mock_connection(self.ws1)
         mock_root.return_value = "root_123"
         mock_folder.return_value = "folder_123"
-        mock_copy.return_value = {"form_id": "cloned_form_123", "title": "Cloned Title"}
-        mock_custom.return_value = {"responder_url": "https://forms.gle/mock123", "edit_url": "https://docs.google.com/forms/d/cloned_form_123/edit"}
+        mock_direct.return_value = {
+            "form_id": "cloned_form_123",
+            "title": "আল-আমিন মাদ্রাসা - 01712345678 - ID Card Form",
+            "responder_url": "https://forms.gle/mock123",
+            "form_url": "https://forms.gle/mock123",
+            "edit_url": "https://docs.google.com/forms/d/cloned_form_123/edit"
+        }
         mock_sheet.return_value = {"spreadsheet_id": "sheet_123", "sheet_url": "https://docs.google.com/spreadsheets/d/sheet_123/edit", "title": "আল-আমিন মাদ্রাসা | 01712345678 | ID Card Responses"}
         mock_get_url.return_value = "https://forms.gle/mock123"
 
@@ -132,10 +136,9 @@ class TestGoogleInstitutionMobileIdentification(unittest.TestCase):
         self.assertTrue(res["success"])
         self.assertIn("আল-আমিন মাদ্রাসা", res["form_title"])
         self.assertIn("01712345678", res["form_title"])
-        mock_copy.assert_called_once()
-        copied_title = mock_copy.call_args[1].get("new_title") or mock_copy.call_args[0][2]
-        self.assertIn("আল-আমিন মাদ্রাসা", copied_title)
-        self.assertIn("01712345678", copied_title)
+        mock_direct.assert_called_once()
+        called_inst_name = mock_direct.call_args[1].get("institution_name") or mock_direct.call_args[0][1]
+        self.assertIn("আল-আমিন মাদ্রাসা", called_inst_name)
         print("✓ Test 3 Passed: Cloned Google Form title contains Institution Name + Canonical Mobile.")
 
     # Test 4: Google Sheet title format contains Name and Mobile
@@ -252,20 +255,18 @@ class TestGoogleInstitutionMobileIdentification(unittest.TestCase):
         print("✓ Test 8 Passed: Search by mobile number resolves institution and generated forms accurately.")
 
     # Test 9: Duplicate mobile detection in same workspace
-    @patch("app.google_integration.form_manager.copy_master_form_file")
-    @patch("app.google_integration.form_manager.customize_cloned_institution_form")
+    @patch("app.google_integration.form_manager.create_direct_institution_form")
     @patch("app.google_integration.form_manager.create_institution_response_sheet")
     @patch("app.google_integration.form_manager.get_or_create_institution_folder")
     @patch("app.google_integration.form_manager.get_or_create_workspace_root_folder")
     @patch("app.google_integration.form_manager.get_responder_url")
     def test_09_duplicate_mobile_detection_in_same_workspace(
-        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_custom, mock_copy
+        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_direct
     ):
         self._setup_mock_connection(self.ws1)
         mock_root.return_value = "root_dup"
         mock_folder.return_value = "folder_dup"
-        mock_copy.return_value = {"form_id": "form_dup_1", "title": "Form Dup"}
-        mock_custom.return_value = {"responder_url": "https://forms.gle/dup1", "edit_url": "https://docs.google.com/forms/d/dup1/edit"}
+        mock_direct.return_value = {"form_id": "form_dup_1", "title": "Form Dup", "responder_url": "https://forms.gle/dup1", "form_url": "https://forms.gle/dup1", "edit_url": "https://docs.google.com/forms/d/dup1/edit"}
         mock_sheet.return_value = {"spreadsheet_id": "sheet_dup", "sheet_url": "https://docs.google.com/spreadsheets/d/sheet_dup/edit"}
         mock_get_url.return_value = "https://forms.gle/dup1"
 
@@ -291,22 +292,23 @@ class TestGoogleInstitutionMobileIdentification(unittest.TestCase):
         print("✓ Test 9 Passed: Duplicate mobile number detected within same workspace.")
 
     # Test 10: Same mobile allowed across different workspaces (Workspace Isolation)
-    @patch("app.google_integration.form_manager.copy_master_form_file")
-    @patch("app.google_integration.form_manager.customize_cloned_institution_form")
+    @patch("app.google_integration.form_manager.create_direct_institution_form")
     @patch("app.google_integration.form_manager.create_institution_response_sheet")
     @patch("app.google_integration.form_manager.get_or_create_institution_folder")
     @patch("app.google_integration.form_manager.get_or_create_workspace_root_folder")
     @patch("app.google_integration.form_manager.get_responder_url")
     def test_10_same_mobile_allowed_across_different_workspaces(
-        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_custom, mock_copy
+        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_direct
     ):
         self._setup_mock_connection(self.ws1, master_id="master_ws1")
         self._setup_mock_connection(self.ws2, master_id="master_ws2")
 
         mock_root.return_value = "root_ws"
         mock_folder.return_value = "folder_ws"
-        mock_copy.side_effect = [{"form_id": "form_ws1", "title": "WS1"}, {"form_id": "form_ws2", "title": "WS2"}]
-        mock_custom.return_value = {"responder_url": "https://forms.gle/ws", "edit_url": "https://docs.google.com/forms/d/ws/edit"}
+        mock_direct.side_effect = [
+            {"form_id": "form_ws1", "title": "WS1", "responder_url": "https://forms.gle/ws", "form_url": "https://forms.gle/ws", "edit_url": "https://docs.google.com/forms/d/ws/edit"},
+            {"form_id": "form_ws2", "title": "WS2", "responder_url": "https://forms.gle/ws", "form_url": "https://forms.gle/ws", "edit_url": "https://docs.google.com/forms/d/ws/edit"}
+        ]
         mock_sheet.return_value = {"spreadsheet_id": "sheet_ws", "sheet_url": "https://docs.google.com/spreadsheets/d/ws/edit"}
         mock_get_url.return_value = "https://forms.gle/ws"
 
@@ -380,20 +382,21 @@ class TestGoogleInstitutionMobileIdentification(unittest.TestCase):
         print("✓ Test 12 Passed: Institution Name and Mobile Number remain system metadata and are not injected as student questions.")
 
     # Test 13: allow_duplicate=True creates additional form for existing institution
-    @patch("app.google_integration.form_manager.copy_master_form_file")
-    @patch("app.google_integration.form_manager.customize_cloned_institution_form")
+    @patch("app.google_integration.form_manager.create_direct_institution_form")
     @patch("app.google_integration.form_manager.create_institution_response_sheet")
     @patch("app.google_integration.form_manager.get_or_create_institution_folder")
     @patch("app.google_integration.form_manager.get_or_create_workspace_root_folder")
     @patch("app.google_integration.form_manager.get_responder_url")
     def test_13_allow_duplicate_flag_creates_additional_form_for_existing_institution(
-        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_custom, mock_copy
+        self, mock_get_url, mock_root, mock_folder, mock_sheet, mock_direct
     ):
         self._setup_mock_connection(self.ws1)
         mock_root.return_value = "root_dup_allow"
         mock_folder.return_value = "folder_dup_allow"
-        mock_copy.side_effect = [{"form_id": "form_v1", "title": "V1"}, {"form_id": "form_v2", "title": "V2"}]
-        mock_custom.return_value = {"responder_url": "https://forms.gle/dup_v2", "edit_url": "https://docs.google.com/forms/d/dup_v2/edit"}
+        mock_direct.side_effect = [
+            {"form_id": "form_v1", "title": "V1", "responder_url": "https://forms.gle/dup_v2", "form_url": "https://forms.gle/dup_v2", "edit_url": "https://docs.google.com/forms/d/dup_v2/edit"},
+            {"form_id": "form_v2", "title": "V2", "responder_url": "https://forms.gle/dup_v2", "form_url": "https://forms.gle/dup_v2", "edit_url": "https://docs.google.com/forms/d/dup_v2/edit"}
+        ]
         mock_sheet.return_value = {"spreadsheet_id": "sheet_v2", "sheet_url": "https://docs.google.com/spreadsheets/d/sheet_v2/edit"}
         mock_get_url.return_value = "https://forms.gle/dup_v2"
 

@@ -12,7 +12,7 @@ from app.google_integration.drive_service import (
     copy_master_form_file, verify_file_accessible
 )
 from app.google_integration.forms_service import (
-    customize_cloned_institution_form, get_responder_url
+    customize_cloned_institution_form, get_responder_url, create_direct_institution_form
 )
 from app.google_integration.sheets_service import create_institution_response_sheet
 
@@ -107,28 +107,22 @@ def create_institution_form(
         drive_folder_id=inst_folder_id
     )
 
-    # 5. Clone Master Form using Google Drive API (Tagged with mobile number)
-    form_title = f"{clean_inst_name} - {canonical_mobile} - ID Card Form"
-    copy_result = copy_master_form_file(
+    # 5. Create 100% Published Google Form directly via Forms API
+    # (Avoids broken Drive copy 'Missing File Upload folders' & 'This document is not published' errors)
+    custom_res = create_direct_institution_form(
         workspace_id=ws_id,
-        master_form_id=master_form_id,
-        new_title=form_title,
-        destination_folder_id=inst_folder_id
-    )
-    cloned_form_id = copy_result["form_id"]
-
-    # 6. Customize Form Title, Description, and dynamic Questions
-    custom_res = customize_cloned_institution_form(
-        workspace_id=ws_id,
-        form_id=cloned_form_id,
         institution_name=clean_inst_name,
         institution_mobile=canonical_mobile,
         custom_description=custom_description,
         fields=fields,
-        selected_fields=selected_fields
+        selected_fields=selected_fields,
+        destination_folder_id=inst_folder_id
     )
 
-    responder_url = custom_res.get("responder_url") or get_responder_url(ws_id, cloned_form_id)
+    cloned_form_id = custom_res["form_id"]
+    form_title = custom_res.get("title") or f"{clean_inst_name} - {canonical_mobile} - ID Card Form"
+    sheet_title = f"{clean_inst_name} - {canonical_mobile} - ID Card Responses"
+    responder_url = custom_res.get("responder_url") or custom_res.get("form_url") or f"https://docs.google.com/forms/d/{cloned_form_id}/viewform"
     edit_url = custom_res.get("edit_url") or f"https://docs.google.com/forms/d/{cloned_form_id}/edit"
     final_selected_fields = custom_res.get("selected_fields") or selected_fields or []
 

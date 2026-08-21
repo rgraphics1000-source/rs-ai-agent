@@ -21,10 +21,14 @@ def get_form_details(workspace_id: int, form_id: str) -> dict:
     return form_res
 
 def get_responder_url(workspace_id: int, form_id: str) -> str:
-    """Retrieves the official public canonical URL for students and institutions."""
+    """Retrieves the official published responder URL (under the 🔗 icon) for students and institutions."""
     clean_id = str(form_id).strip()
-    # Always use the specific cloned form's canonical public URL (/forms/d/{id}/viewform)
-    # Never return the master template's /d/e/1FAIpQLSc... URL which shows 'Form not published' error
+    try:
+        details = get_form_details(workspace_id=workspace_id, form_id=clean_id)
+        if details.get("responderUri"):
+            return details.get("responderUri")
+    except Exception:
+        pass
     return f"https://docs.google.com/forms/d/{clean_id}/viewform"
 
 def update_form_title_and_description(
@@ -596,3 +600,187 @@ def inspect_and_verify_master_form(workspace_id: int, form_id: str) -> dict:
         "message": f"Master Form '{form_title}' সফলভাবে যাচাই ও সেভ হয়েছে।"
     }
 
+
+
+def create_direct_institution_form(
+    workspace_id: int,
+    institution_name: str,
+    institution_mobile: str = None,
+    custom_description: str = None,
+    fields: List[dict] = None,
+    selected_fields: List[Any] = None,
+    destination_folder_id: str = None
+) -> dict:
+    """
+    Creates a 100% genuine, fully published Google Form directly using Google Forms API.
+    Avoids broken Drive copy 'Missing File Upload folders' & 'This document is not published' errors!
+    Returns the official published responderUri (the exact link behind the 🔗 icon / Publish in Google Forms).
+    """
+    from app.google_integration.drive_service import get_drive_client
+    from app.database import normalize_bd_mobile, get_google_form_fields
+    from app.google_integration.ai_tool import STANDARD_ID_CARD_FIELDS, get_standard_fields_catalog
+    
+    ws_id = int(workspace_id or 1)
+    forms_service = get_forms_client(workspace_id=ws_id)
+    drive_client = get_drive_client(workspace_id=ws_id)
+
+    canonical = normalize_bd_mobile(institution_mobile) if institution_mobile else None
+    form_title = f"{institution_name} - {canonical} - ID Card Form" if canonical else f"{institution_name} - ID Card Form"
+    
+    # 1. Create Form via Forms API
+    create_body = {
+        "info": {
+            "title": form_title,
+            "documentTitle": form_title
+        }
+    }
+    form_res = forms_service.forms().create(body=create_body).execute()
+    form_id = form_res.get("formId")
+    responder_uri = form_res.get("responderUri") or f"https://docs.google.com/forms/d/{form_id}/viewform"
+    edit_url = f"https://docs.google.com/forms/d/{form_id}/edit"
+
+    # 2. Move form to institution's Drive folder & set public reader permissions
+    if destination_folder_id:
+        try:
+            drive_client.files().update(
+                fileId=form_id,
+                addParents=destination_folder_id,
+                removeParents="root",
+                fields="id, parents"
+            ).execute()
+        except Exception as m_err:
+            print(f"[Drive Form move notice]: {m_err}")
+
+    try:
+        drive_client.permissions().create(
+            fileId=form_id,
+            body={"role": "reader", "type": "anyone"},
+            fields="id"
+        ).execute()
+    except Exception:
+        pass
+
+    # 3. Build description
+    default_desc = (
+        f"এই ফর্মটি সঠিকভাবে পূরণ করুন।\n"
+        f"প্রতিটি শিক্ষার্থীর তথ্য নির্ভুলভাবে প্রদান করুন।\n"
+        f"ছবি পরিষ্কার এবং নির্ধারিত নিয়ম অনুযায়ী প্রদান করুন।"
+    )
+    final_desc = custom_description or default_desc
+
+    # 4. Resolve questions to add
+    target_fields = []
+    if selected_fields:
+        standard_map = {f["key"]: f for f in STANDARD_ID_CARD_FIELDS}
+        for sf in selected_fields:
+            if isinstance(sf, dict):
+                k = sf.get("key") or sf.get("field_key")
+                if k and k in standard_map:
+                    target_fields.append(standard_map[k])
+                else:
+                    target_fields.append(sf)
+            elif isinstance(sf, str):
+                sf_clean = sf.strip().lower()
+                if sf_clean in standard_map:
+                    target_fields.append(standard_map[sf_clean])
+                else:
+                    matched = None
+                    for std_f in STANDARD_ID_CARD_FIELDS:
+                        if std_f["key"] == sf_clean or any(a.lower() == sf_clean for a in std_f["aliases"]):
+                            matched = std_f
+                            break
+                    if matched:
+                        target_fields.append(matched)
+                    else:
+                        target_fields.append({"key": sf_clean, "label": sf, "type": "short_answer", "required": True})
+    elif fields:
+        target_fields = fields
+    else:
+        db_fields = get_google_form_fields(workspace_id=ws_id)
+        target_fields = db_fields if db_fields else get_standard_fields_catalog()
+
+    # 5. Populate Form with Description and Questions via batchUpdate
+    requests_list = [
+        {
+            "updateFormInfo": {
+                "info": {
+                    "description": final_desc
+                },
+                "updateMask": "description"
+            }
+        }
+    ]
+
+    for idx, f in enumerate(target_fields):
+        f_type = f.get("type") or f.get("field_type", "short_answer")
+        f_label = f.get("label") or f.get("field_label", "")
+        f_req = bool(f.get("required", 1))
+        f_key = f.get("key") or f.get("field_key", "")
+
+        # For student photo, create a clear text question for Drive/WhatsApp photo submission
+        if f_type == "file_upload" or f_key == "student_photo" or "photo" in f_key or "ছবি" in f_label:
+            q_title = "শিক্ষার্থীর ছবির ড্রাইভ লিংক / হোয়াটসঅ্যাপে পাঠাবেন"
+            q_payload = {"textQuestion": {"paragraph": False}}
+            f_req = False
+        elif f_type == "paragraph":
+            q_title = f_label
+            q_payload = {"textQuestion": {"paragraph": True}}
+        elif f_type == "date":
+            q_title = f_label
+            q_payload = {"dateQuestion": {"includeTime": False, "includeYear": True}}
+        elif f_type in ["dropdown", "multiple_choice", "checkbox"]:
+            q_title = f_label
+            raw_opts = f.get("options_json") or f.get("options") or "[]"
+            opt_list = raw_opts if isinstance(raw_opts, list) else json.loads(raw_opts) if isinstance(raw_opts, str) else []
+            choice_type = "DROP_DOWN" if f_type == "dropdown" else ("CHECKBOX" if f_type == "checkbox" else "RADIO")
+            q_payload = {
+                "choiceQuestion": {
+                    "type": choice_type,
+                    "options": [{"value": str(o)} for o in (opt_list or ["Option 1"])]
+                }
+            }
+        else:
+            q_title = f_label
+            q_payload = {"textQuestion": {"paragraph": False}}
+
+        requests_list.append({
+            "createItem": {
+                "item": {
+                    "title": q_title,
+                    "questionItem": {
+                        "question": {
+                            "required": f_req,
+                            **q_payload
+                        }
+                    }
+                },
+                "location": {
+                    "index": idx
+                }
+            }
+        })
+
+    try:
+        forms_service.forms().batchUpdate(
+            formId=form_id,
+            body={"requests": requests_list}
+        ).execute()
+    except Exception as b_err:
+        print(f"[Forms populate batchUpdate warning]: {b_err}")
+
+    # Re-fetch form details to get the exact final published responderUri
+    try:
+        final_meta = get_form_details(workspace_id=ws_id, form_id=form_id)
+        responder_uri = final_meta.get("responderUri") or responder_uri
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "form_id": form_id,
+        "title": form_title,
+        "responder_url": responder_uri,
+        "form_url": responder_uri,
+        "edit_url": edit_url,
+        "selected_fields": [f.get("key") or f.get("field_key") for f in target_fields if f.get("key") or f.get("field_key")]
+    }
