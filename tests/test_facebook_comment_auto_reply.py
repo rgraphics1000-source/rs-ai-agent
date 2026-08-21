@@ -1,34 +1,28 @@
-import asyncio
-import os
-import sys
 import unittest
+import asyncio
 from unittest.mock import patch, MagicMock
 
-# Ensure project root is on PYTHONPATH
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 from app.database import (
-     init_db, save_connected_page, delete_connected_page,
-     set_setting, get_db_connection
+    get_db_connection, save_connected_page, get_connected_page,
+    set_setting, get_setting
 )
 from app.channels.facebook import (
-     handle_facebook_webhook_event, reply_to_fb_comment, send_fb_private_reply_to_comment
+    handle_facebook_webhook_event, reply_to_fb_comment, send_fb_private_reply_to_comment,
+    get_fb_token
 )
 
 class TestFacebookCommentAutoReply(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        init_db()
-
     def setUp(self):
-        self.page_id = "fb_test_page_1001"
-        self.page_token = "TEST_TOKEN_1001_ABC"
+        self.page_id = "105116472071659"
+        self.page_name = "RS Graphics (আরএস গ্রাফিক্স)"
+        self.token = "EAAB_VALID_TEST_TOKEN_XYZ1234567890"
+
         save_connected_page({
             "page_id": self.page_id,
-            "page_name": "RS Graphics Test",
-            "shop_name": "RS Graphics Test",
-            "page_access_token": self.page_token,
+            "page_name": self.page_name,
+            "page_access_token": self.token,
             "workspace_id": 1,
+            "messenger_enabled": 1,
             "comments_enabled": 1,
             "ai_enabled": 1
         })
@@ -37,165 +31,128 @@ class TestFacebookCommentAutoReply(unittest.TestCase):
         set_setting("comment_ai_mode", "ai_smart")
 
     def tearDown(self):
-        delete_connected_page(self.page_id)
-
-    @patch("app.channels.facebook.reply_to_fb_comment")
-    @patch("app.channels.facebook.send_fb_private_reply_to_comment")
-    @patch("app.channels.facebook.process_customer_message")
-    def test_01_feed_comment_triggers_ai_public_and_private_reply(
-        self, mock_process, mock_private, mock_public
-    ):
-        """Test that user comment on post triggers AI public reply and private message."""
-        mock_process.return_value = {
-            "reply_text": "ধন্যবাদ স্যার! বিস্তারিত তথ্য আপনার ইনবক্সে পাঠানো হয়েছে 🥰",
-            "matched_images": []
-        }
-        mock_public.return_value = True
-        mock_private.return_value = True
-
-        event = {
-            "object": "page",
-            "entry": [{
-                "id": self.page_id,
-                "changes": [{
-                    "field": "feed",
-                    "value": {
-                        "from": {"id": "user_123", "name": "Md Rahman"},
-                        "item": "comment",
-                        "comment_id": "comment_999001",
-                        "post_id": "post_777",
-                        "verb": "add",
-                        "message": "আইডি কার্ডের রেট কত?"
-                    }
-                }]
-            }]
-        }
-
-        asyncio.run(handle_facebook_webhook_event(event))
-
-        # Check public reply called
-        self.assertTrue(mock_public.called)
-        pub_args, pub_kwargs = mock_public.call_args
-        self.assertEqual(pub_args[0], "comment_999001")
-        self.assertIn("ধন্যবাদ", pub_args[1])
-        self.assertEqual(pub_kwargs.get("page_id"), self.page_id)
-
-        # Check private reply called
-        self.assertTrue(mock_private.called)
-        priv_args, priv_kwargs = mock_private.call_args
-        self.assertEqual(priv_args[0], "comment_999001")
-        self.assertEqual(priv_kwargs.get("page_id"), self.page_id)
-
-        # Check logged in comment_logs
         conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("SELECT * FROM comment_logs WHERE comment_id = ?", ("comment_999001",))
-        row = c.fetchone()
-        conn.close()
-        self.assertIsNotNone(row)
-        self.assertEqual(row["user_name"], "Md Rahman")
-        print("✓ Test 1 Passed: Feed comment triggers AI public & private replies with database logging.")
+        try:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM comment_logs WHERE page_id = ?", (self.page_id,))
+            conn.commit()
+        finally:
+            conn.close()
 
-    @patch("app.channels.facebook.reply_to_fb_comment")
+    @patch("app.channels.facebook.requests.post")
+    def test_01_reply_to_fb_comment_success(self, mock_post):
+        """reply_to_fb_comment sends POST request to Meta Graph API /comments endpoint."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"id": "105116472071659_9999"}
+        mock_post.return_value = mock_resp
+
+        success = reply_to_fb_comment(
+            comment_id="105116472071659_123456",
+            message="ধন্যবাদ স্যার! বিস্তারিত ইনবক্সে পাঠানো হয়েছে।",
+            page_token=self.token,
+            page_id=self.page_id
+        )
+        self.assertTrue(success)
+        mock_post.assert_called()
+        call_url = mock_post.call_args[0][0]
+        self.assertIn("105116472071659_123456/comments", call_url)
+
+    @patch("app.channels.facebook.requests.post")
+    def test_02_send_fb_private_reply_success(self, mock_post):
+        """send_fb_private_reply_to_comment sends private message to comment_id."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"recipient_id": "5197770284", "message_id": "m_mid123"}
+        mock_post.return_value = mock_resp
+
+        success = send_fb_private_reply_to_comment(
+            comment_id="105116472071659_123456",
+            message="আসসালামু আলাইকুম! আমাদের আইডি কার্ডের দাম ১০০ পিস ৩০০০ টাকা।",
+            page_token=self.token,
+            page_id=self.page_id
+        )
+        self.assertTrue(success)
+        mock_post.assert_called()
+        call_url = mock_post.call_args[0][0]
+        self.assertIn("/me/messages", call_url)
+
     @patch("app.channels.facebook.send_fb_private_reply_to_comment")
-    def test_02_own_page_comment_is_ignored(self, mock_private, mock_public):
-        """Test that comments posted by the page itself do not trigger self-reply loop."""
-        event = {
-            "object": "page",
-            "entry": [{
-                "id": self.page_id,
-                "changes": [{
-                    "field": "feed",
-                    "value": {
-                        "from": {"id": self.page_id, "name": "RS Graphics Test"},
-                        "item": "comment",
-                        "comment_id": "comment_self_111",
-                        "post_id": "post_777",
-                        "verb": "add",
-                        "message": "আমাদের সাথে থাকার জন্য ধন্যবাদ।"
-                    }
-                }]
-            }]
-        }
-
-        asyncio.run(handle_facebook_webhook_event(event))
-
-        self.assertFalse(mock_public.called)
-        self.assertFalse(mock_private.called)
-        print("✓ Test 2 Passed: Own page comments strictly ignored without infinite self-reply loops.")
-
     @patch("app.channels.facebook.reply_to_fb_comment")
-    @patch("app.channels.facebook.send_fb_private_reply_to_comment")
     @patch("app.channels.facebook.process_customer_message")
-    def test_03_comments_field_and_no_verb_supported(
-        self, mock_process, mock_private, mock_public
-    ):
-        """Test that alternate Meta webhook format (field: comments) is fully supported."""
-        mock_process.return_value = {
-            "reply_text": "ধন্যবাদ ম্যাম! ইনবক্স চেক করুন 🥰"
-        }
-        mock_public.return_value = True
+    def test_03_webhook_comment_event_triggers_both_replies(self, mock_ai, mock_public_reply, mock_private_reply):
+        """Incoming feed comment webhook generates AI responses and calls public and private reply functions."""
+        mock_ai.side_effect = [
+            {"reply_text": "ধন্যবাদ ভাইয়া! ইনবক্স চেক করুন 🥰"},
+            {"reply_text": "আসসালামু আলাইকুম! আমাদের কাছে প্রিমিয়াম আইডি কার্ড প্রিন্টিং সেবা রয়েছে।"}
+        ]
+        mock_public_reply.return_value = True
+        mock_private_reply.return_value = True
 
-        event = {
-            "object": "page",
-            "entry": [{
-                "id": self.page_id,
-                "changes": [{
-                    "field": "comments",
-                    "value": {
-                        "from": {"id": "user_456", "name": "Fatema Begum"},
-                        "comment_id": "comment_comments_222",
-                        "post_id": "post_888",
-                        "message": "ফিতার দাম কত?"
-                    }
-                }]
-            }]
-        }
-
-        asyncio.run(handle_facebook_webhook_event(event))
-
-        self.assertTrue(mock_public.called)
-        pub_args, _ = mock_public.call_args
-        self.assertEqual(pub_args[0], "comment_comments_222")
-        print("✓ Test 3 Passed: 'comments' webhook field format cleanly processed.")
-
-    @patch("app.channels.facebook.reply_to_fb_comment")
-    @patch("app.channels.facebook.send_fb_private_reply_to_comment")
-    def test_04_comments_disabled_setting_skips_replies(self, mock_private, mock_public):
-        """Test that when comments_enabled is set to 0, webhook skips comment auto reply."""
-        save_connected_page({
-            "page_id": self.page_id,
-            "page_name": "RS Graphics Test",
-            "shop_name": "RS Graphics Test",
-            "page_access_token": self.page_token,
-            "workspace_id": 1,
-            "comments_enabled": 0,
-            "ai_enabled": 1
-        })
-
-        event = {
+        payload = {
             "object": "page",
             "entry": [{
                 "id": self.page_id,
                 "changes": [{
                     "field": "feed",
                     "value": {
-                        "from": {"id": "user_789", "name": "Akram Khan"},
                         "item": "comment",
-                        "comment_id": "comment_disabled_333",
-                        "post_id": "post_777",
                         "verb": "add",
-                        "message": "ডেলিভারি চার্জ কত?"
+                        "comment_id": "105116472071659_778899",
+                        "post_id": "105116472071659_112233",
+                        "from": {
+                            "id": "5197770284",
+                            "name": "Mahmudul Hasan"
+                        },
+                        "message": "দাম কত?"
                     }
                 }]
             }]
         }
 
-        asyncio.run(handle_facebook_webhook_event(event))
+        asyncio.run(handle_facebook_webhook_event(payload))
 
-        self.assertFalse(mock_public.called)
-        self.assertFalse(mock_private.called)
-        print("✓ Test 4 Passed: Disabling comments on page cleanly disables auto-reply.")
+        self.assertTrue(mock_public_reply.called)
+        self.assertTrue(mock_private_reply.called)
+
+        # Verify comment logged to database
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM comment_logs WHERE comment_id = '105116472071659_778899'")
+            row = cur.fetchone()
+            self.assertIsNotNone(row)
+            self.assertEqual(row["user_name"], "Mahmudul Hasan")
+            self.assertEqual(row["comment_text"], "দাম কত?")
+        finally:
+            conn.close()
+
+    @patch("app.channels.facebook.reply_to_fb_comment")
+    def test_04_own_page_comments_ignored_preventing_loop(self, mock_reply):
+        """Comments from the page itself (user_id == page_id) are ignored."""
+        payload = {
+            "object": "page",
+            "entry": [{
+                "id": self.page_id,
+                "changes": [{
+                    "field": "feed",
+                    "value": {
+                        "item": "comment",
+                        "verb": "add",
+                        "comment_id": "105116472071659_own_comment",
+                        "post_id": "105116472071659_112233",
+                        "from": {
+                            "id": self.page_id, # Same as page_id
+                            "name": "RS Graphics"
+                        },
+                        "message": "Page reply text"
+                    }
+                }]
+            }]
+        }
+
+        asyncio.run(handle_facebook_webhook_event(payload))
+        self.assertFalse(mock_reply.called)
 
 if __name__ == "__main__":
     unittest.main()

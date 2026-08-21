@@ -155,11 +155,23 @@ def get_workspace_credentials(workspace_id: int = 1) -> Optional[Credentials]:
     has_token = bool(conn_data.get("access_token_encrypted") or conn_data.get("refresh_token_encrypted")) if conn_data else False
 
     if not conn_data or not has_token:
-        # Fallback from environment variables or settings if available
-        env_ref = os.getenv("GOOGLE_REFRESH_TOKEN") or get_setting(f"google_refresh_token_ws_{workspace_id}") or get_setting("google_refresh_token")
-        env_acc = os.getenv("GOOGLE_ACCESS_TOKEN") or get_setting(f"google_access_token_ws_{workspace_id}") or get_setting("google_access_token")
-        env_email = os.getenv("GOOGLE_ACCOUNT_EMAIL") or get_setting(f"google_account_email_ws_{workspace_id}") or get_setting("google_account_email") or "connected_admin@gmail.com"
-        env_master = os.getenv("GOOGLE_MASTER_FORM_ID") or get_setting(f"google_master_form_id_ws_{workspace_id}") or get_setting("google_master_form_id") or (conn_data.get("master_form_id") if conn_data else None)
+        # Fallback from settings/env (workspace-isolated)
+        ws_ref = get_setting(f"google_refresh_token_ws_{workspace_id}")
+        ws_acc = get_setting(f"google_access_token_ws_{workspace_id}")
+        ws_email = get_setting(f"google_account_email_ws_{workspace_id}")
+        ws_master = get_setting(f"google_master_form_id_ws_{workspace_id}")
+
+        if workspace_id == 1:
+            env_ref = ws_ref or os.getenv("GOOGLE_REFRESH_TOKEN") or get_setting("google_refresh_token")
+            env_acc = ws_acc or os.getenv("GOOGLE_ACCESS_TOKEN") or get_setting("google_access_token")
+            env_email = ws_email or os.getenv("GOOGLE_ACCOUNT_EMAIL") or get_setting("google_account_email") or "connected_admin@gmail.com"
+            env_master = ws_master or os.getenv("GOOGLE_MASTER_FORM_ID") or get_setting("google_master_form_id") or (conn_data.get("master_form_id") if conn_data else None)
+        else:
+            env_ref = ws_ref
+            env_acc = ws_acc
+            env_email = ws_email or "connected_admin@gmail.com"
+            env_master = ws_master or (conn_data.get("master_form_id") if conn_data else None)
+
         if env_ref or env_acc:
             save_google_connection(
                 workspace_id=workspace_id,
@@ -217,11 +229,23 @@ def get_google_account_status(workspace_id: int = 1) -> dict:
     has_token = bool(conn_data.get("access_token_encrypted") or conn_data.get("refresh_token_encrypted")) if conn_data else False
 
     if not conn_data or not has_token:
-        # Check settings / env fallback
-        env_ref = os.getenv("GOOGLE_REFRESH_TOKEN") or get_setting(f"google_refresh_token_ws_{workspace_id}") or get_setting("google_refresh_token")
-        env_acc = os.getenv("GOOGLE_ACCESS_TOKEN") or get_setting(f"google_access_token_ws_{workspace_id}") or get_setting("google_access_token")
-        env_email = os.getenv("GOOGLE_ACCOUNT_EMAIL") or get_setting(f"google_account_email_ws_{workspace_id}") or get_setting("google_account_email")
-        env_master = os.getenv("GOOGLE_MASTER_FORM_ID") or get_setting(f"google_master_form_id_ws_{workspace_id}") or get_setting("google_master_form_id") or (conn_data.get("master_form_id") if conn_data else None)
+        # Check settings / env fallback (workspace-isolated)
+        ws_ref = get_setting(f"google_refresh_token_ws_{workspace_id}")
+        ws_acc = get_setting(f"google_access_token_ws_{workspace_id}")
+        ws_email = get_setting(f"google_account_email_ws_{workspace_id}")
+        ws_master = get_setting(f"google_master_form_id_ws_{workspace_id}")
+
+        if workspace_id == 1:
+            env_ref = ws_ref or os.getenv("GOOGLE_REFRESH_TOKEN") or get_setting("google_refresh_token")
+            env_acc = ws_acc or os.getenv("GOOGLE_ACCESS_TOKEN") or get_setting("google_access_token")
+            env_email = ws_email or os.getenv("GOOGLE_ACCOUNT_EMAIL") or get_setting("google_account_email")
+            env_master = ws_master or os.getenv("GOOGLE_MASTER_FORM_ID") or get_setting("google_master_form_id") or (conn_data.get("master_form_id") if conn_data else None)
+        else:
+            env_ref = ws_ref
+            env_acc = ws_acc
+            env_email = ws_email
+            env_master = ws_master or (conn_data.get("master_form_id") if conn_data else None)
+
         if env_ref or env_acc:
             save_google_connection(
                 workspace_id=workspace_id,

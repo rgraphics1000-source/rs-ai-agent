@@ -33,7 +33,7 @@ if sys.stdout.encoding != 'utf-8':
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.database import (
-    init_db, DB_PATH,
+    init_db, DB_PATH, get_db_connection,
     get_all_workspaces, get_workspace, save_workspace, delete_workspace,
     get_workspace_by_page_id, get_workspace_by_phone_id,
     get_connected_page, save_connected_page,
@@ -250,83 +250,89 @@ class TestWorkspaceIsolationSuite(unittest.TestCase):
         p1_id = f"page_fb_1001_{uid}"
         p2_id = f"page_fb_2002_{uid}"
 
-        # Connect page 1 to Workspace 1
-        save_connected_page({
-            "page_id": p1_id,
-            "page_name": "RS Graphics Page",
-            "page_access_token": "EAA_TEST_TOKEN_1",
-            "workspace_id": 1,
-            "is_active": 1
-        })
-        # Connect page 2 to Workspace 2
-        save_connected_page({
-            "page_id": p2_id,
-            "page_name": "SmartTech Page",
-            "page_access_token": "EAA_TEST_TOKEN_2",
-            "workspace_id": self.w2_id,
-            "is_active": 1
-        })
+        try:
+            # Connect page 1 to Workspace 1
+            save_connected_page({
+                "page_id": p1_id,
+                "page_name": "RS Graphics Page",
+                "page_access_token": "EAA_TEST_TOKEN_1",
+                "workspace_id": 1,
+                "is_active": 1
+            })
+            # Connect page 2 to Workspace 2
+            save_connected_page({
+                "page_id": p2_id,
+                "page_name": "SmartTech Page",
+                "page_access_token": "EAA_TEST_TOKEN_2",
+                "workspace_id": self.w2_id,
+                "is_active": 1
+            })
 
-        # Test A: Known Page 1 routes to Workspace 1
-        payload_p1 = {
-            "object": "page",
-            "entry": [{
-                "id": p1_id,
-                "messaging": [{
-                    "sender": {"id": "fb_cust_11"},
-                    "recipient": {"id": p1_id},
-                    "message": {"mid": "mid.111", "text": "Hello Page 1"}
+            # Test A: Known Page 1 routes to Workspace 1
+            payload_p1 = {
+                "object": "page",
+                "entry": [{
+                    "id": p1_id,
+                    "messaging": [{
+                        "sender": {"id": "fb_cust_11"},
+                        "recipient": {"id": p1_id},
+                        "message": {"mid": "mid.111", "text": "Hello Page 1"}
+                    }]
                 }]
-            }]
-        }
-        with patch("app.channels.facebook.send_fb_text_message") as mock_send, \
-             patch("app.channels.facebook.process_customer_message") as mock_ai:
-            mock_ai.return_value = {"reply": "Hello from W1", "orders": []}
-            asyncio.run(handle_facebook_webhook_event(payload_p1))
-            self.assertTrue(mock_ai.called)
-            # Verify workspace_id passed was 1
-            call_kwargs = mock_ai.call_args.kwargs
-            self.assertEqual(call_kwargs.get("workspace_id"), 1)
+            }
+            with patch("app.channels.facebook.send_fb_text_message") as mock_send, \
+                 patch("app.channels.facebook.process_customer_message") as mock_ai:
+                mock_ai.return_value = {"reply": "Hello from W1", "orders": []}
+                asyncio.run(handle_facebook_webhook_event(payload_p1))
+                self.assertTrue(mock_ai.called)
+                call_kwargs = mock_ai.call_args.kwargs
+                self.assertEqual(call_kwargs.get("workspace_id"), 1)
 
-        # Test B: Known Page 2 routes to Workspace 2
-        payload_p2 = {
-            "object": "page",
-            "entry": [{
-                "id": p2_id,
-                "messaging": [{
-                    "sender": {"id": "fb_cust_22"},
-                    "recipient": {"id": p2_id},
-                    "message": {"mid": "mid.222", "text": "Hello Page 2"}
+            # Test B: Known Page 2 routes to Workspace 2
+            payload_p2 = {
+                "object": "page",
+                "entry": [{
+                    "id": p2_id,
+                    "messaging": [{
+                        "sender": {"id": "fb_cust_22"},
+                        "recipient": {"id": p2_id},
+                        "message": {"mid": "mid.222", "text": "Hello Page 2"}
+                    }]
                 }]
-            }]
-        }
-        with patch("app.channels.facebook.send_fb_text_message") as mock_send, \
-             patch("app.channels.facebook.process_customer_message") as mock_ai:
-            mock_ai.return_value = {"reply": "Hello from W2", "orders": []}
-            asyncio.run(handle_facebook_webhook_event(payload_p2))
-            self.assertTrue(mock_ai.called)
-            # Verify workspace_id passed was w2_id
-            call_kwargs = mock_ai.call_args.kwargs
-            self.assertEqual(call_kwargs.get("workspace_id"), self.w2_id)
+            }
+            with patch("app.channels.facebook.send_fb_text_message") as mock_send, \
+                 patch("app.channels.facebook.process_customer_message") as mock_ai:
+                mock_ai.return_value = {"reply": "Hello from W2", "orders": []}
+                asyncio.run(handle_facebook_webhook_event(payload_p2))
+                self.assertTrue(mock_ai.called)
+                call_kwargs = mock_ai.call_args.kwargs
+                self.assertEqual(call_kwargs.get("workspace_id"), self.w2_id)
 
-        # Test C: Unknown Page ID must be DROPPED and NOT trigger AI reply
-        payload_unknown = {
-            "object": "page",
-            "entry": [{
-                "id": "page_unknown_9999",
-                "messaging": [{
-                    "sender": {"id": "fb_cust_99"},
-                    "recipient": {"id": "page_unknown_9999"},
-                    "message": {"mid": "mid.999", "text": "Hello unknown page"}
+            # Test C: Unknown Page ID must be DROPPED and NOT trigger AI reply
+            payload_unknown = {
+                "object": "page",
+                "entry": [{
+                    "id": "page_unknown_9999",
+                    "messaging": [{
+                        "sender": {"id": "fb_cust_99"},
+                        "recipient": {"id": "page_unknown_9999"},
+                        "message": {"mid": "mid.999", "text": "Hello unknown page"}
+                    }]
                 }]
-            }]
-        }
-        with patch("app.channels.facebook.send_fb_text_message") as mock_send, \
-             patch("app.channels.facebook.process_customer_message") as mock_ai:
-            asyncio.run(handle_facebook_webhook_event(payload_unknown))
-            # Must NOT call AI reply
-            self.assertFalse(mock_ai.called, "CRITICAL ERROR: Unknown Page ID fell back to AI reply!")
-            self.assertFalse(mock_send.called, "CRITICAL ERROR: Sent message for unregistered Page ID!")
+            }
+            with patch("app.channels.facebook.send_fb_text_message") as mock_send, \
+                 patch("app.channels.facebook.process_customer_message") as mock_ai:
+                asyncio.run(handle_facebook_webhook_event(payload_unknown))
+                self.assertFalse(mock_ai.called, "CRITICAL ERROR: Unknown Page ID fell back to AI reply!")
+                self.assertFalse(mock_send.called, "CRITICAL ERROR: Sent message for unregistered Page ID!")
+        finally:
+            conn = get_db_connection()
+            try:
+                cur = conn.cursor()
+                cur.execute("DELETE FROM connected_pages WHERE page_id IN (?, ?)", (p1_id, p2_id))
+                conn.commit()
+            finally:
+                conn.close()
         print("  -> Facebook Webhook routes accurately to respective workspace and rejects unknown pages without fallback.")
 
     # -------------------------------------------------------------

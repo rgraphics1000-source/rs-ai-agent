@@ -31,13 +31,18 @@ def get_fb_token(page_id: str = None) -> str:
     if page_id:
         p = get_connected_page(page_id)
         if p and p.get("page_access_token"):
-            return p["page_access_token"]
-    token = get_setting("fb_page_access_token") or settings.FB_PAGE_ACCESS_TOKEN
-    if not token:
+            tok = str(p["page_access_token"]).strip()
+            if tok and len(tok) > 10 and not tok.startswith("EAA_TEST"):
+                return tok
+    
+    token = get_setting("fb_page_access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN") or settings.FB_PAGE_ACCESS_TOKEN
+    if not token or len(str(token)) < 10 or str(token).startswith("EAA_TEST"):
         all_pages = get_all_connected_pages()
-        if all_pages and all_pages[0].get("page_access_token"):
-            return all_pages[0]["page_access_token"]
-    return token or ""
+        for p in all_pages:
+            tok = str(p.get("page_access_token", "")).strip()
+            if tok and len(tok) > 10 and not tok.startswith("EAA_TEST"):
+                return tok
+    return str(token or "").strip()
 
 def get_fb_user_profile(sender_id: str, page_token: str = None, page_id: str = None) -> str:
     """Fetches the user name from Facebook Graph API."""
@@ -263,6 +268,9 @@ def send_fb_video_message(recipient_id: str, video_url: str, page_token: str = N
 def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, page_id: str = None) -> bool:
     """Replies publicly to a Facebook post comment."""
     token = page_token or get_fb_token(page_id)
+    if not token or str(token).startswith("EAA_TEST"):
+        token = get_setting("fb_page_access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN") or settings.FB_PAGE_ACCESS_TOKEN or get_fb_token(page_id)
+
     clean_token = str(token or "").strip().strip('"').strip("'")
     if clean_token.lower().startswith("bearer "):
         clean_token = clean_token[7:].strip()
@@ -271,19 +279,23 @@ def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, p
         print(f"[Facebook Comment Reply Error]: Missing token or comment_id (comment_id={comment_id})")
         return False
 
-    url = f"{GRAPH_API_URL}/{comment_id}/comments"
+    graph_version = getattr(settings, "META_GRAPH_VERSION", "v23.0") or "v23.0"
+    url = f"https://graph.facebook.com/{graph_version}/{comment_id}/comments"
     params = {"access_token": clean_token}
     payload = {"message": message}
+    headers = {"Content-Type": "application/json; charset=utf-8"}
     try:
-        r = requests.post(url, params=params, json=payload, timeout=10)
-        if r.status_code != 200:
-            # Fallback to form-data if json payload fails
-            r = requests.post(url, params=params, data=payload, timeout=10)
+        r = requests.post(url, params=params, json=payload, headers=headers, timeout=10)
         if r.status_code == 200:
             print(f"[Facebook Comment Reply SUCCESS]: Replied to comment {comment_id}")
             return True
+        # Fallback to form-data (standard Meta Graph API)
+        r2 = requests.post(url, params=params, data=payload, timeout=10)
+        if r2.status_code == 200:
+            print(f"[Facebook Comment Reply SUCCESS (form-data)]: Replied to comment {comment_id}")
+            return True
         else:
-            print(f"[Facebook Comment Reply Error {r.status_code}]: {r.text}")
+            print(f"[Facebook Comment Reply Error {r.status_code}/{r2.status_code}]: {r.text} | {r2.text}")
             return False
     except Exception as e:
         print(f"[Facebook Comment Reply Exception]: {e}")
@@ -292,6 +304,9 @@ def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, p
 def send_fb_private_reply_to_comment(comment_id: str, message: str, page_token: str = None, page_id: str = None) -> bool:
     """Sends a private message to the user who commented on a post."""
     token = page_token or get_fb_token(page_id)
+    if not token or str(token).startswith("EAA_TEST"):
+        token = get_setting("fb_page_access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN") or settings.FB_PAGE_ACCESS_TOKEN or get_fb_token(page_id)
+
     clean_token = str(token or "").strip().strip('"').strip("'")
     if clean_token.lower().startswith("bearer "):
         clean_token = clean_token[7:].strip()
@@ -300,14 +315,16 @@ def send_fb_private_reply_to_comment(comment_id: str, message: str, page_token: 
         print(f"[Facebook Private Reply Error]: Missing token or comment_id (comment_id={comment_id})")
         return False
 
-    url = f"{GRAPH_API_URL}/me/messages"
+    graph_version = getattr(settings, "META_GRAPH_VERSION", "v23.0") or "v23.0"
+    url = f"https://graph.facebook.com/{graph_version}/me/messages"
     params = {"access_token": clean_token}
     payload = {
         "recipient": {"comment_id": comment_id},
         "message": {"text": message}
     }
+    headers = {"Content-Type": "application/json; charset=utf-8"}
     try:
-        r = requests.post(url, params=params, json=payload, timeout=10)
+        r = requests.post(url, params=params, json=payload, headers=headers, timeout=10)
         if r.status_code == 200:
             print(f"[Facebook Private Reply SUCCESS]: Sent private reply to comment {comment_id}")
             return True
@@ -530,16 +547,14 @@ async def handle_facebook_webhook_event(data: dict):
             if "changes" in entry:
                 page_id = str(entry.get("id", "")).strip() # Page ID owning the feed
                 page_conn = get_connected_page(page_id)
-                if not page_conn and page_id in ["105116472071659", "rs_graphics_page_1"]:
+                if not page_conn:
                     page_conn = ensure_facebook_page_consistency()
 
-                if not page_conn:
-                    print(f"[Facebook Routing Error]: Unknown page_id {page_id} for comment. Event dropped without fallback.")
-                    continue
-
-                workspace_id = page_conn.get("workspace_id", 1)
-                page_token = page_conn.get("page_access_token")
-                page_name = page_conn.get("page_name", "Facebook Page")
+                workspace_id = (page_conn.get("workspace_id") if page_conn else 1) or 1
+                page_token = (page_conn.get("page_access_token") if page_conn else None) or get_fb_token(page_id)
+                if not page_token or str(page_token).startswith("EAA_TEST"):
+                    page_token = get_setting("fb_page_access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN") or settings.FB_PAGE_ACCESS_TOKEN or get_fb_token(page_id)
+                page_name = (page_conn.get("page_name") if page_conn else None) or settings.SHOP_NAME or "RS Graphics (আরএস গ্রাফিক্স)"
 
                 for change in entry.get("changes", []):
                     field = change.get("field")
@@ -550,7 +565,7 @@ async def handle_facebook_webhook_event(data: dict):
                         continue
 
                     is_comment = (
-                        (field in ["feed", "comments"]) and 
+                        (field in ["feed", "comments", "mention"]) and 
                         (value.get("item") == "comment" or bool(value.get("comment_id")))
                     )
                     if not is_comment:
@@ -571,8 +586,8 @@ async def handle_facebook_webhook_event(data: dict):
                         continue
 
                     # Check settings
-                    ai_enabled = bool(page_conn.get("ai_enabled", 1))
-                    comments_enabled = bool(page_conn.get("comments_enabled", 1))
+                    ai_enabled = bool(page_conn.get("ai_enabled", 1)) if page_conn else True
+                    comments_enabled = bool(page_conn.get("comments_enabled", 1)) if page_conn else True
                     if not ai_enabled or not comments_enabled:
                         print(f"[Facebook Comment Skipped]: AI ({ai_enabled}) or Comments ({comments_enabled}) disabled for page {page_id}")
                         continue
