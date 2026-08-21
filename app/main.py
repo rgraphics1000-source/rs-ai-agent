@@ -492,7 +492,8 @@ async def api_delete_faq(faq_id: int):
 # ==========================================
 @app.get("/api/training/rules")
 async def api_get_training_rules(workspace_id: Optional[int] = Query(None)):
-    rules = get_all_training_rules(workspace_id=workspace_id)
+    ws_id = int(workspace_id or 1)
+    rules = get_all_training_rules(workspace_id=ws_id)
     return {"success": True, "rules": rules}
 
 @app.post("/api/training/synthesize")
@@ -565,7 +566,8 @@ async def api_toggle_training_rule(rule_id: int):
 @app.get("/api/saved-media")
 async def api_get_saved_media(type: str = None, media_type: str = None, workspace_id: Optional[int] = Query(None)):
     m_type = media_type or type
-    media = get_saved_media(media_type=m_type, workspace_id=workspace_id)
+    ws_id = int(workspace_id or 1)
+    media = get_saved_media(media_type=m_type, workspace_id=ws_id)
     return {"success": True, "media": media}
 
 @app.post("/api/saved-media/upload")

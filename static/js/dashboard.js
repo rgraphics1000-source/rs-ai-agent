@@ -57,7 +57,7 @@ function renderWorkspaceDropdown() {
         allWorkspaces.forEach(ws => {
             const opt = document.createElement("option");
             opt.value = ws.id;
-            opt.textContent = `${ws.id === 1 ? '🏢 ' : '🏪 '}${ws.name} (${ws.shop_name || ws.name})`;
+            opt.textContent = `${ws.id === 1 ? '🏢 ' : '🏪 '}${ws.name}`;
             if (ws.id === currentWorkspaceId) opt.selected = true;
             sel.appendChild(opt);
         });
@@ -2215,7 +2215,7 @@ async function loadTrainingRules() {
     if (!container) return;
 
     try {
-        const res = await fetch("/api/training/rules");
+        const res = await fetch(`/api/training/rules?workspace_id=${currentWorkspaceId}`);
         const data = await res.json();
         const rules = data.rules || [];
 
@@ -2277,7 +2277,7 @@ async function handleAutoSynthesizeTraining() {
         const res = await fetch("/api/training/synthesize", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ raw_text: text })
+            body: JSON.stringify({ raw_text: text, workspace_id: currentWorkspaceId })
         });
         const data = await res.json();
 
@@ -2337,7 +2337,7 @@ async function loadSavedMediaList() {
     if (!grid) return;
 
     try {
-        const res = await fetch("/api/saved-media");
+        const res = await fetch(`/api/saved-media?workspace_id=${currentWorkspaceId}`);
         const data = await res.json();
         const media = data.media || [];
 
