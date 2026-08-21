@@ -593,36 +593,49 @@
                         <div class="card-header">
                             <div class="card-title">
                                 <i class="fas fa-robot" style="color: var(--primary-light);"></i>
-                                Facebook Post Comment Automation Rules
+                                ফেসবুক পোস্ট কমেন্ট অটোমেশন ও এআই রিপ্লাই (Facebook Post Comment Automation)
                             </div>
                         </div>
 
                         <div class="form-row" style="margin-bottom: 20px;">
-                            <div>
-                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                    <input type="checkbox" id="setting-auto-comment" checked style="width: 18px; height: 18px;">
-                                    <span><strong>Auto-reply to Post Comments</strong></span>
+                            <div style="background: rgba(255, 255, 255, 0.03); padding: 14px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.08);">
+                                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 4px;">
+                                    <input type="checkbox" id="setting-auto-comment" checked style="width: 20px; height: 20px; accent-color: var(--primary);">
+                                    <span style="font-size: 14px;"><strong>পোস্টে কাস্টমারের কমেন্টে অটো-রিপ্লাই দিন (Auto-Reply to Comments)</strong></span>
                                 </label>
-                                <small style="color: var(--text-muted); display: block; margin-top: 4px;">Instantly post a friendly public reply under customer comments.</small>
+                                <small style="color: var(--text-muted); display: block; margin-left: 30px;">কাস্টমার কোনো পোস্টে কমেন্ট করলে সাথে সাথে পাবলিক রিপ্লাই পোস্ট করবে।</small>
                             </div>
 
-                            <div>
-                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                    <input type="checkbox" id="setting-private-inbox" checked style="width: 18px; height: 18px;">
-                                    <span><strong>Send Private Messenger Inbox on Comment</strong></span>
+                            <div style="background: rgba(255, 255, 255, 0.03); padding: 14px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.08);">
+                                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 4px;">
+                                    <input type="checkbox" id="setting-private-inbox" checked style="width: 20px; height: 20px; accent-color: var(--accent);">
+                                    <span style="font-size: 14px;"><strong>কমেন্টকারীর ইনবক্সে প্রাইভেট মেসেজ পাঠান (Send Private Messenger Inbox)</strong></span>
                                 </label>
-                                <small style="color: var(--text-muted); display: block; margin-top: 4px;">Instantly inbox product details, price and photo to the commenter.</small>
+                                <small style="color: var(--text-muted); display: block; margin-left: 30px;">কমেন্টকারীর মেসেঞ্জারে স্বয়ংক্রিয়ভাবে প্রোডাক্টের বিস্তারিত দাম ও ছবি ইনবক্স করবে।</small>
                             </div>
                         </div>
 
-                        <div class="form-group">
-                            <label>Public Comment Reply Template:</label>
-                            <input type="text" id="setting-comment-reply-template" class="form-control" value="ধন্যবাদ {name} আপু/ভাইয়া! বিস্তারিত তথ্য ও ছবি আপনার ইনবক্সে পাঠানো হয়েছে 🥰">
-                            <small style="color: var(--text-dim);">({name} will automatically replace with customer's Facebook name)</small>
+                        <div class="form-row" style="margin-bottom: 16px;">
+                            <div class="form-group">
+                                <label>কমেন্ট রিপ্লাই মোড (Comment Reply Mode):</label>
+                                <select id="setting-comment-ai-mode" class="form-control" onchange="toggleCommentModeUI()">
+                                    <option value="ai_smart" selected>🤖 এআই স্মার্ট ও প্রাসঙ্গিক রিপ্লাই (AI Contextual Reply - Recommended)</option>
+                                    <option value="template">📝 ফিক্সড টেমপ্লেট রিপ্লাই (Static Template Text)</option>
+                                </select>
+                                <small style="color: var(--text-muted); display: block; margin-top: 4px;">
+                                    * <strong>এআই স্মার্ট মোড:</strong> কাস্টমার যা জানতে চাইবে (দাম, সাইজ বা অফার), এআই ঠিক সেই বিষয়ের ওপর সুন্দর বাংলা উত্তর বানিয়ে রিপ্লাই দেবে।
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="form-group" id="comment-template-group" style="display: none;">
+                            <label>ফিক্সড টেমপ্লেট টেক্সট (Fixed Template Text):</label>
+                            <input type="text" id="setting-comment-reply-template" class="form-control" value="ধন্যবাদ {name} স্যার/ম্যাম! বিস্তারিত তথ্য ও ছবি আপনার ইনবক্সে পাঠানো হয়েছে 🥰">
+                            <small style="color: var(--text-dim);">({name} স্বয়ংক্রিয়ভাবে কাস্টমারের ফেসবুক নাম দিয়ে প্রতিস্থাপিত হবে)</small>
                         </div>
 
                         <button class="btn btn-primary" onclick="saveAllSettings()">
-                            <i class="fas fa-save"></i> Save Rules
+                            <i class="fas fa-save"></i> Save Comment Automation Rules
                         </button>
                     </div>
 
@@ -1023,7 +1036,7 @@
                     <label>Description & Sizes:</label>
                     <textarea name="description" class="form-control" rows="2" placeholder="১০০% কটন কাপড়, সাইজ: M, L, XL..."></textarea>
                 </div>
-                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+                <div class="modal-footer-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-product')">Cancel</button>
                     <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Product</button>
                 </div>
@@ -1082,7 +1095,7 @@
                     <label>Description & Sizes:</label>
                     <textarea id="edit-prod-description" class="form-control" rows="2"></textarea>
                 </div>
-                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+                <div class="modal-footer-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('modal-edit-product')">Cancel</button>
                     <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Update Product</button>
                 </div>
@@ -1133,7 +1146,7 @@
                         <input type="number" name="total_amount" class="form-control" required placeholder="1320">
                     </div>
                 </div>
-                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+                <div class="modal-footer-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-order')">Cancel</button>
                     <button type="submit" class="btn btn-primary">Create Order</button>
                 </div>
@@ -1197,7 +1210,7 @@
                     <label>AI Rule / Response Text (এআই যেভাবে উত্তর দেবে বা নির্দেশ মেনে চলবে): *</label>
                     <textarea id="rule-content" class="form-control" rows="4" required placeholder="এআই-এর জন্য স্পষ্ট নিয়ম বা উত্তর লিখুন..."></textarea>
                 </div>
-                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+                <div class="modal-footer-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-training-rule')">Cancel</button>
                     <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Rule</button>
                 </div>
@@ -1235,7 +1248,7 @@
                     <label>Description / Caption (ঐচ্ছিক):</label>
                     <input type="text" id="media-desc" class="form-control" placeholder="ভিডিও বা অডিওর সংক্ষিপ্ত বিবরণ">
                 </div>
-                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+                <div class="modal-footer-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('modal-upload-media')">Cancel</button>
                     <button type="submit" class="btn btn-primary"><i class="fas fa-cloud-arrow-up"></i> Upload Media</button>
                 </div>
@@ -1311,7 +1324,7 @@
                     </div>
                 </div>
 
-                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+                <div class="modal-footer-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('modal-connect-page')">Cancel</button>
                     <button type="submit" class="btn btn-primary"><i class="fas fa-link"></i> Connect Page</button>
                 </div>
@@ -1427,7 +1440,7 @@
             <div id="chat-selector-list-container" style="max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px; background: rgba(10, 14, 23, 0.6);">
                 <!-- Populated dynamically -->
             </div>
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+            <div class="modal-footer-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeModal('modal-select-chats-to-mute')">বাতিল</button>
                 <button type="button" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669);" onclick="confirmChatSelectorMute()">
                     <i class="fas fa-check"></i> সিলেক্ট করা নম্বরগুলো মিউট করুন
@@ -1475,7 +1488,7 @@
                         <input type="number" id="new-ws-del-out" class="form-control" value="130">
                     </div>
                 </div>
-                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+                <div class="modal-footer-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-workspace')">বাতিল</button>
                     <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">
                         <i class="fas fa-plus"></i> ওয়ার্কস্পেস তৈরি করুন

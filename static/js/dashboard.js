@@ -2435,6 +2435,24 @@ async function loadAllSettings() {
         setVal("setting-delivery-outside", "delivery_outside_dhaka", 130);
         setVal("setting-blacklisted-numbers", "blacklisted_ai_numbers", "");
 
+        // Comment automation settings
+        const setCheck = (id, key, def) => {
+            const el = document.getElementById(id);
+            if (el) {
+                if (settings[key] !== undefined && settings[key] !== null) {
+                    el.checked = String(settings[key]).toLowerCase() === "true";
+                } else if (def !== undefined) {
+                    el.checked = def;
+                }
+            }
+        };
+
+        setCheck("setting-auto-comment", "comment_auto_reply", true);
+        setCheck("setting-private-inbox", "private_message_on_comment", true);
+        setVal("setting-comment-ai-mode", "comment_ai_mode", "ai_smart");
+        setVal("setting-comment-reply-template", "comment_reply_template", "ধন্যবাদ {name} স্যার/ম্যাম! বিস্তারিত তথ্য ও ছবি আপনার ইনবক্সে পাঠানো হয়েছে 🥰");
+        toggleCommentModeUI();
+
         // Also sync AI Train Tab Inputs
         setVal("arena-shop-name", "shop_name", shopName);
         setVal("arena-system-prompt", "ai_system_prompt", "");
@@ -2445,6 +2463,14 @@ async function loadAllSettings() {
         await loadMutedContacts();
     } catch (e) {
         console.error("loadAllSettings error:", e);
+    }
+}
+
+function toggleCommentModeUI() {
+    const modeEl = document.getElementById("setting-comment-ai-mode");
+    const tplGroup = document.getElementById("comment-template-group");
+    if (modeEl && tplGroup) {
+        tplGroup.style.display = modeEl.value === "template" ? "block" : "none";
     }
 }
 
@@ -2746,12 +2772,21 @@ async function saveAllSettings() {
     const shopName = getVal("setting-shop-name") || getVal("arena-shop-name") || "RS Graphics (আরএস গ্রাফিক্স)";
     const shopPhone = getVal("setting-shop-phone") || "01816504097";
 
+    const getChecked = (id) => {
+        const el = document.getElementById(id);
+        return el ? (el.checked ? "true" : "false") : "true";
+    };
+
     const payload = {
         shop_name: shopName,
         shop_phone: shopPhone,
         delivery_inside_dhaka: getVal("setting-delivery-inside") || "70",
         delivery_outside_dhaka: getVal("setting-delivery-outside") || "130",
-        blacklisted_ai_numbers: getVal("setting-blacklisted-numbers")
+        blacklisted_ai_numbers: getVal("setting-blacklisted-numbers"),
+        comment_auto_reply: getChecked("setting-auto-comment"),
+        private_message_on_comment: getChecked("setting-private-inbox"),
+        comment_ai_mode: getVal("setting-comment-ai-mode") || "ai_smart",
+        comment_reply_template: getVal("setting-comment-reply-template") || "ধন্যবাদ {name} স্যার/ম্যাম! বিস্তারিত তথ্য ও ছবি আপনার ইনবক্সে পাঠানো হয়েছে 🥰"
     };
 
     try {

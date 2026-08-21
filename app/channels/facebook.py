@@ -520,23 +520,51 @@ async def handle_facebook_webhook_event(data: dict):
 
                         auto_comment = get_setting("comment_auto_reply", "true").lower() == "true"
                         send_private = get_setting("private_message_on_comment", "true").lower() == "true"
-                        template = get_setting("comment_reply_template", "ধন্যবাদ {name} আপু/ভাইয়া! বিস্তারিত তথ্য আপনার ইনবক্সে পাঠানো হয়েছে 🥰")
-                        
-                        public_reply_text = template.replace("{name}", user_name)
+                        comment_ai_mode = get_setting("comment_ai_mode", "ai_smart").lower()
+                        honorific = detect_customer_gender_title(user_name)
 
-                        # Public comment reply
+                        # Generate AI Smart Comment Reply or Template Reply
+                        public_reply_text = ""
                         if auto_comment and comment_id:
-                            reply_to_fb_comment(comment_id, public_reply_text, page_token=page_token, page_id=page_id)
+                            if comment_ai_mode == "ai_smart":
+                                comment_prompt = (
+                                    f"কাস্টমার '{user_name}' ফেসবুক পেজ '{page_name}'-এর পোস্টে কমেন্ট করেছেন: '{comment_text}'। "
+                                    f"আপনি {page_name}-এর নম্র ও বিশ্বস্ত সেলস রিপ্রেজেন্টেটিভ হিসেবে এই কমেন্টের খুব সুন্দর, প্রাসঙ্গিক ও চমৎকার একটি পাবলিক উত্তর দিন। "
+                                    f"কাস্টমারকে সম্মান জানিয়ে {honorific} সম্বোধন করবেন (ভাইয়া/আপু বলবেন না)। "
+                                    f"সংক্ষিপ্ত ও অমায়িক ভাষায় কথা বলবেন এবং প্রয়োজনে ইনবক্স চেক করতে বলবেন।"
+                                )
+                                ai_comment_res = await process_customer_message(
+                                    message_text=comment_prompt,
+                                    channel="facebook",
+                                    sender_id=user_id or comment_id,
+                                    customer_name=user_name,
+                                    workspace_id=workspace_id,
+                                    page_id=page_id
+                                )
+                                public_reply_text = ai_comment_res.get("reply_text", "")
+                                if not public_reply_text:
+                                    public_reply_text = f"ধন্যবাদ {user_name} {honorific}! বিস্তারিত তথ্য আপনার ইনবক্সে পাঠানো হয়েছে 🥰"
+                            else:
+                                template = get_setting("comment_reply_template", f"ধন্যবাদ {{name}} {honorific}! বিস্তারিত তথ্য আপনার ইনবক্সে পাঠানো হয়েছে 🥰")
+                                public_reply_text = template.replace("{name}", user_name)
+
+                            if public_reply_text:
+                                print(f"[Facebook Comment AI Reply on Workspace {workspace_id} ('{page_name}')]: '{public_reply_text[:60]}...' to comment {comment_id}")
+                                reply_to_fb_comment(comment_id, public_reply_text, page_token=page_token, page_id=page_id)
 
                         # Private inbox reply
                         private_reply_text = ""
                         if send_private and comment_id:
                             # Generate tailored inbox message scoped to workspace
-                            inbox_prompt = f"কাস্টমার '{user_name}' পেজ '{page_name}' এর পোস্টে কমেন্ট করেছেন: '{comment_text}'। তাকে ইনবক্সে প্রডাক্টের বিস্তারিত দাম ও অর্ডার করার নিয়ম জানিয়ে একটি সুন্দর প্রাইভেট মেসেজ দাও।"
+                            inbox_prompt = (
+                                f"কাস্টমার '{user_name}' পেজ '{page_name}'-এর পোস্টে কমেন্ট করেছেন: '{comment_text}'। "
+                                f"তাকে ইনবক্সে প্রডাক্টের বিস্তারিত দাম, অফার ও অর্ডার করার নিয়ম জানিয়ে একটি আকর্ষণীয় প্রাইভেট মেসেজ দিন (সম্বোধন {honorific})।"
+                            )
                             inbox_res = await process_customer_message(
                                 message_text=inbox_prompt,
                                 channel="facebook",
                                 sender_id=user_id or comment_id,
+                                customer_name=user_name,
                                 workspace_id=workspace_id,
                                 page_id=page_id
                             )
