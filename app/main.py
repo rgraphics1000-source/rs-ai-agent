@@ -1110,24 +1110,20 @@ async def api_get_diagnostics_whatsapp():
     ensure_whatsapp_account_consistency()
     
     wa_account = get_whatsapp_account_by_phone_id("4184514263660680")
-    token_info = resolve_whatsapp_token_info(wa_account=wa_account, workspace_id=1)
-    resolved_tok = token_info.get("token", "")
-    token_source = token_info.get("source", "unknown")
+    phone_id = wa_account.get("phone_number_id", "4184514263660680") if wa_account else "4184514263660680"
+    display_phone = wa_account.get("display_phone_number", "+8801816504097") if wa_account else "+8801816504097"
+    waba_id = wa_account.get("waba_id", "27905447135785944") if wa_account else "27905447135785944"
 
-    clean_tok = str(resolved_tok or "").strip().strip('"').strip("'")
-    if clean_tok.lower().startswith("bearer "):
-        clean_tok = clean_tok[7:].strip()
+    token_info = resolve_whatsapp_token_info(wa_account=wa_account, workspace_id=1, phone_number_id=phone_id)
+    clean_tok = token_info.get("token", "")
+    token_source = token_info.get("source", "none")
 
     token_len = len(clean_tok)
     token_prefix = clean_tok[:6] if token_len > 6 else ""
     token_suffix = clean_tok[-4:] if token_len > 10 else ""
 
-    phone_id = wa_account.get("phone_number_id", "4184514263660680") if wa_account else "4184514263660680"
-    display_phone = wa_account.get("display_phone_number", "+8801816504097") if wa_account else "+8801816504097"
-    waba_id = wa_account.get("waba_id", "27905447135785944") if wa_account else "27905447135785944"
-
-    meta_val = validate_whatsapp_token_with_meta(token=clean_tok, phone_id=phone_id)
-    ready_for_send = bool(meta_val.get("valid") and meta_val.get("phone_number_access"))
+    meta_val = token_info.get("meta_validation") or validate_whatsapp_token_with_meta(token=clean_tok, phone_id=phone_id)
+    ready_for_send = bool(token_info.get("is_valid") and meta_val.get("valid") and meta_val.get("phone_number_access"))
 
     return {
         "workspace_id": 1,
@@ -1135,17 +1131,16 @@ async def api_get_diagnostics_whatsapp():
         "phone_number_id": phone_id,
         "display_phone_number": display_phone,
         "waba_id": waba_id,
-        "token_present": bool(clean_tok),
         "token_source": token_source,
-        "token_prefix": token_prefix,
-        "token_suffix": token_suffix,
+        "token_present": bool(clean_tok),
+        "token_valid": ready_for_send,
+        "token_preview": f"{token_prefix}...{token_suffix}" if token_len > 10 else "EMPTY/SHORT",
         "token_length": token_len,
-        "token_valid": meta_val.get("valid", False),
-        "phone_number_access": meta_val.get("phone_number_access", False),
-        "meta_graph_version": settings.META_GRAPH_VERSION,
+        "graph_api_version": settings.META_GRAPH_VERSION,
         "endpoint_url": f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}/{phone_id}/messages",
         "ready_for_send": ready_for_send,
-        "meta_validation": meta_val
+        "meta_validation": meta_val,
+        "rejected_candidates": token_info.get("rejected_candidates", [])
     }
 
 @app.post("/api/diagnostics/whatsapp/test-send")
@@ -1330,7 +1325,7 @@ async def api_whatsapp_embedded_signup(request: Request):
 
     if code and app_secret and app_id:
         try:
-            token_url = "https://graph.facebook.com/v19.0/oauth/access_token"
+            token_url = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}/oauth/access_token"
             params = {
                 "client_id": app_id,
                 "client_secret": app_secret,
@@ -1362,7 +1357,7 @@ async def api_whatsapp_embedded_signup(request: Request):
     # 2. Query Meta Graph API for WABA phone numbers to find target 01816504097
     if effective_waba and effective_token:
         try:
-            url = f"https://graph.facebook.com/v19.0/{effective_waba}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,status,code_verification_status"
+            url = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}/{effective_waba}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,status,code_verification_status"
             resp = requests.get(url, headers={"Authorization": f"Bearer {effective_token}"}, timeout=10)
             if resp.status_code == 200:
                 pdata = resp.json().get("data", [])
@@ -1405,7 +1400,7 @@ async def api_whatsapp_embedded_signup(request: Request):
 
         # Subscribe app to webhooks
         try:
-            sub_url = f"https://graph.facebook.com/v19.0/{effective_waba}/subscribed_apps"
+            sub_url = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}/{effective_waba}/subscribed_apps"
             requests.post(sub_url, headers={"Authorization": f"Bearer {effective_token}"}, timeout=10)
         except Exception:
             pass

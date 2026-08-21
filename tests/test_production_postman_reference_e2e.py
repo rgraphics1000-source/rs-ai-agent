@@ -32,6 +32,7 @@ from app.database import (
 )
 from app.channels.whatsapp import (
     send_whatsapp_message,
+    send_whatsapp_message_detailed,
     send_whatsapp_image,
     send_whatsapp_audio,
     send_whatsapp_video,
@@ -323,6 +324,101 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
                 self.assertEqual(data["phone_number_id"], "4184514263660680")
                 self.assertEqual(data["result"]["message_id"], "wamid.TestDiag12345")
 
+    def test_12_ai_response_not_marked_sent_after_meta_400(self):
+        """Verifies that when Meta returns HTTP 400, outgoing message is NOT recorded as sent."""
+        with patch("requests.post") as mock_p:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 400
+            mock_resp.json.return_value = {
+                "error": {
+                    "message": "Unsupported post request. Object with ID '4184514263660680' does not exist, cannot be loaded due to missing permissions, or does not support this operation.",
+                    "type": "GraphMethodException",
+                    "code": 100
+                }
+            }
+            mock_p.return_value = mock_resp
+
+            res = send_whatsapp_message_detailed(
+                to_number="8801929778581",
+                message_text="Test failing send",
+                phone_id="4184514263660680",
+                token="EAAGValidTokenFormat12345678901234567890"
+            )
+            self.assertFalse(res["success"])
+            self.assertEqual(res["http_status"], 400)
+            self.assertEqual(res["graph_error_code"], 100)
+
+    def test_13_ai_response_marked_sent_after_meta_200(self):
+        """Verifies that when Meta returns HTTP 200, outgoing message captures wamid and succeeds."""
+        with patch("requests.post") as mock_p:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {
+                "messaging_product": "whatsapp",
+                "contacts": [{"input": "8801929778581", "wa_id": "8801929778581"}],
+                "messages": [{"id": "wamid.SuccessDelivery123456"}]
+            }
+            mock_p.return_value = mock_resp
+
+            res = send_whatsapp_message_detailed(
+                to_number="8801929778581",
+                message_text="Test successful send",
+                phone_id="4184514263660680",
+                token="EAAGValidTokenFormat12345678901234567890"
+            )
+            self.assertTrue(res["success"])
+            self.assertEqual(res["http_status"], 200)
+            self.assertEqual(res["message_id"], "wamid.SuccessDelivery123456")
+
+    def test_14_full_tokens_never_appear_in_logs(self):
+        """Verifies that full sensitive tokens never appear in logging output."""
+        import io
+        captured = io.StringIO()
+        raw_secret_token = "EAAG_EXTREMELY_SECRET_PRODUCTION_SYSTEM_USER_TOKEN_99999999999999"
+        
+        with patch("sys.stdout", captured):
+            with patch("requests.post") as mock_p:
+                mock_resp = MagicMock()
+                mock_resp.status_code = 200
+                mock_resp.json.return_value = {"messages": [{"id": "wamid.123"}]}
+                mock_p.return_value = mock_resp
+
+                send_whatsapp_message(
+                    to_number="8801929778581",
+                    message_text="Checking logs",
+                    phone_id="4184514263660680",
+                    token=raw_secret_token
+                )
+
+        log_output = captured.getvalue()
+        self.assertNotIn(raw_secret_token, log_output)
+        self.assertIn("status=success", log_output)
+
+    def test_15_existing_database_records_remain_intact_after_init_db(self):
+        """Verifies that init_db and consistency helpers preserve Workspace 1 training, FAQs, and accounts."""
+        from app.database import (
+            init_db,
+            get_active_training_rules,
+            get_all_faqs,
+            get_all_products
+        )
+        from app.channels.omnichat import get_all_conversations
+        init_db()
+        ensure_facebook_page_consistency()
+        ensure_whatsapp_account_consistency()
+
+        rules = get_active_training_rules(workspace_id=1)
+        faqs = get_all_faqs(workspace_id=1)
+        products = get_all_products(workspace_id=1)
+        convs = get_all_conversations(workspace_id=1)
+
+        self.assertGreaterEqual(len(rules), 30)
+        self.assertGreaterEqual(len(faqs), 5)
+        self.assertGreaterEqual(len(products), 4)
+        self.assertGreaterEqual(len(convs), 20)
+
 if __name__ == "__main__":
     unittest.main()
+
+
 

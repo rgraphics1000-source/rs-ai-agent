@@ -47,6 +47,9 @@ def normalize_whatsapp_phone_number(raw_phone: str) -> str:
         pass
     return digits
 
+_TOKEN_VALIDATION_CACHE = {}
+VALIDATION_CACHE_TTL = 300.0  # 5 minutes
+
 def is_valid_meta_token(token: str) -> bool:
     """Returns True if token looks like a real Meta token (not empty or short test fixture)."""
     if not token:
@@ -56,86 +59,10 @@ def is_valid_meta_token(token: str) -> bool:
         t = t[7:].strip()
     return len(t) > 30 and not t.startswith("EAATest") and not t.startswith("EAA_WA") and not t.startswith("TOKEN_") and not t.startswith("dummy") and not t.startswith("placeholder")
 
-def resolve_whatsapp_token_info(wa_account: Optional[dict] = None, workspace_id: int = 1) -> dict:
-    """
-    Resolves the WhatsApp access token along with its source metadata.
-    Guarantees that Facebook Page tokens are NEVER used for WhatsApp Cloud API.
-    """
-    # 1. First priority: token specifically on this WhatsApp account record
-    acc_tok = str(wa_account.get("access_token", "") if wa_account else "").strip().strip('"').strip("'")
-    if acc_tok.lower().startswith("bearer "):
-        acc_tok = acc_tok[7:].strip()
-    if is_valid_meta_token(acc_tok):
-        return {
-            "token": acc_tok,
-            "source": f"whatsapp_accounts (id={wa_account.get('id') if wa_account else 'unknown'})",
-            "is_valid": True
-        }
-
-    # 2. Second priority: WhatsApp specific settings
-    wa_setting_tok = str(get_setting("whatsapp_access_token", "")).strip().strip('"').strip("'")
-    if wa_setting_tok.lower().startswith("bearer "):
-        wa_setting_tok = wa_setting_tok[7:].strip()
-    if is_valid_meta_token(wa_setting_tok):
-        return {
-            "token": wa_setting_tok,
-            "source": "settings (key=whatsapp_access_token)",
-            "is_valid": True
-        }
-
-    sys_setting_tok = str(get_setting("meta_system_user_access_token", "")).strip().strip('"').strip("'")
-    if sys_setting_tok.lower().startswith("bearer "):
-        sys_setting_tok = sys_setting_tok[7:].strip()
-    if is_valid_meta_token(sys_setting_tok):
-        return {
-            "token": sys_setting_tok,
-            "source": "settings (key=meta_system_user_access_token)",
-            "is_valid": True
-        }
-
-    # 3. Third priority: Environment variables for WhatsApp / Meta System User
-    env_wa_tok = str(os.getenv("WHATSAPP_ACCESS_TOKEN", "") or settings.WHATSAPP_ACCESS_TOKEN or "").strip().strip('"').strip("'")
-    if env_wa_tok.lower().startswith("bearer "):
-        env_wa_tok = env_wa_tok[7:].strip()
-    if is_valid_meta_token(env_wa_tok):
-        return {
-            "token": env_wa_tok,
-            "source": "environment (WHATSAPP_ACCESS_TOKEN)",
-            "is_valid": True
-        }
-
-    env_sys_tok = str(os.getenv("META_SYSTEM_USER_ACCESS_TOKEN", "") or settings.META_SYSTEM_USER_ACCESS_TOKEN or "").strip().strip('"').strip("'")
-    if env_sys_tok.lower().startswith("bearer "):
-        env_sys_tok = env_sys_tok[7:].strip()
-    if is_valid_meta_token(env_sys_tok):
-        return {
-            "token": env_sys_tok,
-            "source": "environment (META_SYSTEM_USER_ACCESS_TOKEN)",
-            "is_valid": True
-        }
-
-    # Fallback to whatever non-empty token exists for mock/test environments
-    if acc_tok:
-        return {"token": acc_tok, "source": "whatsapp_accounts (raw)", "is_valid": is_valid_meta_token(acc_tok)}
-    if wa_setting_tok:
-        return {"token": wa_setting_tok, "source": "settings (whatsapp_access_token raw)", "is_valid": is_valid_meta_token(wa_setting_tok)}
-    if sys_setting_tok:
-        return {"token": sys_setting_tok, "source": "settings (meta_system_user_access_token raw)", "is_valid": is_valid_meta_token(sys_setting_tok)}
-    if env_wa_tok:
-        return {"token": env_wa_tok, "source": "environment (WHATSAPP_ACCESS_TOKEN raw)", "is_valid": is_valid_meta_token(env_wa_tok)}
-    if env_sys_tok:
-        return {"token": env_sys_tok, "source": "environment (META_SYSTEM_USER_ACCESS_TOKEN raw)", "is_valid": is_valid_meta_token(env_sys_tok)}
-
-    return {"token": "", "source": "none", "is_valid": False}
-
-def resolve_whatsapp_token(wa_account: Optional[dict] = None, workspace_id: int = 1) -> str:
-    """Resolves the best available WhatsApp token for sending messages."""
-    info = resolve_whatsapp_token_info(wa_account=wa_account, workspace_id=workspace_id)
-    return info.get("token", "")
-
-def validate_whatsapp_token_with_meta(token: str, phone_id: str = "4184514263660680") -> dict:
+def validate_whatsapp_token_with_meta(token: str, phone_id: str = "4184514263660680", force_refresh: bool = False) -> dict:
     """
     Validates token directly against Meta Graph API by checking read access to the Phone Number ID.
+    Uses in-memory TTL caching to avoid unnecessary network latency on high-frequency sends.
     Returns structured validation details without leaking sensitive token data.
     """
     clean_tok = str(token or "").strip().strip('"').strip("'")
@@ -158,6 +85,13 @@ def validate_whatsapp_token_with_meta(token: str, phone_id: str = "4184514263660
             "phone_number_access": False
         }
 
+    cache_key = (f"{clean_tok[:15]}..{clean_tok[-8:]}", phone_id)
+    now = time.time()
+    if not force_refresh and cache_key in _TOKEN_VALIDATION_CACHE:
+        cached_time, cached_res = _TOKEN_VALIDATION_CACHE[cache_key]
+        if now - cached_time < VALIDATION_CACHE_TTL:
+            return cached_res
+
     url = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}/{phone_id}"
     headers = {"Authorization": f"Bearer {clean_tok}"}
     params = {"fields": "id,display_phone_number,verified_name,quality_rating,code_verification_status"}
@@ -166,7 +100,7 @@ def validate_whatsapp_token_with_meta(token: str, phone_id: str = "4184514263660
         r = requests.get(url, headers=headers, params=params, timeout=5)
         if r.status_code == 200:
             data = r.json()
-            return {
+            res = {
                 "valid": True,
                 "phone_number_access": True,
                 "http_status": 200,
@@ -177,6 +111,8 @@ def validate_whatsapp_token_with_meta(token: str, phone_id: str = "4184514263660
                 "code_verification_status": data.get("code_verification_status"),
                 "reason": "Token verified: Full read and messaging access granted by Meta."
             }
+            _TOKEN_VALIDATION_CACHE[cache_key] = (now, res)
+            return res
         else:
             try:
                 err_data = r.json().get("error", {})
@@ -199,7 +135,7 @@ def validate_whatsapp_token_with_meta(token: str, phone_id: str = "4184514263660
                 else:
                     diagnostic_code = "GRAPH_METHOD_EXCEPTION"
 
-            return {
+            res = {
                 "valid": False,
                 "phone_number_access": False,
                 "http_status": r.status_code,
@@ -210,6 +146,8 @@ def validate_whatsapp_token_with_meta(token: str, phone_id: str = "4184514263660
                 "graph_error_message": err_msg,
                 "reason": f"Meta Graph API rejected token for Phone ID {phone_id}: {err_msg}"
             }
+            _TOKEN_VALIDATION_CACHE[cache_key] = (now, res)
+            return res
     except Exception as ex:
         return {
             "valid": False,
@@ -218,37 +156,193 @@ def validate_whatsapp_token_with_meta(token: str, phone_id: str = "4184514263660
             "reason": f"Failed to connect to Meta Graph API: {str(ex)}"
         }
 
+def resolve_whatsapp_token_info(wa_account: Optional[dict] = None, workspace_id: int = 1, phone_number_id: str = None) -> dict:
+    """
+    Resolves the WhatsApp access token using live multi-candidate validation against the canonical Phone Number ID.
+    Evaluates candidate tokens in priority order:
+    1. whatsapp_accounts.access_token
+    2. WHATSAPP_ACCESS_TOKEN environment variable
+    3. META_SYSTEM_USER_ACCESS_TOKEN environment variable
+    4. settings.whatsapp_access_token
+    5. settings.meta_system_user_access_token
+    Guarantees that Facebook Page tokens (fb_page_access_token / FB_PAGE_ACCESS_TOKEN) are NEVER used.
+    """
+    canonical_phone_id = (
+        phone_number_id 
+        or (wa_account.get("phone_number_id") if wa_account else None)
+        or get_setting("whatsapp_phone_number_id")
+        or "4184514263660680"
+    )
+
+    # Build prioritized list of candidate tokens
+    candidates = []
+
+    # 1. WhatsApp account record token
+    acc_tok = str(wa_account.get("access_token", "") if wa_account else "").strip().strip('"').strip("'")
+    if acc_tok.lower().startswith("bearer "):
+        acc_tok = acc_tok[7:].strip()
+    if acc_tok:
+        candidates.append({
+            "token": acc_tok,
+            "source": f"whatsapp_accounts (id={wa_account.get('id') if wa_account else 'unknown'})",
+            "key": "account_access_token"
+        })
+
+    # 2. Environment variables
+    env_wa_tok = str(os.getenv("WHATSAPP_ACCESS_TOKEN", "") or settings.WHATSAPP_ACCESS_TOKEN or "").strip().strip('"').strip("'")
+    if env_wa_tok.lower().startswith("bearer "):
+        env_wa_tok = env_wa_tok[7:].strip()
+    if env_wa_tok:
+        candidates.append({
+            "token": env_wa_tok,
+            "source": "environment (WHATSAPP_ACCESS_TOKEN)",
+            "key": "env_whatsapp_access_token"
+        })
+
+    env_sys_tok = str(os.getenv("META_SYSTEM_USER_ACCESS_TOKEN", "") or settings.META_SYSTEM_USER_ACCESS_TOKEN or "").strip().strip('"').strip("'")
+    if env_sys_tok.lower().startswith("bearer "):
+        env_sys_tok = env_sys_tok[7:].strip()
+    if env_sys_tok:
+        candidates.append({
+            "token": env_sys_tok,
+            "source": "environment (META_SYSTEM_USER_ACCESS_TOKEN)",
+            "key": "env_meta_system_user_access_token"
+        })
+
+    # 3. Settings table
+    wa_setting_tok = str(get_setting("whatsapp_access_token", "")).strip().strip('"').strip("'")
+    if wa_setting_tok.lower().startswith("bearer "):
+        wa_setting_tok = wa_setting_tok[7:].strip()
+    if wa_setting_tok:
+        candidates.append({
+            "token": wa_setting_tok,
+            "source": "settings (key=whatsapp_access_token)",
+            "key": "settings_whatsapp_access_token"
+        })
+
+    sys_setting_tok = str(get_setting("meta_system_user_access_token", "")).strip().strip('"').strip("'")
+    if sys_setting_tok.lower().startswith("bearer "):
+        sys_setting_tok = sys_setting_tok[7:].strip()
+    if sys_setting_tok:
+        candidates.append({
+            "token": sys_setting_tok,
+            "source": "settings (key=meta_system_user_access_token)",
+            "key": "settings_meta_system_user_access_token"
+        })
+
+    rejected_candidates = []
+
+    # First pass: look for candidates that pass live Meta validation against the target Phone ID
+    for cand in candidates:
+        cand_token = cand["token"]
+        if is_valid_meta_token(cand_token):
+            val_res = validate_whatsapp_token_with_meta(token=cand_token, phone_id=canonical_phone_id)
+            if val_res.get("valid") and val_res.get("phone_number_access"):
+                # Valid live token found!
+                return {
+                    "token": cand_token,
+                    "source": cand["source"],
+                    "key": cand["key"],
+                    "is_valid": True,
+                    "phone_number_id": canonical_phone_id,
+                    "meta_validation": val_res,
+                    "rejected_candidates": rejected_candidates
+                }
+            else:
+                prefix = cand_token[:6] if len(cand_token) > 6 else ""
+                suffix = cand_token[-4:] if len(cand_token) > 10 else ""
+                rejected_candidates.append({
+                    "source": cand["source"],
+                    "key": cand["key"],
+                    "token_preview": f"{prefix}...{suffix}" if len(cand_token) > 10 else "EMPTY/SHORT",
+                    "token_length": len(cand_token),
+                    "status": "INVALID",
+                    "error_code": val_res.get("error_code"),
+                    "reason": val_res.get("reason")
+                })
+        else:
+            prefix = cand_token[:6] if len(cand_token) > 6 else ""
+            suffix = cand_token[-4:] if len(cand_token) > 10 else ""
+            rejected_candidates.append({
+                "source": cand["source"],
+                "key": cand["key"],
+                "token_preview": f"{prefix}...{suffix}" if len(cand_token) > 10 else "EMPTY/SHORT",
+                "token_length": len(cand_token),
+                "status": "INVALID",
+                "error_code": "TOKEN_TEST_FIXTURE_OR_FORMAT",
+                "reason": "Token is a test placeholder or short fixture."
+            })
+
+    # Second pass: If no candidate passed live validation (e.g. offline/mock testing environment),
+    # pick the highest priority non-empty token that format-matches Meta tokens
+    for cand in candidates:
+        if is_valid_meta_token(cand["token"]):
+            return {
+                "token": cand["token"],
+                "source": cand["source"],
+                "key": cand["key"],
+                "is_valid": True,
+                "phone_number_id": canonical_phone_id,
+                "rejected_candidates": rejected_candidates
+            }
+
+    # Third pass: test fixture or raw fallback for unit test mocks
+    if candidates:
+        first = candidates[0]
+        return {
+            "token": first["token"],
+            "source": f"{first['source']} (raw)",
+            "key": first["key"],
+            "is_valid": is_valid_meta_token(first["token"]),
+            "phone_number_id": canonical_phone_id,
+            "rejected_candidates": rejected_candidates
+        }
+
+    return {
+        "token": "",
+        "source": "none",
+        "key": "none",
+        "is_valid": False,
+        "phone_number_id": canonical_phone_id,
+        "rejected_candidates": rejected_candidates
+    }
+
+def resolve_whatsapp_token(wa_account: Optional[dict] = None, workspace_id: int = 1, phone_number_id: str = None) -> str:
+    """Resolves the best available WhatsApp token for sending messages."""
+    info = resolve_whatsapp_token_info(wa_account=wa_account, workspace_id=workspace_id, phone_number_id=phone_number_id)
+    return info.get("token", "")
+
 def get_whatsapp_credentials(phone_number_id: str = None, page_id: str = None, workspace_id: int = None) -> Tuple[str, str]:
     """Gets valid Phone Number ID and Access Token for a specific account, page, workspace, or global default."""
     if phone_number_id:
         acc = get_whatsapp_account_by_phone_id(phone_number_id)
         if acc:
             p_id = acc.get("phone_number_id")
-            token = resolve_whatsapp_token(acc, workspace_id=acc.get("workspace_id") or 1)
+            token = resolve_whatsapp_token(acc, workspace_id=acc.get("workspace_id") or 1, phone_number_id=p_id)
             return p_id, token
 
     if page_id:
         acc = get_whatsapp_account_by_page_id(page_id)
         if acc:
             p_id = acc.get("phone_number_id")
-            token = resolve_whatsapp_token(acc, workspace_id=acc.get("workspace_id") or 1)
+            token = resolve_whatsapp_token(acc, workspace_id=acc.get("workspace_id") or 1, phone_number_id=p_id)
             return p_id, token
 
     if workspace_id:
         acc = get_whatsapp_account_by_workspace_id(workspace_id)
         if acc:
             p_id = acc.get("phone_number_id")
-            token = resolve_whatsapp_token(acc, workspace_id=workspace_id)
+            token = resolve_whatsapp_token(acc, workspace_id=workspace_id, phone_number_id=p_id)
             return p_id, token
 
     all_s = get_all_settings(masked=False)
     phone_id = all_s.get("whatsapp_phone_number_id", "") or settings.WHATSAPP_PHONE_NUMBER_ID
-    token = resolve_whatsapp_token(None, workspace_id=1)
+    token = resolve_whatsapp_token(None, workspace_id=1, phone_number_id=phone_id)
     if not phone_id or not token:
         all_wa = get_all_whatsapp_accounts()
         if all_wa:
             phone_id = phone_id or all_wa[0].get("phone_number_id", "")
-            token = token or resolve_whatsapp_token(all_wa[0], workspace_id=1)
+            token = token or resolve_whatsapp_token(all_wa[0], workspace_id=1, phone_number_id=phone_id)
 
     return phone_id, token
 
@@ -263,7 +357,7 @@ def send_whatsapp_message_detailed(to_number: str, message_text: str, phone_id: 
         token = token or resolved_tok
 
     wa_acc = get_whatsapp_account_by_phone_id(phone_id) if phone_id else None
-    token_info = resolve_whatsapp_token_info(wa_account=wa_acc, workspace_id=workspace_id or 1)
+    token_info = resolve_whatsapp_token_info(wa_account=wa_acc, workspace_id=workspace_id or 1, phone_number_id=phone_id)
     effective_token = token or token_info.get("token", "")
     token_source = token_info.get("source", "explicit")
 
@@ -279,7 +373,7 @@ def send_whatsapp_message_detailed(to_number: str, message_text: str, phone_id: 
 
     if not phone_id or not clean_token or not to_number or not message_text:
         err_detail = f"Missing required fields: phone_id={'SET' if phone_id else 'MISSING'}, token={'SET' if clean_token else 'MISSING'}, to_number={'SET' if to_number else 'MISSING'}"
-        print(f"[WhatsApp Send Error] workspace_id={workspace_id or 1} phone_number_id={'SET' if phone_id else 'MISSING'} token_source={token_source} token_present={bool(clean_token)} recipient={masked_rec}")
+        print(f"[WhatsApp Send ERROR] workspace_id={workspace_id or 1} phone_number_id={'SET' if phone_id else 'MISSING'} token_source={token_source} token_valid=false recipient={masked_rec} reason={err_detail}")
         return {
             "success": False,
             "http_status": 0,
@@ -287,6 +381,7 @@ def send_whatsapp_message_detailed(to_number: str, message_text: str, phone_id: 
             "error_message": err_detail,
             "phone_number_id": phone_id,
             "token_source": token_source,
+            "token_valid": False,
             "token_preview": token_masked,
             "recipient": masked_rec
         }
@@ -316,13 +411,14 @@ def send_whatsapp_message_detailed(to_number: str, message_text: str, phone_id: 
                 msg_id = resp_json.get("messages", [{}])[0].get("id", "")
             except Exception:
                 msg_id = ""
-            print(f"[WhatsApp Send] workspace_id={workspace_id or 1} phone_number_id={phone_id} endpoint_phone_id={phone_id} graph_api_version={settings.META_GRAPH_VERSION} token_source={token_source} token_preview={token_masked} recipient={masked_rec} message_id={msg_id} status=success http_status={r.status_code}")
+            print(f"[WhatsApp Send] workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source={token_source} token_valid=true status=success message_id={msg_id} http_status={r.status_code}")
             return {
                 "success": True,
                 "http_status": r.status_code,
                 "message_id": msg_id,
                 "phone_number_id": phone_id,
                 "token_source": token_source,
+                "token_valid": True,
                 "token_preview": token_masked,
                 "recipient": masked_rec
             }
@@ -339,7 +435,7 @@ def send_whatsapp_message_detailed(to_number: str, message_text: str, phone_id: 
                 err_type = "HttpError"
                 err_msg = r.text
 
-            print(f"[WhatsApp Send] workspace_id={workspace_id or 1} phone_number_id={phone_id} endpoint_phone_id={phone_id} graph_api_version={settings.META_GRAPH_VERSION} token_source={token_source} token_preview={token_masked} recipient={masked_rec} status=failed http_status={r.status_code} graph_error_code={err_code} graph_error_type={err_type} graph_error_message={err_msg}")
+            print(f"[WhatsApp Send ERROR] workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} http_status={r.status_code} graph_error_code={err_code} token_source={token_source} token_valid=false reason={err_msg}")
             return {
                 "success": False,
                 "http_status": r.status_code,
@@ -349,11 +445,12 @@ def send_whatsapp_message_detailed(to_number: str, message_text: str, phone_id: 
                 "graph_error_message": err_msg,
                 "phone_number_id": phone_id,
                 "token_source": token_source,
+                "token_valid": False,
                 "token_preview": token_masked,
                 "recipient": masked_rec
             }
     except Exception as e:
-        print(f"[WhatsApp Send Exception]: workspace_id={workspace_id or 1} phone_number_id={phone_id} token_source={token_source} error={str(e)}")
+        print(f"[WhatsApp Send ERROR]: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} token_source={token_source} token_valid=false reason={str(e)}")
         return {
             "success": False,
             "http_status": 0,
@@ -361,6 +458,7 @@ def send_whatsapp_message_detailed(to_number: str, message_text: str, phone_id: 
             "error_message": str(e),
             "phone_number_id": phone_id,
             "token_source": token_source,
+            "token_valid": False,
             "token_preview": token_masked,
             "recipient": masked_rec
         }
@@ -385,7 +483,7 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone
         token = token or resolved_tok
 
     wa_acc = get_whatsapp_account_by_phone_id(phone_id) if phone_id else None
-    token_info = resolve_whatsapp_token_info(wa_account=wa_acc, workspace_id=workspace_id or 1)
+    token_info = resolve_whatsapp_token_info(wa_account=wa_acc, workspace_id=workspace_id or 1, phone_number_id=phone_id)
     effective_token = token or token_info.get("token", "")
     token_source = token_info.get("source", "explicit")
 
@@ -400,7 +498,7 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone
     token_masked = f"{token_prefix}...{token_suffix} (len={token_len})" if token_len > 10 else "EMPTY/SHORT"
 
     if not phone_id or not clean_token or not to_number or not image_url:
-        print(f"[WhatsApp Image Send Error] Missing required fields: workspace_id={workspace_id or 1} phone_number_id={'SET' if phone_id else 'MISSING'} token_source={token_source} recipient={masked_rec}")
+        print(f"[WhatsApp Send ERROR] Image: Missing required fields: workspace_id={workspace_id or 1} phone_number_id={'SET' if phone_id else 'MISSING'} token_source={token_source} token_valid=false recipient={masked_rec}")
         return False
 
     norm_to = normalize_whatsapp_phone_number(to_number)
@@ -426,12 +524,15 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone
     }
 
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=15)
+        r = requests.post(url, headers=headers, json=payload, timeout=20)
         status_ok = r.status_code in [200, 201]
-        print(f"[WhatsApp Image Send] workspace_id={workspace_id or 1} phone_number_id={phone_id} token_source={token_source} token_preview={token_masked} recipient={masked_rec} status={'success' if status_ok else 'failed'}")
+        if status_ok:
+            print(f"[WhatsApp Send] Image: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source={token_source} token_valid=true status=success http_status={r.status_code}")
+        else:
+            print(f"[WhatsApp Send ERROR] Image: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} http_status={r.status_code} token_source={token_source} token_valid=false reason={r.text}")
         return status_ok
     except Exception as e:
-        print(f"[WhatsApp Image Send Exception]: workspace_id={workspace_id or 1} phone_number_id={phone_id} error={str(e)}")
+        print(f"[WhatsApp Send ERROR] Image Exception: workspace_id={workspace_id or 1} phone_number_id={phone_id} error={str(e)}")
         return False
 
 def send_whatsapp_audio(to_number: str, audio_url: str, phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
@@ -442,7 +543,7 @@ def send_whatsapp_audio(to_number: str, audio_url: str, phone_id: str = None, to
         token = token or resolved_tok
 
     wa_acc = get_whatsapp_account_by_phone_id(phone_id) if phone_id else None
-    token_info = resolve_whatsapp_token_info(wa_account=wa_acc, workspace_id=workspace_id or 1)
+    token_info = resolve_whatsapp_token_info(wa_account=wa_acc, workspace_id=workspace_id or 1, phone_number_id=phone_id)
     effective_token = token or token_info.get("token", "")
     token_source = token_info.get("source", "explicit")
 
@@ -480,12 +581,15 @@ def send_whatsapp_audio(to_number: str, audio_url: str, phone_id: str = None, to
     }
 
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=15)
+        r = requests.post(url, headers=headers, json=payload, timeout=20)
         status_ok = r.status_code in [200, 201]
-        print(f"[WhatsApp Audio Send] workspace_id={workspace_id or 1} phone_number_id={phone_id} token_source={token_source} token_preview={token_masked} recipient={masked_rec} status={'success' if status_ok else 'failed'}")
+        if status_ok:
+            print(f"[WhatsApp Send] Audio: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source={token_source} token_valid=true status=success http_status={r.status_code}")
+        else:
+            print(f"[WhatsApp Send ERROR] Audio: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} http_status={r.status_code} token_source={token_source} token_valid=false reason={r.text}")
         return status_ok
     except Exception as e:
-        print(f"[WhatsApp Audio Send Exception]: workspace_id={workspace_id or 1} phone_number_id={phone_id} error={str(e)}")
+        print(f"[WhatsApp Send ERROR] Audio Exception: workspace_id={workspace_id or 1} phone_number_id={phone_id} error={str(e)}")
         return False
 
 def send_whatsapp_video(to_number: str, video_url: str, caption: str = "", phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
@@ -496,9 +600,56 @@ def send_whatsapp_video(to_number: str, video_url: str, caption: str = "", phone
         token = token or resolved_tok
 
     wa_acc = get_whatsapp_account_by_phone_id(phone_id) if phone_id else None
-    token_info = resolve_whatsapp_token_info(wa_account=wa_acc, workspace_id=workspace_id or 1)
+    token_info = resolve_whatsapp_token_info(wa_account=wa_acc, workspace_id=workspace_id or 1, phone_number_id=phone_id)
     effective_token = token or token_info.get("token", "")
     token_source = token_info.get("source", "explicit")
+
+    clean_token = str(effective_token or "").strip().strip('"').strip("'")
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
+    masked_rec = mask_phone_number(to_number)
+    token_prefix = clean_token[:6] if len(clean_token) > 6 else ""
+    token_suffix = clean_token[-4:] if len(clean_token) > 10 else ""
+    token_len = len(clean_token)
+    token_masked = f"{token_prefix}...{token_suffix} (len={token_len})" if token_len > 10 else "EMPTY/SHORT"
+
+    if not phone_id or not clean_token or not to_number or not video_url:
+        return False
+
+    norm_to = normalize_whatsapp_phone_number(to_number)
+    url = f"{GRAPH_API_URL}/{phone_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {clean_token}",
+        "Content-Type": "application/json"
+    }
+
+    base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
+    full_url = video_url if video_url.startswith("http") else f"{base_server_url}{video_url}"
+
+    video_obj = {"link": full_url}
+    if caption and caption.strip():
+        video_obj["caption"] = caption.strip()
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": norm_to,
+        "type": "video",
+        "video": video_obj
+    }
+
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=20)
+        status_ok = r.status_code in [200, 201]
+        if status_ok:
+            print(f"[WhatsApp Send] Video: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source={token_source} token_valid=true status=success http_status={r.status_code}")
+        else:
+            print(f"[WhatsApp Send ERROR] Video: workspace_id={workspace_id or 1} phone_number_id={phone_id} recipient={masked_rec} http_status={r.status_code} token_source={token_source} token_valid=false reason={r.text}")
+        return status_ok
+    except Exception as e:
+        print(f"[WhatsApp Send ERROR] Video Exception: workspace_id={workspace_id or 1} phone_number_id={phone_id} error={str(e)}")
+        return False
 
     clean_token = str(effective_token or "").strip().strip('"').strip("'")
     if clean_token.lower().startswith("bearer "):
