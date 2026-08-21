@@ -358,78 +358,68 @@ def resolve_google_form_workflow(
     Accumulates institution name, institution mobile, and requested fields across messages,
     then executes create_institution_form when all required data is collected.
     """
+    if not user_message or not isinstance(user_message, str) or not user_message.strip():
+        return None
+
+    msg_raw = user_message.strip()
+    msg_lower = msg_raw.lower()
+
+    phone_pattern = r'(?:\+?880|880|0)?1[3-9]\d{2}[-\s]?\d{6}'
+    question_pattern = r'(?:\?|কীভাবে|কিভাবে|কত\s*টাকা|দাম\s*কত|দর\s*কত|চার্জ\s*কত|খরচ\s*কত|কেমন\s*দাম|তথ্য\s*(?:কিভাবে|কীভাবে)|(?:কিভাবে|কীভাবে)\s*(?:দিব|দেবো|নেওয়া|নেন|পাঠাব|পাঠাবো)|কবে\s*পাব|কোথায়|কোথায়|(?:^|\s)(?:দাম|চার্জ|খরচ|রেট|প্রাইস)(?:\s|[।\?!,:]|$))'
+
+    # 1. Parse structured conversation history
     flat_history = []
     if conversation_history:
         for m in conversation_history:
             sender_val = str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower()
             role = "user" if sender_val in ("customer", "user") else "assistant"
             content = m.get("content") or m.get("text") or m.get("message") or ""
-            if content:
+            if content and isinstance(content, str):
                 flat_history.append({"role": role, "text": content.strip()})
 
-    # Append current user message
-    if user_message and user_message.strip():
-        flat_history.append({"role": "user", "text": user_message.strip()})
-
-    if not flat_history:
-        return None
-
-    form_intent_patterns = [
-        r'ফর্ম',
-        r'ফরম',
-        r'form',
-        r'গুগল\s*ফর্ম',
-        r'গুগল\s*ফরম',
-        r'google\s*form',
-        r'gform',
-        r'id\s*card\s*(?:এর\s*)?form',
-        r'id\s*card\s*(?:এর\s*)?ফর্ম',
-        r'id\s*card\s*(?:এর\s*)?ফরম',
-        r'আইডি\s*কার্ড(?:ের)?\s*(?:জন্য\s*)?(?:একটি\s*|একটা\s*)?(?:ফর্ম|ফরম|form)',
-        r'আইডি\s*কার্ড(?:ের)?\s*(?:ফর্ম|ফরম|form)',
-        r'আইডি\s*কার্ডের\s*জন্য\s*(?:ফর্ম|ফরম|form)',
-        r'আইডি\s*কার্ড',
-        r'তথ্য\s*নেওয়ার\s*(?:জন্য|ফর্ম|ফরম|form|লিংক|লিঙ্ক)',
-        r'ছাত্রদের\s*(?:তথ্য|ডাটা|ফর্ম|ফরম)',
-        r'শিক্ষার্থীদের\s*(?:তথ্য|ডাটা|ফর্ম|ফরম)',
-        r'create\s*form|make\s*form',
-    ]
-
-    has_form_intent = False
-    for m in flat_history:
-        txt = m["text"]
-        txt_lower = txt.lower()
-        if any(re.search(p, txt_lower, re.IGNORECASE) for p in form_intent_patterns):
-            has_form_intent = True
-            break
-        if any(kw in txt_lower for kw in [
-            "ফর্ম", "ফর্মে", "ফরম", "ফরমে", "ফর্মটি", "ফরমটি", "ফর্মটা", "ফরমটা", "ফর্মের", "ফরমের",
-            "form", "forms", "gform", "g-form",
-            "গুগল ফর্ম", "গুগল ফরম", "google form",
-            "আইডি কার্ড ফর্ম", "আইডি কার্ড ফরম", "id card form", "আইডি কার্ড"
-        ]):
-            has_form_intent = True
-            break
-        if m["role"] == "assistant" and any(q in txt for q in [
-            "প্রতিষ্ঠানের নাম", "প্রতিষ্ঠানের নামটি দিন", "মোবাইল নম্বর",
-            "কোন কোন তথ্য", "তথ্য রাখতে চান", "কী কী তথ্য লাগবে"
-        ]):
-            has_form_intent = True
-            break
-
-    if not has_form_intent:
-        return None
-
-    try:
-        print(f"[GOOGLE_FORM_WORKFLOW] Intent detected = TRUE (msg_len={len(user_message) if user_message else 0})")
-    except Exception:
-        pass
-
-    phone_pattern = r'(?:\+?880|880|0)?1[3-9]\d{2}[-\s]?\d{6}'
-
-    # 1. Extract Institution Mobile Number explicitly from user text messages
-    inst_mobile = ""
+    # Find the very last message from assistant to determine active workflow state
+    last_assistant_msg = ""
     for m in reversed(flat_history):
+        if m["role"] == "assistant":
+            last_assistant_msg = m["text"]
+            break
+
+    # Determine if last assistant message was a form-related prompt
+    is_awaiting_name = any(q in last_assistant_msg for q in ["প্রতিষ্ঠানের নামটি দিন", "প্রতিষ্ঠানের নাম দিন", "প্রতিষ্ঠানের নাম বলুন", "প্রতিষ্ঠানের নাম কী"])
+    is_awaiting_mobile = any(q in last_assistant_msg for q in ["প্রতিষ্ঠানের মোবাইল নম্বরটি দিন", "মোবাইল নম্বরটি দিন", "মোবাইল নম্বর দিন", "মোবাইল নম্বর প্রদান করুন"])
+    is_awaiting_fields = any(q in last_assistant_msg for q in ["কোন কোন তথ্য রাখতে চান", "কোন কোন তথ্য লাগবে", "কী কী তথ্য লাগবে", "তথ্য বা ফিল্ড লাগবে"])
+
+    has_active_form_flow = is_awaiting_name or is_awaiting_mobile or is_awaiting_fields
+
+    # Check for explicit form creation command in current user message
+    form_explicit_triggers = [
+        r'গুগল\s*ফর্ম|গুগল\s*ফরম|google\s*form|gform|g-form',
+        r'id\s*card\s*(?:এর\s*)?(?:form|ফর্ম|ফরম)',
+        r'(?:আইডি\s*কার্ড(?:ের)?\s*(?:জন্য\s*)?)?(?:ফর্ম|ফরম|form)\s*(?:বানাও|বানিয়ে|বানিয়ে|বানাতে|তৈরি|করতে|create|make|দিন|দাও|পাঠান|লিংক|লিঙ্ক|দেন|চাই|হবে|লাগবে)',
+        r'(?:তথ্য|ডাটা)\s*(?:নেওয়ার|দেওয়ার|কালেক্ট\s*করার)\s*(?:জন্য\s*)?(?:গুগল\s*)?(?:ফর্ম|ফরম|form)',
+        r'(?:ফর্ম|ফরম|form)\s*(?:বানাতে|করতে|লাগবে|চাই|দিন|দাও|হবে)',
+        r'(?:ফর্ম|ফরম|form)\s*(?:এর\s*)?(?:লিংক|লিঙ্ক|link)',
+        r'(?:ফর্মে|ফরমে)\s*(?:নাম|পিতার|শ্রেণি|ছবি|রোল|তথ্য)'
+    ]
+    has_explicit_form_intent = any(re.search(p, msg_lower, re.IGNORECASE) for p in form_explicit_triggers)
+
+    is_question = bool(re.search(question_pattern, msg_lower))
+
+    # If the user is asking a general question (e.g., "আইডি কার্ডের তথ্য কিভাবে নেন আপনারা?")
+    # and has not issued an explicit form creation command, let Gemini AI answer naturally!
+    if is_question and not has_explicit_form_intent:
+        return None
+
+    # If there is no active form flow and no explicit form command in the message, bypass workflow
+    if not has_active_form_flow and not has_explicit_form_intent:
+        return None
+
+    # Append current message to local history for unified resolution
+    full_thread = flat_history + [{"role": "user", "text": msg_raw}]
+
+    # 2. Extract Mobile Number across thread
+    inst_mobile = ""
+    for m in reversed(full_thread):
         if m["role"] == "user":
             match = re.search(phone_pattern, m["text"])
             if match:
@@ -438,9 +428,9 @@ def resolve_google_form_workflow(
                     inst_mobile = norm
                     break
 
-    # 2. Extract Institution Name
+    # 3. Extract Institution Name across thread
     inst_name = ""
-    for m in flat_history:
+    for m in full_thread:
         if m["role"] != "user":
             continue
         t = m["text"]
@@ -488,25 +478,20 @@ def resolve_google_form_workflow(
                 break
 
     # Contextual reply extraction if user answered assistant's "প্রতিষ্ঠানের নাম" prompt
-    if not inst_name and len(flat_history) >= 2:
-        for idx in range(len(flat_history) - 1):
-            prev = flat_history[idx]
-            curr = flat_history[idx + 1]
-            if prev["role"] == "assistant" and any(q in prev["text"] for q in ["প্রতিষ্ঠানের নাম", "প্রতিষ্ঠানের নামটি দিন", "প্রতিষ্ঠানের নাম বলুন", "প্রতিষ্ঠানের নাম কী"]):
-                if curr["role"] == "user":
-                    cand = curr["text"].strip().split("\n")[0].split(",")[0].split("।")[0].strip()
-                    cand = re.sub(phone_pattern, '', cand).strip()
-                    for pfx in ["দয়া করে", "প্লিজ", "আমাদের প্রতিষ্ঠানের নাম", "প্রতিষ্ঠানের নাম", "নাম", "আমাদের", "আমার"]:
-                        if cand.startswith(pfx):
-                            cand = cand[len(pfx):].lstrip(": ").strip()
-                    if len(cand) >= 2 and not any(kw in cand.lower() for kw in ["ফর্ম", "ফরম", "আইডি কার্ড", "বানাতে"]):
-                        inst_name = cand
-                        break
+    # Contextual reply extraction if user is answering assistant's "প্রতিষ্ঠানের নাম" prompt
+    if not inst_name and is_awaiting_name:
+        cand = msg_raw.split("\n")[0].split(",")[0].split("।")[0].strip()
+        cand = re.sub(phone_pattern, '', cand).strip()
+        for pfx in ["দয়া করে", "প্লিজ", "আমাদের প্রতিষ্ঠানের নাম", "প্রতিষ্ঠানের নাম", "নাম", "আমাদের", "আমার"]:
+            if cand.startswith(pfx):
+                cand = cand[len(pfx):].lstrip(": ").strip()
+        if len(cand) >= 2 and not any(kw in cand.lower() for kw in ["ফর্ম", "ফরম", "আইডি কার্ড", "বানাতে", "কিভাবে", "কীভাবে", "দাম"]):
+            inst_name = cand
 
-    # 3. Detect requested fields across the conversation thread
+    # 4. Extract requested fields across thread
     all_detected_fields = []
     seen_keys = set()
-    for m in flat_history:
+    for m in full_thread:
         if m["role"] == "user":
             fields = detect_fields_from_natural_language(m["text"], fallback_to_defaults=False)
             for f in fields:
@@ -514,39 +499,43 @@ def resolve_google_form_workflow(
                     seen_keys.add(f["key"])
                     all_detected_fields.append(f)
 
-    # 4. Evaluate conversation state
+    # 5. Evaluate state progression
     if not inst_name:
-        print(f"[GOOGLE_FORM_WORKFLOW] State = NEED_INSTITUTION_NAME")
-        print(f"[GOOGLE_FORM_WORKFLOW] Returning deterministic response (Gemini LLM bypassed)")
-        return {
-            "status": "need_name",
-            "institution_name": "",
-            "institution_mobile": inst_mobile,
-            "selected_fields": all_detected_fields,
-            "reply": "অবশ্যই স্যার। ফর্ম তৈরি করার জন্য প্রথমে আপনার প্রতিষ্ঠানের নামটি দিন।"
-        }
+        # If user explicitly asked for a form, prompt for name
+        if has_explicit_form_intent:
+            return {
+                "status": "need_name",
+                "institution_name": "",
+                "institution_mobile": inst_mobile,
+                "selected_fields": all_detected_fields,
+                "reply": "অবশ্যই স্যার। ফর্ম তৈরি করার জন্য প্রথমে আপনার প্রতিষ্ঠানের নামটি দিন।"
+            }
+        # If user was asked for a name previously but asked a question or sent something else, allow Gemini to handle
+        return None
 
     if not inst_mobile:
-        print(f"[GOOGLE_FORM_WORKFLOW] State = NEED_INSTITUTION_MOBILE")
-        print(f"[GOOGLE_FORM_WORKFLOW] Returning deterministic response (Gemini LLM bypassed)")
-        return {
-            "status": "need_mobile",
-            "institution_name": inst_name,
-            "institution_mobile": "",
-            "selected_fields": all_detected_fields,
-            "reply": "ধন্যবাদ স্যার। এখন প্রতিষ্ঠানের মোবাইল নম্বরটি দিন।"
-        }
+        # If the user answered the name or has form intent, prompt for mobile
+        if is_awaiting_name or has_explicit_form_intent or is_awaiting_mobile:
+            return {
+                "status": "need_mobile",
+                "institution_name": inst_name,
+                "institution_mobile": "",
+                "selected_fields": all_detected_fields,
+                "reply": "ধন্যবাদ স্যার। এখন প্রতিষ্ঠানের মোবাইল নম্বরটি দিন।"
+            }
+        return None
 
     if not all_detected_fields:
-        print(f"[GOOGLE_FORM_WORKFLOW] State = NEED_FIELDS")
-        print(f"[GOOGLE_FORM_WORKFLOW] Returning deterministic response (Gemini LLM bypassed)")
-        return {
-            "status": "need_fields",
-            "institution_name": inst_name,
-            "institution_mobile": inst_mobile,
-            "selected_fields": [],
-            "reply": "ধন্যবাদ স্যার। এবার বলুন, শিক্ষার্থীদের ফর্মে কোন কোন তথ্য রাখতে চান?\nযেমন: নাম, পিতার নাম, মাতার নাম, জন্মতারিখ, শ্রেণি, রোল, ঠিকানা, ছবি ইত্যাদি।"
-        }
+        # If mobile is provided but fields are missing, prompt for fields
+        if is_awaiting_mobile or is_awaiting_fields or has_explicit_form_intent:
+            return {
+                "status": "need_fields",
+                "institution_name": inst_name,
+                "institution_mobile": inst_mobile,
+                "selected_fields": [],
+                "reply": "ধন্যবাদ স্যার। এবার বলুন, শিক্ষার্থীদের ফর্মে কোন কোন তথ্য রাখতে চান?\nযেমন: নাম, পিতার নাম, মাতার নাম, জন্মতারিখ, শ্রেণি, রোল, ঠিকানা, ছবি ইত্যাদি।"
+            }
+        return None
 
     print(f"[GOOGLE_FORM_WORKFLOW] State = READY_TO_CREATE")
 

@@ -458,5 +458,48 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
         mock_create.assert_called_once()
         print("✓ Test 6 Passed: Full 4-turn WhatsApp flow executes with early priority and zero generic fallback.")
 
+    def test_07_general_questions_do_not_trigger_form_loop(self):
+        """
+        Verify that general product and process inquiries (e.g., 'তথ্য কিভাবে নেন', 'তথ্য কিভাবে দিব', 'দাম কত')
+        bypass the Google Form state machine and do NOT get trapped in 'প্রতিষ্ঠানের নামটি দিন'.
+        """
+        # Test 1: General process question
+        q1 = resolve_google_form_workflow(
+            user_message="আইডি কার্ডের তথ্য কিভাবে নেন আপনারা?",
+            conversation_history=[],
+            workspace_id=self.workspace_id
+        )
+        self.assertIsNone(q1, "General info process question must not trigger form workflow")
+
+        # Test 2: General submission question
+        q2 = resolve_google_form_workflow(
+            user_message="আইডি কার্ডের তথ্য কিভাবে দিব?",
+            conversation_history=[],
+            workspace_id=self.workspace_id
+        )
+        self.assertIsNone(q2, "General info submission question must not trigger form workflow")
+
+        # Test 3: Price question
+        q3 = resolve_google_form_workflow(
+            user_message="আইডি কার্ডের দাম কত?",
+            conversation_history=[],
+            workspace_id=self.workspace_id
+        )
+        self.assertIsNone(q3, "Price inquiry must not trigger form workflow")
+
+        # Test 4: Question asked during an active workflow does not repeat the loop
+        h_loop = [
+            {"role": "user", "content": "আমার প্রতিষ্ঠানের জন্য গুগল ফরম বানিয়ে দাও"},
+            {"role": "assistant", "content": "অবশ্যই স্যার। ফর্ম তৈরি করার জন্য প্রথমে আপনার প্রতিষ্ঠানের নামটি দিন।"}
+        ]
+        q4 = resolve_google_form_workflow(
+            user_message="আইডি কার্ডের তথ্য কিভাবে দিব?",
+            conversation_history=h_loop,
+            workspace_id=self.workspace_id
+        )
+        self.assertIsNone(q4, "Follow-up question must yield to Gemini AI instead of repeating form prompt")
+
+        print("✓ Test 7 Passed: General inquiries safely bypass Google Form state machine.")
+
 if __name__ == "__main__":
     unittest.main()
