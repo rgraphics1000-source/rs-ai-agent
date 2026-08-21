@@ -843,6 +843,8 @@ async def handle_whatsapp_webhook_event(data: dict):
                 
                 raw_customer_name = contacts[0].get("profile", {}).get("name", "") if contacts else ""
 
+                # 1. Parse and record all incoming messages, grouping by sender for batch debouncing
+                grouped_events = {}
                 for msg in messages:
                     msg_id = msg.get("id")
                     if msg_id:
@@ -857,6 +859,14 @@ async def handle_whatsapp_webhook_event(data: dict):
                     sender_phone = normalize_whatsapp_phone_number(raw_from)
                     masked_sender = mask_phone_number(sender_phone)
                     msg_type = msg.get("type")
+                    msg_ts_raw = msg.get("timestamp")
+                    is_stale = False
+                    if msg_ts_raw and str(msg_ts_raw).isdigit():
+                        diff = time.time() - int(msg_ts_raw)
+                        # Filter out backlog older than 30 minutes
+                        if 1800 < diff < 315360000:
+                            is_stale = True
+
                     msg_text = ""
                     image_bytes = None
                     image_mime = "image/jpeg"
@@ -895,151 +905,199 @@ async def handle_whatsapp_webhook_event(data: dict):
                             except Exception as dl_err:
                                 print(f"[WhatsApp Audio DL Error]: {dl_err}")
 
-                    if msg_text or image_bytes or audio_bytes:
-                        # Record incoming customer message scoped strictly to Workspace
-                        customer_name = raw_customer_name or f"WhatsApp User ({sender_phone})"
-                        record_conversation_message("whatsapp", sender_phone, customer_name, "user", msg_text, page_id=page_id, workspace_id=workspace_id)
+                    # Record incoming customer message scoped strictly to Workspace
+                    customer_name = raw_customer_name or f"WhatsApp User ({sender_phone})"
+                    record_conversation_message("whatsapp", sender_phone, customer_name, "user", msg_text, page_id=page_id, workspace_id=workspace_id)
 
-                        # Check for Admin / Customer AI Control Commands
-                        clean_cmd = msg_text.strip().lower()
-                        if clean_cmd in ["#ai", "[ai]", "start ai", "এআই চালু", "এআই অন"]:
-                            from app.database import remove_muted_number
-                            remove_muted_number(sender_phone)
-                            send_whatsapp_message(sender_phone, "জি স্যার, আপনার জন্য এআই অটোমেশন পুনরায় চালু করা হয়েছে।", phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id)
-                            continue
-                        elif clean_cmd in ["#pause", "[pause]", "[stop]", "এআই বন্ধ", "এআই অফ", "আমি কথা বলছি"]:
-                            from app.database import add_muted_number
-                            add_muted_number(sender_phone)
-                            send_whatsapp_message(sender_phone, "জি স্যার, এআই অটোমেশন সাময়িকভাবে বন্ধ (Paused) করা হয়েছে। আপনি সরাসরি কথা বলতে পারবেন।", phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id)
-                            continue
+                    if sender_phone not in grouped_events:
+                        grouped_events[sender_phone] = {
+                            "sender_phone": sender_phone,
+                            "masked_sender": masked_sender,
+                            "customer_name": customer_name,
+                            "text_parts": [],
+                            "image_bytes": None,
+                            "image_mime": "image/jpeg",
+                            "audio_bytes": None,
+                            "audio_mime": "audio/mp4",
+                            "image_count": 0,
+                            "is_stale": is_stale
+                        }
 
-                        # Check if AI Master Switch or Per-Customer Takeover is active
-                        if not is_conversation_ai_active(sender_id=sender_phone):
-                            print(f"[WhatsApp]: AI is PAUSED for customer {masked_sender} on account {effective_phone_id} (Human Takeover). AI will stay silent.")
-                            continue
+                    if msg_text:
+                        grouped_events[sender_phone]["text_parts"].append(msg_text)
+                    if image_bytes:
+                        if not grouped_events[sender_phone]["image_bytes"]:
+                            grouped_events[sender_phone]["image_bytes"] = image_bytes
+                            grouped_events[sender_phone]["image_mime"] = image_mime
+                        grouped_events[sender_phone]["image_count"] += 1
+                    if audio_bytes:
+                        if not grouped_events[sender_phone]["audio_bytes"]:
+                            grouped_events[sender_phone]["audio_bytes"] = audio_bytes
+                            grouped_events[sender_phone]["audio_mime"] = audio_mime
 
-                        # Fetch conversation history scoped strictly to Workspace
-                        history = get_conversation_history("whatsapp", sender_phone, limit=8, page_id=page_id, workspace_id=workspace_id)
-                        
-                        # Load workspace specific data and log
-                        training_rules = get_active_training_rules(workspace_id=workspace_id)
-                        faqs = get_all_faqs(workspace_id=workspace_id)
-                        products = get_all_products(workspace_id=workspace_id)
-                        print(f"[WhatsApp AI] workspace_id={workspace_id} training_rules_loaded={len(training_rules)} faqs_loaded={len(faqs)} products_loaded={len(products)}")
+                # 2. Process aggregated customer requests (ONE AI call per batch)
+                for sender_phone, ev in grouped_events.items():
+                    masked_sender = ev["masked_sender"]
+                    customer_name = ev["customer_name"]
+                    
+                    combined_text = "\n".join(ev["text_parts"]).strip()
+                    if ev["image_count"] > 1 and not combined_text:
+                        combined_text = f"কাস্টমার একসাথে {ev['image_count']}টি ছবি পাঠিয়েছেন।"
+                    elif ev["image_count"] > 1 and combined_text:
+                        combined_text = f"{combined_text}\n(কাস্টমার একসাথে {ev['image_count']}টি ছবি পাঠিয়েছেন)"
 
-                        # Process with Gemini AI Brain with Workspace isolation
-                        ai_result = await process_customer_message(
-                            message_text=msg_text,
-                            image_bytes=image_bytes,
-                            image_mime=image_mime,
-                            audio_bytes=audio_bytes,
-                            audio_mime=audio_mime,
-                            conversation_history=history,
-                            channel="whatsapp",
-                            sender_id=sender_phone,
-                            customer_name=customer_name,
-                            generate_voice_reply=bool(audio_bytes),
-                            workspace_id=workspace_id,
-                            page_id=page_id
+                    image_bytes = ev["image_bytes"]
+                    image_mime = ev["image_mime"]
+                    audio_bytes = ev["audio_bytes"]
+                    audio_mime = ev["audio_mime"]
+
+                    if not combined_text and not image_bytes and not audio_bytes:
+                        continue
+
+                    # Check for Admin / Customer AI Control Commands
+                    clean_cmd = combined_text.strip().lower()
+                    if clean_cmd in ["#ai", "[ai]", "start ai", "এআই চালু", "এআই অন"]:
+                        from app.database import remove_muted_number
+                        remove_muted_number(sender_phone)
+                        send_whatsapp_message(sender_phone, "জি স্যার, আপনার জন্য এআই অটোমেশন পুনরায় চালু করা হয়েছে।", phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id)
+                        continue
+                    elif clean_cmd in ["#pause", "[pause]", "[stop]", "এআই বন্ধ", "এআই অফ", "আমি কথা বলছি"]:
+                        from app.database import add_muted_number
+                        add_muted_number(sender_phone)
+                        send_whatsapp_message(sender_phone, "জি স্যার, এআই অটোমেশন সাময়িকভাবে বন্ধ (Paused) করা হয়েছে। আপনি সরাসরি কথা বলতে পারবেন।", phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id)
+                        continue
+
+                    # Check if AI Master Switch or Per-Customer Takeover is active
+                    if not is_conversation_ai_active(sender_id=sender_phone):
+                        print(f"[WhatsApp]: AI is PAUSED for customer {masked_sender} on account {effective_phone_id} (Human Takeover). AI will stay silent.")
+                        continue
+
+                    # Stale Message Filter: If older than 5 minutes, do NOT send retroactive AI replies
+                    if ev["is_stale"]:
+                        print(f"[WhatsApp]: Stale message from {masked_sender} (older than 5m). Recorded to history, AI reply skipped.")
+                        continue
+
+                    # Fetch conversation history scoped strictly to Workspace
+                    history = get_conversation_history("whatsapp", sender_phone, limit=8, page_id=page_id, workspace_id=workspace_id)
+                    
+                    # Load workspace specific data and log
+                    training_rules = get_active_training_rules(workspace_id=workspace_id)
+                    faqs = get_all_faqs(workspace_id=workspace_id)
+                    products = get_all_products(workspace_id=workspace_id)
+                    print(f"[WhatsApp AI] workspace_id={workspace_id} training_rules_loaded={len(training_rules)} faqs_loaded={len(faqs)} products_loaded={len(products)}")
+
+                    # Process with Gemini AI Brain with Workspace isolation
+                    ai_result = await process_customer_message(
+                        message_text=combined_text,
+                        image_bytes=image_bytes,
+                        image_mime=image_mime,
+                        audio_bytes=audio_bytes,
+                        audio_mime=audio_mime,
+                        conversation_history=history,
+                        channel="whatsapp",
+                        sender_id=sender_phone,
+                        customer_name=customer_name,
+                        generate_voice_reply=bool(audio_bytes),
+                        workspace_id=workspace_id,
+                        page_id=page_id
+                    )
+
+                    reply_text = ai_result.get("reply_text", "")
+                    
+                    # Structured Production Transition Logging (Google Form & AI routing tracking)
+                    gw = ai_result.get("google_form_workflow") or {}
+                    gw_status = gw.get("status", "none")
+                    gw_name = gw.get("institution_name", "")
+                    gw_mobile = gw.get("institution_mobile", "")
+                    gw_fields = gw.get("selected_fields", [])
+                    gw_success = gw.get("success", False)
+                    gw_err = gw.get("error", "none")
+                    final_source = ai_result.get("response_source") or ("deterministic_google_form" if gw_status in ["created", "need_name", "need_mobile", "need_fields", "already_exists", "data_collection_offer"] else "gemini_brain")
+
+                    print(
+                        f"[WhatsApp Webhook Transition] "
+                        f"workspace_id={workspace_id} "
+                        f"sender_phone={masked_sender} "
+                        f"message_text={repr(msg_text[:40])} "
+                        f"conversation_id=whatsapp_{sender_phone} "
+                        f"detected_intent={gw_status} "
+                        f"workflow_state={gw_status} "
+                        f"extracted_institution_name={repr(gw_name)} "
+                        f"extracted_mobile={repr(gw_mobile)} "
+                        f"extracted_fields={len(gw_fields)} "
+                        f"should_create_form={bool(gw_status == 'created')} "
+                        f"create_institution_form_called={bool(gw_status == 'created')} "
+                        f"create_institution_form_result={gw_success} "
+                        f"exception_error={repr(gw_err)} "
+                        f"final_response_source={final_source}"
+                    )
+                    print(f"[AI Reply on Workspace {workspace_id} WA {effective_phone_id}] generated for={masked_sender}: {reply_text[:60] if reply_text else 'None'}...")
+
+                    if reply_text and sender_phone:
+                        send_ok = send_whatsapp_message(
+                            sender_phone, reply_text,
+                            phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
                         )
+                        if send_ok:
+                            record_conversation_message("whatsapp", sender_phone, customer_name, "bot", reply_text, page_id=page_id, workspace_id=workspace_id)
+                            print(f"[WhatsApp Send] phone_number_id={effective_phone_id} recipient={masked_sender} status=success")
+                        else:
+                            print(f"[WhatsApp Send] Delivery FAILED for {masked_sender}. AI message was NOT recorded as sent.")
 
-                        reply_text = ai_result.get("reply_text", "")
-                        
-                        # Structured Production Transition Logging (Google Form & AI routing tracking)
-                        gw = ai_result.get("google_form_workflow") or {}
-                        gw_status = gw.get("status", "none")
-                        gw_name = gw.get("institution_name", "")
-                        gw_mobile = gw.get("institution_mobile", "")
-                        gw_fields = gw.get("selected_fields", [])
-                        gw_success = gw.get("success", False)
-                        gw_err = gw.get("error", "none")
-                        final_source = ai_result.get("response_source") or ("deterministic_google_form" if gw_status in ["created", "need_name", "need_mobile", "need_fields", "already_exists", "data_collection_offer"] else "gemini_brain")
-
-                        print(
-                            f"[WhatsApp Webhook Transition] "
-                            f"workspace_id={workspace_id} "
-                            f"sender_phone={masked_sender} "
-                            f"message_text={repr(msg_text[:40])} "
-                            f"conversation_id=whatsapp_{sender_phone} "
-                            f"detected_intent={gw_status} "
-                            f"workflow_state={gw_status} "
-                            f"extracted_institution_name={repr(gw_name)} "
-                            f"extracted_mobile={repr(gw_mobile)} "
-                            f"extracted_fields={len(gw_fields)} "
-                            f"should_create_form={bool(gw_status == 'created')} "
-                            f"create_institution_form_called={bool(gw_status == 'created')} "
-                            f"create_institution_form_result={gw_success} "
-                            f"exception_error={repr(gw_err)} "
-                            f"final_response_source={final_source}"
-                        )
-                        print(f"[AI Reply on Workspace {workspace_id} WA {effective_phone_id}] generated for={masked_sender}: {reply_text[:60] if reply_text else 'None'}...")
-
-                        if reply_text and sender_phone:
-                            send_ok = send_whatsapp_message(
-                                sender_phone, reply_text,
+                    # Batch send sample images if requested
+                    matched_images = ai_result.get("matched_images", [])
+                    if matched_images:
+                        print(f"[WhatsApp Batch Images on Workspace {workspace_id}] Sending {len(matched_images)} images to {sender_phone}...")
+                        sent_count = 0
+                        for img_path in matched_images:
+                            if not img_path:
+                                continue
+                            img_ok = send_whatsapp_image(
+                                sender_phone, img_path,
                                 phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
                             )
-                            if send_ok:
-                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", reply_text, page_id=page_id, workspace_id=workspace_id)
-                                print(f"[WhatsApp Send] phone_number_id={effective_phone_id} recipient={masked_sender} status=success")
+                            if img_ok:
+                                sent_count += 1
+                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "", img_path, page_id=page_id, workspace_id=workspace_id)
+                            await asyncio.sleep(0.2)
+
+                        # Send concluding follow-up message after all photos are delivered
+                        if sent_count > 0 and sender_phone:
+                            honorific = detect_customer_gender_title(customer_name)
+                            if any("pakage" in str(p).lower() or "pkg" in str(p).lower() for p in matched_images):
+                                followup_msg = f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
                             else:
-                                print(f"[WhatsApp Send] Delivery FAILED for {masked_sender}. AI message was NOT recorded as sent.")
+                                followup_msg = f"আপনার কত পিস প্রয়োজন জানাবেন {honorific}।"
 
-                        # Batch send sample images if requested
-                        matched_images = ai_result.get("matched_images", [])
-                        if matched_images:
-                            print(f"[WhatsApp Batch Images on Workspace {workspace_id}] Sending {len(matched_images)} images to {sender_phone}...")
-                            sent_count = 0
-                            for img_path in matched_images:
-                                if not img_path:
-                                    continue
-                                img_ok = send_whatsapp_image(
-                                    sender_phone, img_path,
-                                    phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
-                                )
-                                if img_ok:
-                                    sent_count += 1
-                                    record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "", img_path, page_id=page_id, workspace_id=workspace_id)
-                                await asyncio.sleep(0.2)
-
-                            # Send concluding follow-up message after all photos are delivered
-                            if sent_count > 0 and sender_phone:
-                                honorific = detect_customer_gender_title(customer_name)
-                                if any("pakage" in str(p).lower() or "pkg" in str(p).lower() for p in matched_images):
-                                    followup_msg = f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
-                                else:
-                                    followup_msg = f"আপনার কত পিস প্রয়োজন জানাবেন {honorific}।"
-
-                                await asyncio.sleep(0.4)
-                                send_whatsapp_message(
-                                    sender_phone, followup_msg,
-                                    phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
-                                )
-                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", followup_msg, page_id=page_id, workspace_id=workspace_id)
-
-                        # Send video demo if requested
-                        matched_video = ai_result.get("video_url", "")
-                        if matched_video:
-                            print(f"[WhatsApp Video on Workspace {workspace_id}] Sending video demo to {sender_phone}...")
-                            v_ok = send_whatsapp_video(
-                                sender_phone, matched_video,
+                            await asyncio.sleep(0.4)
+                            send_whatsapp_message(
+                                sender_phone, followup_msg,
                                 phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
                             )
-                            if v_ok:
-                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "[Video Demo]", matched_video, page_id=page_id, workspace_id=workspace_id)
+                            record_conversation_message("whatsapp", sender_phone, customer_name, "bot", followup_msg, page_id=page_id, workspace_id=workspace_id)
 
-                        # Send voice note if requested / generated
-                        voice_url = ai_result.get("voice_url", "")
-                        if voice_url:
-                            print(f"[WhatsApp Voice on Workspace {workspace_id}] Sending voice note to {sender_phone}...")
-                            a_ok = send_whatsapp_audio(
-                                sender_phone, voice_url,
-                                phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
-                            )
-                            if a_ok:
-                                record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "[Voice Note]", voice_url, page_id=page_id, workspace_id=workspace_id)
+                    # Send video demo if requested
+                    matched_video = ai_result.get("video_url", "")
+                    if matched_video:
+                        print(f"[WhatsApp Video on Workspace {workspace_id}] Sending video demo to {sender_phone}...")
+                        v_ok = send_whatsapp_video(
+                            sender_phone, matched_video,
+                            phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
+                        )
+                        if v_ok:
+                            record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "[Video Demo]", matched_video, page_id=page_id, workspace_id=workspace_id)
+
+                    # Send voice note if requested / generated
+                    voice_url = ai_result.get("voice_url", "")
+                    if voice_url:
+                        print(f"[WhatsApp Voice on Workspace {workspace_id}] Sending voice note to {sender_phone}...")
+                        a_ok = send_whatsapp_audio(
+                            sender_phone, voice_url,
+                            phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
+                        )
+                        if a_ok:
+                            record_conversation_message("whatsapp", sender_phone, customer_name, "bot", "[Voice Note]", voice_url, page_id=page_id, workspace_id=workspace_id)
 
     except Exception as e:
         print(f"[WhatsApp Webhook Handler Error]: {e}")
-
 

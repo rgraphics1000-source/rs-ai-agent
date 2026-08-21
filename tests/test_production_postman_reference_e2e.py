@@ -53,6 +53,9 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
         ensure_facebook_page_consistency()
         ensure_whatsapp_account_consistency()
 
+    def setUp(self):
+        self.client = TestClient(app)
+
     def test_01_postman_reference_whatsapp_request_structure(self):
         """Verifies exact Postman reference request structure and payload."""
         sent_calls = []

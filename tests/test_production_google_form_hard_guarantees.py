@@ -2,6 +2,7 @@ import unittest
 import asyncio
 import sys
 import os
+import time
 
 # Add project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -132,7 +133,7 @@ class TestProductionGoogleFormHardGuarantees(unittest.TestCase):
         self.assertIsNotNone(res)
         self.assertEqual(res.get("status"), "created")
         self.assertTrue(res.get("is_existing"))
-        self.assertIn("https://docs.google.com/forms/d/e/1FAIpQLSc_existing_999/viewform", res.get("reply", ""))
+        self.assertIn("https://docs.google.com/forms/d/existing_form_999/viewform", res.get("reply", ""))
         self.assertIn("https://docs.google.com/spreadsheets/d/existing_sheet_999/edit", res.get("reply", ""))
         print("✓ Test 129 Passed: 'আমার গুগল ফরম কোথায়' immediately returned existing form from database.")
 
@@ -261,7 +262,7 @@ class TestProductionGoogleFormHardGuarantees(unittest.TestCase):
                         "messages": [{
                             "from": "8801929770001",
                             "id": "wamid.HBgLODgwMTkyOTc3MDAwMRUCABEYEjA1OTgzOTAyOU",
-                            "timestamp": "1724240000",
+                            "timestamp": str(int(time.time())),
                             "type": "text",
                             "text": {
                                 "body": "প্রতিষ্ঠানের নাম জামিয়া উম্মুল কোরা মসজিদ\nনাম পিতা শ্রেণী রোল আর স্টুডেন্টের ছবি এগুলো থাকবে"

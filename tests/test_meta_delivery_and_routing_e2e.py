@@ -23,6 +23,9 @@ class TestMetaDeliveryAndRoutingE2E(unittest.TestCase):
         ensure_whatsapp_account_consistency()
         cls.client = TestClient(app)
 
+    def setUp(self):
+        self.client = TestClient(app)
+
     # A. Webhook GET verification for Facebook
     def test_A_facebook_webhook_get_verification(self):
         token = settings.FB_VERIFY_TOKEN

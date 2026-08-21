@@ -804,6 +804,17 @@ def init_db():
     # Clean up old demo products if present
     cursor.execute("DELETE FROM products WHERE code IN ('PJ-101', 'TP-202', 'CB-303')")
     
+    # Clean up legacy /forms/d/e/ URLs to use canonical /forms/d/{id}/viewform
+    try:
+        cursor.execute("""
+            UPDATE generated_forms 
+            SET form_url = 'https://docs.google.com/forms/d/' || form_id || '/viewform',
+                responder_uri = 'https://docs.google.com/forms/d/' || form_id || '/viewform'
+            WHERE form_id IS NOT NULL AND form_id != '' AND (form_url LIKE '%/forms/d/e/%' OR responder_uri LIKE '%/forms/d/e/%')
+        """)
+    except Exception:
+        pass
+
     conn.commit()
     conn.close()
 
