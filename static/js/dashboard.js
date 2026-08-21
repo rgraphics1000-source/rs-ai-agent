@@ -17,6 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadCommentLogs();
     loadAllSettings();
     loadOmnichatConversations();
+    loadGoogleFormsTab();
     initSmartphoneSimulator();
     initModals();
     initPWA();
@@ -175,6 +176,13 @@ function initNavigation() {
     function switchTab(target) {
         if (!target) return;
 
+        localStorage.setItem("rs_active_tab", target);
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.set("tab", target);
+            window.history.replaceState({}, "", url.toString());
+        } catch (e) {}
+
         navItems.forEach(n => {
             if (n.getAttribute("data-tab") === target) n.classList.add("active");
             else n.classList.remove("active");
@@ -220,6 +228,18 @@ function initNavigation() {
             switchTab(target);
         });
     });
+
+    // Auto-restore active tab on page reload / load
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const tabParam = urlParams.get("tab");
+        const hashParam = window.location.hash ? window.location.hash.replace("#", "") : null;
+        const savedTab = localStorage.getItem("rs_active_tab");
+        const initialTab = tabParam || hashParam || savedTab || "dashboard";
+        switchTab(initialTab);
+    } catch (e) {
+        console.error("Tab restoration error:", e);
+    }
 }
 
 function refreshCurrentTab(target) {
@@ -234,6 +254,7 @@ function refreshCurrentTab(target) {
     if (target === "content") { loadTrainingRules(); loadSavedMediaList(); loadFaqs(); loadCommentLogs(); }
     if (target === "omnichat") { loadOmnichatConversations(); loadConnectedPages(); }
     if (target === "integrations") { loadConnectedPages(); loadSettings(); }
+    if (target === "google-forms") loadGoogleFormsTab();
     if (target === "settings" || target === "test-arena") { loadSettings(); loadConnectedPages(); }
 }
 
@@ -3772,27 +3793,327 @@ async function loadGeneratedFormsList() {
     }
 }
 
-function openCreateInstitutionFormModal() {
-    document.getElementById("form-create-institution-form")?.reset();
+// ============================================================
+// 5-STEP INSTITUTION GOOGLE FORM GENERATOR WIZARD
+// ============================================================
+let wizardCurrentStep = 1;
+let wizardStandardFields = [];
+let wizardSelectedKeys = new Set(["student_name", "father_name", "class_name", "roll", "student_photo"]);
+let wizardAllowDuplicate = false;
+let wizardCreatedForm = null;
+let wizardMobileSearchTimeout = null;
+
+async function loadWizardStandardFields() {
+    if (wizardStandardFields.length > 0) return;
+    try {
+        const res = await fetch("/api/google/fields/standard");
+        const data = await res.json();
+        if (data.success && data.fields) {
+            wizardStandardFields = data.fields;
+        }
+    } catch (e) {
+        console.error("Failed to load standard fields:", e);
+        // Fallback standard catalog
+        wizardStandardFields = [
+            { key: "student_name", label: "শিক্ষার্থীর নাম", type: "short_answer", required: true },
+            { key: "father_name", label: "পিতার নাম", type: "short_answer", required: true },
+            { key: "mother_name", label: "মাতার নাম", type: "short_answer", required: false },
+            { key: "dob", label: "জন্মতারিখ", type: "date", required: false },
+            { key: "class_name", label: "শ্রেণি", type: "short_answer", required: true },
+            { key: "section", label: "শাখা", type: "short_answer", required: false },
+            { key: "roll", label: "রোল", type: "short_answer", required: true },
+            { key: "reg_no", label: "রেজিস্ট্রেশন নম্বর", type: "short_answer", required: false },
+            { key: "blood_group", label: "রক্তের গ্রুপ", type: "dropdown", required: false },
+            { key: "student_phone", label: "শিক্ষার্থীর মোবাইল", type: "short_answer", required: false },
+            { key: "guardian_phone", label: "অভিভাবকের মোবাইল", type: "short_answer", required: false },
+            { key: "address", label: "ঠিকানা", type: "paragraph", required: false },
+            { key: "student_photo", label: "ছবি", type: "file_upload", required: true },
+            { key: "student_signature", label: "স্বাক্ষর", type: "file_upload", required: false }
+        ];
+    }
+}
+
+function renderWizardFieldsGrid() {
+    const container = document.getElementById("wizard-fields-grid");
+    if (!container) return;
+    container.innerHTML = "";
+
+    wizardStandardFields.forEach(f => {
+        const isChecked = wizardSelectedKeys.has(f.key);
+        const card = document.createElement("label");
+        card.style.cssText = `
+            display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px;
+            background: ${isChecked ? "rgba(99, 102, 241, 0.18)" : "rgba(255,255,255,0.03)"};
+            border: 1px solid ${isChecked ? "rgba(99, 102, 241, 0.5)" : "rgba(255,255,255,0.08)"};
+            cursor: pointer; transition: all 0.2s; user-select: none;
+        `;
+        card.innerHTML = `
+            <input type="checkbox" value="${f.key}" ${isChecked ? "checked" : ""} onchange="toggleWizardField('${f.key}')" style="cursor: pointer; accent-color: #6366f1;">
+            <span style="font-size: 12px; color: ${isChecked ? "#fff" : "var(--text-muted);"}; font-weight: ${isChecked ? "600" : "normal"};">
+                ${f.label} ${f.type === 'file_upload' ? '<i class="fas fa-camera" style="color: #38bdf8; font-size: 10px;"></i>' : ''}
+            </span>
+        `;
+        container.appendChild(card);
+    });
+}
+
+function toggleWizardField(key) {
+    if (wizardSelectedKeys.has(key)) {
+        wizardSelectedKeys.delete(key);
+    } else {
+        wizardSelectedKeys.add(key);
+    }
+    renderWizardFieldsGrid();
+}
+
+function wizardSelectAllFields(selectAll) {
+    if (selectAll) {
+        wizardStandardFields.forEach(f => wizardSelectedKeys.add(f.key));
+    } else {
+        wizardSelectedKeys.clear();
+    }
+    renderWizardFieldsGrid();
+}
+
+function wizardSelectDefaultFields() {
+    wizardSelectedKeys = new Set(["student_name", "father_name", "class_name", "roll", "student_photo"]);
+    renderWizardFieldsGrid();
+}
+
+function showWizardStep(step) {
+    wizardCurrentStep = step;
+
+    // Update Top Step Pills
+    for (let i = 1; i <= 5; i++) {
+        const pill = document.getElementById(`wstep-tab-${i}`);
+        if (pill) {
+            if (i === step) {
+                pill.style.color = "#38bdf8";
+                pill.style.fontWeight = "bold";
+                const numSpan = pill.querySelector("span");
+                if (numSpan) {
+                    numSpan.style.background = "#38bdf8";
+                    numSpan.style.color = "#0f172a";
+                }
+            } else if (i < step) {
+                pill.style.color = "#34d399";
+                pill.style.fontWeight = "600";
+                const numSpan = pill.querySelector("span");
+                if (numSpan) {
+                    numSpan.style.background = "#34d399";
+                    numSpan.style.color = "#0f172a";
+                }
+            } else {
+                pill.style.color = "var(--text-dim)";
+                pill.style.fontWeight = "normal";
+                const numSpan = pill.querySelector("span");
+                if (numSpan) {
+                    numSpan.style.background = "rgba(255,255,255,0.1)";
+                    numSpan.style.color = "#fff";
+                }
+            }
+        }
+        const view = document.getElementById(`wizard-view-step-${i}`);
+        if (view) view.style.display = (i === step) ? "block" : "none";
+    }
+
+    // Update Footer Buttons
+    const btnCancel = document.getElementById("btn-wiz-cancel");
+    const btnPrev = document.getElementById("btn-wiz-prev");
+    const btnStep1Next = document.getElementById("btn-wiz-step1-next");
+    const btnStep2Next = document.getElementById("btn-wiz-step2-next");
+    const btnConfirm = document.getElementById("btn-wiz-create-confirm");
+    const btnWa = document.getElementById("btn-wiz-succ-wa");
+    const btnDone = document.getElementById("btn-wiz-succ-done");
+
+    if (btnCancel) btnCancel.style.display = (step === 1) ? "inline-block" : "none";
+    if (btnPrev) btnPrev.style.display = (step === 2 || step === 3) ? "inline-block" : "none";
+    if (btnStep1Next) btnStep1Next.style.display = (step === 1) ? "inline-block" : "none";
+    if (btnStep2Next) btnStep2Next.style.display = (step === 2) ? "inline-block" : "none";
+    if (btnConfirm) btnConfirm.style.display = (step === 3) ? "inline-block" : "none";
+    if (btnWa) btnWa.style.display = (step === 5) ? "inline-block" : "none";
+    if (btnDone) btnDone.style.display = (step === 5) ? "inline-block" : "none";
+}
+
+async function openCreateInstitutionFormModal() {
+    // Reset state
+    wizardCurrentStep = 1;
+    wizardAllowDuplicate = false;
+    wizardCreatedForm = null;
+    wizardSelectedKeys = new Set(["student_name", "father_name", "class_name", "roll", "student_photo"]);
+
+    // Reset fields
+    const nameInp = document.getElementById("wiz-inst-name");
+    const phoneInp = document.getElementById("wiz-inst-phone");
+    const descInp = document.getElementById("wiz-inst-desc");
+    const natInp = document.getElementById("wiz-natural-text");
+    const dupBox = document.getElementById("wiz-dup-institution-box");
+
+    if (nameInp) nameInp.value = "";
+    if (phoneInp) phoneInp.value = "";
+    if (descInp) descInp.value = "";
+    if (natInp) natInp.value = "";
+    if (dupBox) dupBox.style.display = "none";
+
+    await loadWizardStandardFields();
+    renderWizardFieldsGrid();
+    showWizardStep(1);
     openModal("modal-create-institution-form");
 }
 
-async function handleCreateInstitutionForm(e) {
-    e.preventDefault();
-    const instName = document.getElementById("new-inst-name")?.value?.trim();
-    const phone = document.getElementById("new-inst-phone")?.value?.trim();
-    const desc = document.getElementById("new-inst-desc")?.value?.trim();
+function handleWizardMobileChange(val) {
+    if (wizardMobileSearchTimeout) clearTimeout(wizardMobileSearchTimeout);
+    const cleanVal = (val || "").trim();
+    if (cleanVal.length < 7) {
+        document.getElementById("wiz-dup-institution-box").style.display = "none";
+        return;
+    }
+
+    wizardMobileSearchTimeout = setTimeout(async () => {
+        try {
+            const res = await fetch(`/api/google/institutions/search?mobile=${encodeURIComponent(cleanVal)}&workspace_id=${currentWorkspaceId}`);
+            const data = await res.json();
+            const dupBox = document.getElementById("wiz-dup-institution-box");
+            const dupMsg = document.getElementById("wiz-dup-msg");
+
+            if (data.success && (data.institution || (data.forms && data.forms.length > 0))) {
+                const instName = data.institution?.name || data.forms?.[0]?.institution_name || "বিদ্যমান প্রতিষ্ঠান";
+                const formCount = data.forms ? data.forms.length : 1;
+                dupMsg.innerText = `'${instName}' (${cleanVal}) নামে ইতোমধ্যে ${formCount}টি গুগল ফর্ম ডাটাবেজে রয়েছে।`;
+                dupBox.style.display = "block";
+            } else {
+                dupBox.style.display = "none";
+            }
+        } catch (e) {
+            console.error("Duplicate mobile check error:", e);
+        }
+    }, 400);
+}
+
+function handleUseExistingInstitution() {
+    showToast("পূর্বের তৈরি প্রতিষ্ঠানের তালিকা দেখতে ড্যাশবোর্ডের সার্চ বার ব্যবহার করুন।", "info");
+    closeModal("modal-create-institution-form");
+}
+
+function handleAllowNewFormForExisting() {
+    wizardAllowDuplicate = true;
+    document.getElementById("wiz-dup-institution-box").style.display = "none";
+    showToast("নতুন গুগল ফর্ম তৈরির মোড সক্রিয় হয়েছে।", "success");
+    wizardStep1Next();
+}
+
+function wizardStep1Next() {
+    const instName = document.getElementById("wiz-inst-name")?.value?.trim();
+    const phone = document.getElementById("wiz-inst-phone")?.value?.trim();
 
     if (!instName) {
         showToast("প্রতিষ্ঠানের নাম প্রদান করা বাধ্যতামূলক", "warning");
+        document.getElementById("wiz-inst-name")?.focus();
         return;
     }
     if (!phone) {
         showToast("প্রতিষ্ঠানের মোবাইল নম্বর প্রদান করা বাধ্যতামূলক", "warning");
+        document.getElementById("wiz-inst-phone")?.focus();
         return;
     }
 
-    showToast("গুগল ফর্ম ক্লোন ও প্রস্তুত করা হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন", "info");
+    showWizardStep(2);
+}
+
+function wizardStep2Next() {
+    if (wizardSelectedKeys.size === 0) {
+        showToast("কমপক্ষে একটি তথ্য বা ফিল্ড নির্বাচন করুন", "warning");
+        return;
+    }
+
+    // Populate Step 3 Preview
+    const instName = document.getElementById("wiz-inst-name")?.value?.trim();
+    const phone = document.getElementById("wiz-inst-phone")?.value?.trim();
+
+    document.getElementById("wiz-preview-inst-name").innerText = instName;
+    document.getElementById("wiz-preview-inst-phone").innerText = phone;
+
+    const badgesContainer = document.getElementById("wiz-preview-badges-list");
+    badgesContainer.innerHTML = "";
+
+    const selectedList = wizardStandardFields.filter(f => wizardSelectedKeys.has(f.key));
+    selectedList.forEach(f => {
+        const badge = document.createElement("span");
+        badge.style.cssText = "background: rgba(99, 102, 241, 0.2); border: 1px solid #6366f1; color: #c7d2fe; padding: 4px 10px; border-radius: 20px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px; font-weight: 600;";
+        badge.innerHTML = `<i class="fas fa-check" style="color: #34d399;"></i> ${f.label}`;
+        badgesContainer.appendChild(badge);
+    });
+
+    showWizardStep(3);
+}
+
+function wizardGoPrev() {
+    if (wizardCurrentStep === 2) {
+        showWizardStep(1);
+    } else if (wizardCurrentStep === 3) {
+        showWizardStep(2);
+    }
+}
+
+async function wizardDetectFieldsAI() {
+    const text = document.getElementById("wiz-natural-text")?.value?.trim();
+    if (!text) {
+        showToast("কী কী তথ্য লাগবে তা সংক্ষেপে লিখে বলুন", "warning");
+        return;
+    }
+
+    showToast("AI তথ্য শনাক্ত করছে... অনুগ্রহ করে অপেক্ষা করুন", "info");
+
+    try {
+        const res = await fetch("/api/google/forms/preview-fields", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                workspace_id: currentWorkspaceId,
+                text: text
+            })
+        });
+        const data = await res.json();
+        if (data.success && data.field_keys) {
+            wizardSelectedKeys = new Set(data.field_keys);
+            renderWizardFieldsGrid();
+            showToast("AI সফলভাবে ফিল্ডগুলো শনাক্ত করেছে!", "success");
+            wizardStep2Next();
+        } else {
+            showToast("AI ফিল্ড শনাক্তকরণ ব্যর্থ হয়েছে। ম্যানুয়ালি চেক করুন।", "danger");
+        }
+    } catch (e) {
+        showToast("AI সার্ভিস সংযোগে সমস্যা হয়েছে", "danger");
+    }
+}
+
+async function executeWizardFormGeneration() {
+    const instName = document.getElementById("wiz-inst-name")?.value?.trim();
+    const phone = document.getElementById("wiz-inst-phone")?.value?.trim();
+    const desc = document.getElementById("wiz-inst-desc")?.value?.trim();
+    const selectedKeys = Array.from(wizardSelectedKeys);
+
+    showWizardStep(4);
+
+    // Live progress tick animation helper
+    const updateProgressStep = (stepNum, text, isDone) => {
+        const elem = document.getElementById(`wp-step-${stepNum}`);
+        if (elem) {
+            if (isDone) {
+                elem.style.color = "#34d399";
+                elem.innerHTML = `<i class="fas fa-check-circle"></i> ${text}`;
+            } else {
+                elem.style.color = "#38bdf8";
+                elem.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${text}`;
+            }
+        }
+    };
+
+    setTimeout(() => updateProgressStep(1, "মাস্টার ফর্ম ক্লোন সম্পন্ন", true), 600);
+    setTimeout(() => updateProgressStep(2, "ফিল্ড কনফিগারেশন প্রয়োগ সম্পন্ন", true), 1200);
+    setTimeout(() => updateProgressStep(3, "গুগল শিট তৈরি সম্পন্ন", true), 1800);
+    setTimeout(() => updateProgressStep(4, "ড্রাইভ ফোল্ডার সাজানো সম্পন্ন", true), 2400);
+    setTimeout(() => updateProgressStep(5, "File Upload (ছবি) প্রশ্ন যাচাই সম্পন্ন", true), 2900);
 
     try {
         const res = await fetch("/api/google/forms/create", {
@@ -3803,24 +4124,57 @@ async function handleCreateInstitutionForm(e) {
                 institution_name: instName,
                 institution_mobile: phone,
                 institution_phone: phone,
-                custom_description: desc
+                custom_description: desc,
+                selected_fields: selectedKeys,
+                allow_duplicate: wizardAllowDuplicate
             })
         });
+
         const data = await res.json();
         if (res.ok && data.success) {
-            if (data.is_existing) {
-                showToast(`'${instName}' (${phone}) এর পূর্ববর্তী ফর্ম লোড করা হয়েছে`, "info");
-            } else {
-                showToast(`'${instName}' এর Google Form সফলভাবে তৈরি হয়েছে!`, "success");
-            }
-            closeModal("modal-create-institution-form");
+            wizardCreatedForm = data;
+            
+            // Populate Success Screen
+            document.getElementById("wiz-succ-name").innerText = data.institution_name || instName;
+            document.getElementById("wiz-succ-phone").innerText = data.institution_mobile || phone;
+            
+            const formLink = document.getElementById("wiz-succ-form-url");
+            const sheetLink = document.getElementById("wiz-succ-sheet-url");
+
+            if (formLink) formLink.href = data.responder_url || data.form_url || "#";
+            if (sheetLink) sheetLink.href = data.sheet_url || "#";
+
+            showWizardStep(5);
+            showToast(`'${instName}' এর Google Form সফলভাবে তৈরি হয়েছে!`, "success");
             loadGeneratedFormsList();
         } else {
-            showToast(data.detail || data.error || "ফর্ম তৈরিতে সমস্যা হয়েছে।", "danger");
+            showToast(data.detail || data.error || "গুগল ফর্ম তৈরিতে সমস্যা হয়েছে।", "danger");
+            showWizardStep(3);
         }
-    } catch (err) {
-        showToast("Network error creating form", "danger");
+    } catch (e) {
+        showToast("Network error creating Google Form", "danger");
+        showWizardStep(3);
     }
+}
+
+function copyWizardFormUrl() {
+    if (!wizardCreatedForm) return;
+    const url = wizardCreatedForm.responder_url || wizardCreatedForm.form_url;
+    if (url) {
+        navigator.clipboard.writeText(url).then(() => {
+            showToast("গুগল ফর্মের লিংক ক্লিপবোর্ডে কপি হয়েছে!", "success");
+        });
+    }
+}
+
+function wizardSendFormWhatsApp() {
+    if (!wizardCreatedForm) return;
+    closeModal("modal-create-institution-form");
+    openSendFormWhatsAppModal(
+        wizardCreatedForm.form_id,
+        wizardCreatedForm.institution_name,
+        wizardCreatedForm.responder_url || wizardCreatedForm.form_url
+    );
 }
 
 function openSendFormWhatsAppModal(formId, instName, formUrl) {

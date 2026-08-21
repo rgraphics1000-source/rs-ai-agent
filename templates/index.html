@@ -985,7 +985,7 @@
 
                 <!-- Cloned Institution Forms List -->
                 <div class="glass-card" style="border: 1px solid rgba(255,255,255,0.08);">
-                    <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
+                    <div class="card-header" style="flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center;">
                         <div>
                             <div class="card-title" style="font-size: 16px;">
                                 <i class="fas fa-building-columns" style="color: var(--primary-light);"></i>
@@ -995,6 +995,9 @@
                                 সকল প্রতিষ্ঠানের গুগল ফর্ম লিংক, রেসপন্স শিট ও ছাত্র-ছাত্রীদের ছবি এক নজরে দেখুন।
                             </p>
                         </div>
+                        <button class="btn btn-primary" onclick="openCreateInstitutionFormModal()" style="font-weight: 700; padding: 8px 16px; font-size: 13px; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4); display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none;">
+                            <i class="fas fa-plus-circle"></i> + নতুন প্রতিষ্ঠানের ফর্ম বানান
+                        </button>
                     </div>
 
                     <!-- Search Bar by Mobile Number -->
@@ -1799,41 +1802,234 @@
         </div>
     </div>
 
-    <!-- Modal: Create Institution Form -->
+    <!-- Modal: Institution Google Form Generator Wizard (5-Step) -->
     <div id="modal-create-institution-form" class="modal-overlay">
-        <div class="modal-content modal-content-flex" style="max-width: 580px;">
-            <div class="modal-header">
-                <h3><i class="fab fa-google" style="color: #38bdf8;"></i> নতুন প্রতিষ্ঠানের জন্য Google Form তৈরি করুন</h3>
+        <div class="modal-content modal-content-flex" style="max-width: 680px; width: 95%;">
+            <!-- Wizard Header -->
+            <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
+                <div>
+                    <h3 style="margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fab fa-google" style="color: #38bdf8;"></i> 
+                        <span id="wizard-modal-title">নতুন প্রতিষ্ঠানের জন্য Google Form তৈরি করুন</span>
+                    </h3>
+                    <p style="margin: 3px 0 0 0; font-size: 11.5px; color: var(--text-muted);">
+                        মাস্টার ফর্ম ক্লোন করে পৃথক Google Form, Google Sheet ও Drive ফোল্ডার তৈরি
+                    </p>
+                </div>
                 <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-create-institution-form')">&times;</button>
             </div>
-            <form id="form-create-institution-form" onsubmit="handleCreateInstitutionForm(event)" class="modal-form-container">
-                <div class="modal-scroll-body">
-                    <div class="form-group">
-                        <label>প্রতিষ্ঠানের নাম (যেমন: আল-আমিন মাদরাসা) <span style="color:#ef4444;">*</span>:</label>
-                        <input type="text" id="new-inst-name" class="form-control" placeholder="যেমন: আল-আমিন মাদরাসা" required>
+
+            <!-- Wizard Progress Steps Indicator -->
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; gap: 4px; font-size: 11px; overflow-x: auto;">
+                <div id="wstep-tab-1" class="wizard-step-pill active" style="display: flex; align-items: center; gap: 4px; color: #38bdf8; font-weight: 600;">
+                    <span style="width: 18px; height: 18px; border-radius: 50%; background: #38bdf8; color: #0f172a; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">১</span>
+                    <span>প্রতিষ্ঠান</span>
+                </div>
+                <div style="color: rgba(255,255,255,0.2);">→</div>
+                <div id="wstep-tab-2" class="wizard-step-pill" style="display: flex; align-items: center; gap: 4px; color: var(--text-dim);">
+                    <span style="width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,0.1); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 10px;">২</span>
+                    <span>তথ্য নির্বাচন</span>
+                </div>
+                <div style="color: rgba(255,255,255,0.2);">→</div>
+                <div id="wstep-tab-3" class="wizard-step-pill" style="display: flex; align-items: center; gap: 4px; color: var(--text-dim);">
+                    <span style="width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,0.1); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 10px;">৩</span>
+                    <span>AI প্রিভিউ</span>
+                </div>
+                <div style="color: rgba(255,255,255,0.2);">→</div>
+                <div id="wstep-tab-4" class="wizard-step-pill" style="display: flex; align-items: center; gap: 4px; color: var(--text-dim);">
+                    <span style="width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,0.1); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 10px;">৪</span>
+                    <span>তৈরি হচ্ছে</span>
+                </div>
+                <div style="color: rgba(255,255,255,0.2);">→</div>
+                <div id="wstep-tab-5" class="wizard-step-pill" style="display: flex; align-items: center; gap: 4px; color: var(--text-dim);">
+                    <span style="width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,0.1); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 10px;">৫</span>
+                    <span>সম্পন্ন</span>
+                </div>
+            </div>
+
+            <!-- Wizard Body Container -->
+            <div class="modal-scroll-body" style="padding: 16px;">
+                
+                <!-- STEP 1: Institution Info -->
+                <div id="wizard-view-step-1" class="wizard-view">
+                    <div style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: #cbd5e1;">
+                        <i class="fas fa-info-circle" style="color: #818cf8;"></i> প্রতিষ্ঠানের নাম এবং মোবাইল নম্বর উভয়ই বাধ্যতামূলক। মোবাইল নম্বরটি Google Form এবং Google Sheet-এর মূল সার্চ পরিচয় হিসেবে ব্যবহৃত হবে।
                     </div>
-                    <div class="form-group">
-                        <label>প্রতিষ্ঠানের মোবাইল নম্বর (Mobile Number) <span style="color:#ef4444;">*</span>:</label>
-                        <input type="text" id="new-inst-phone" class="form-control" placeholder="যেমন: 01712345678" required>
-                        <small style="color: var(--text-dim); font-size: 11px; display: block; margin-top: 3px;">
-                            মোবাইল নম্বরটি গুগল ড্রাইভ ও শিটের সার্চ আইডি হিসেবে ব্যবহৃত হবে।
-                        </small>
+
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label style="font-size: 12.5px; font-weight: 600; color: #e2e8f0;">প্রতিষ্ঠানের নাম (যেমন: আল-আমিন মাদ্রাসা) <span style="color:#ef4444;">*</span>:</label>
+                        <input type="text" id="wiz-inst-name" class="form-control" placeholder="যেমন: আল-আমিন মাদ্রাসা" required style="font-size: 13px;">
                     </div>
-                    <div class="form-group">
-                        <label>ফর্মের বিবরণ ও নির্দেশাবলী (Description):</label>
-                        <textarea id="new-inst-desc" class="form-control" rows="3" placeholder="এই ফর্মটি সঠিকভাবে পূরণ করুন। প্রতিটি শিক্ষার্থীর তথ্য নির্ভুলভাবে প্রদান করুন। ছবি পরিষ্কার এবং নির্ধারিত নিয়ম অনুযায়ী আপলোড করুন।"></textarea>
+
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label style="font-size: 12.5px; font-weight: 600; color: #e2e8f0;">প্রতিষ্ঠানের মোবাইল নম্বর (Mobile Number) <span style="color:#ef4444;">*</span>:</label>
+                        <input type="text" id="wiz-inst-phone" class="form-control" placeholder="যেমন: 01712345678 বা 01812345678" oninput="handleWizardMobileChange(this.value)" required style="font-size: 13px;">
                     </div>
-                    <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 12px; font-size: 12px; color: var(--text-muted);">
-                        <i class="fas fa-shield-halved" style="color: #38bdf8;"></i> মাস্টার ফর্মের ছবি আপলোড (File Upload) প্রশ্ন স্বয়ংক্রিয়ভাবে ক্লোন হবে এবং এই প্রতিষ্ঠানের আলাদা ফোল্ডার ও গুগল শিট তৈরি হবে।
+
+                    <!-- Duplicate Institution Notification Box -->
+                    <div id="wiz-dup-institution-box" style="display: none; background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; border-radius: 8px; padding: 12px; margin-top: 10px; font-size: 12px;">
+                        <div style="display: flex; align-items: flex-start; gap: 8px;">
+                            <i class="fas fa-triangle-exclamation" style="color: #fbbf24; font-size: 16px; margin-top: 2px;"></i>
+                            <div>
+                                <strong style="color: #fbbf24; display: block;">প্রতিষ্ঠান পাওয়া গেছে!</strong>
+                                <p id="wiz-dup-msg" style="color: #e2e8f0; margin: 4px 0 8px 0;"></p>
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="handleUseExistingInstitution()" style="font-size: 11px; padding: 4px 10px;">
+                                        <i class="fas fa-check"></i> এই প্রতিষ্ঠান ব্যবহার করুন
+                                    </button>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="handleAllowNewFormForExisting()" style="font-size: 11px; padding: 4px 10px; background: rgba(99, 102, 241, 0.2); border-color: #6366f1; color: #a5b4fc;">
+                                        <i class="fas fa-plus"></i> নতুন Form তৈরি করুন
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label style="font-size: 12.5px; color: var(--text-dim);">ফর্মের বিবরণ ও নির্দেশাবলী (Description - ঐচ্ছিক):</label>
+                        <textarea id="wiz-inst-desc" class="form-control" rows="2" placeholder="এই ফর্মটি সঠিকভাবে পূরণ করুন। প্রতিটি শিক্ষার্থীর তথ্য নির্ভুলভাবে প্রদান করুন। ছবি পরিষ্কার এবং নির্ধারিত নিয়ম অনুযায়ী আপলোড করুন।"></textarea>
                     </div>
                 </div>
-                <div class="modal-fixed-footer">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-institution-form')">বাতিল</button>
-                    <button type="submit" class="btn btn-save-modal">
-                        <i class="fas fa-magic"></i> ⚡ গুগল ফর্ম তৈরি করুন
+
+                <!-- STEP 2: Field Selection (Checkboxes + Natural Language AI) -->
+                <div id="wizard-view-step-2" class="wizard-view" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
+                        <label style="font-size: 13px; font-weight: 700; color: #e2e8f0; margin: 0;">
+                            <i class="fas fa-list-check" style="color: #38bdf8;"></i> এই প্রতিষ্ঠানের ID Card Form-এ কোন কোন তথ্য রাখতে চান?
+                        </label>
+                        <div style="display: flex; gap: 6px;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="wizardSelectAllFields(true)" style="padding: 2px 8px; font-size: 10.5px;">সব নির্বাচন</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="wizardSelectDefaultFields()" style="padding: 2px 8px; font-size: 10.5px;">ডিফল্ট ৫টি</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="wizardSelectAllFields(false)" style="padding: 2px 8px; font-size: 10.5px;">সব ক্লিয়ার</button>
+                        </div>
+                    </div>
+
+                    <!-- Checkboxes Grid -->
+                    <div id="wizard-fields-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 14px; max-height: 220px; overflow-y: auto; padding: 4px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                        <!-- Populated dynamically via JS -->
+                    </div>
+
+                    <!-- Natural Language AI Textbox -->
+                    <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 12px;">
+                        <label style="font-size: 12px; font-weight: 600; color: #a5b4fc; display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-wand-magic-sparkles"></i> অথবা লিখে বলুন কী কী তথ্য লাগবে (AI স্বয়ংক্রিয়ভাবে শনাক্ত করবে):
+                        </label>
+                        <div style="display: flex; gap: 8px; margin-top: 6px;">
+                            <input type="text" id="wiz-natural-text" class="form-control" placeholder="যেমন: আমাদের নাম, বাবার নাম, ক্লাস, রোল আর ছবি লাগবে..." style="font-size: 12.5px;" onkeydown="if(event.key==='Enter'){event.preventDefault();wizardDetectFieldsAI();}">
+                            <button type="button" class="btn btn-primary btn-sm" onclick="wizardDetectFieldsAI()" style="white-space: nowrap; font-weight: 600; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; padding: 0 14px;">
+                                <i class="fas fa-bolt"></i> AI দিয়ে শনাক্ত করুন
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEP 3: AI Preview & Confirmation -->
+                <div id="wizard-view-step-3" class="wizard-view" style="display: none;">
+                    <div style="background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 16px; margin-bottom: 12px;">
+                        <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">প্রতিষ্ঠান পরিচিতি</span>
+                                <h4 id="wiz-preview-inst-name" style="margin: 2px 0 0 0; color: #fff; font-size: 16px;">-</h4>
+                            </div>
+                            <div style="text-align: right;">
+                                <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase;">মোবাইল নম্বর</span>
+                                <div id="wiz-preview-inst-phone" style="font-size: 14px; font-weight: bold; color: #38bdf8;">-</div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <span style="font-size: 12px; font-weight: 600; color: #a5b4fc; display: block; margin-bottom: 8px;">
+                                <i class="fas fa-circle-check" style="color: #10b981;"></i> AI যে তথ্যগুলো শনাক্ত করেছে ও ফর্মে থাকবে:
+                            </span>
+                            <div id="wiz-preview-badges-list" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                                <!-- Badges populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #a7f3d0;">
+                        <i class="fas fa-shield-check" style="color: #10b981;"></i> 'ফর্ম তৈরি করুন' চাপলে মাস্টার ফর্ম ক্লোন করে রিয়েল Google Form, Google Sheet ও Drive ফোল্ডার প্রস্তুত হবে এবং ছবি আপলোড ফিল্ড সক্রিয় থাকবে।
+                    </div>
+                </div>
+
+                <!-- STEP 4: Creating Animation / Progress -->
+                <div id="wizard-view-step-4" class="wizard-view" style="display: none; text-align: center; padding: 20px 10px;">
+                    <div style="margin-bottom: 20px;">
+                        <i class="fas fa-circle-notch fa-spin" style="font-size: 40px; color: #38bdf8;"></i>
+                        <h4 style="margin: 14px 0 4px 0; color: #fff; font-size: 16px;">Google Form ও Google Sheet তৈরি হচ্ছে...</h4>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন, ড্রাইভ ও শিট প্রস্তুত হচ্ছে</p>
+                    </div>
+
+                    <div style="max-width: 380px; margin: auto; text-align: left; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 14px 18px; font-size: 12.5px; border: 1px solid rgba(255,255,255,0.06);">
+                        <div id="wp-step-1" style="color: #38bdf8; margin-bottom: 8px;"><i class="fas fa-spinner fa-spin"></i> মাস্টার ফর্ম ক্লোন করা হচ্ছে...</div>
+                        <div id="wp-step-2" style="color: var(--text-dim); margin-bottom: 8px;"><i class="far fa-circle"></i> ফিল্ড কনফিগারেশন প্রয়োগ হচ্ছে...</div>
+                        <div id="wp-step-3" style="color: var(--text-dim); margin-bottom: 8px;"><i class="far fa-circle"></i> গুগল শিট তৈরি হচ্ছে...</div>
+                        <div id="wp-step-4" style="color: var(--text-dim); margin-bottom: 8px;"><i class="far fa-circle"></i> ড্রাইভ ফোল্ডার সাজানো হচ্ছে...</div>
+                        <div id="wp-step-5" style="color: var(--text-dim);"><i class="far fa-circle"></i> File Upload (ছবি) প্রশ্ন যাচাই হচ্ছে...</div>
+                    </div>
+                </div>
+
+                <!-- STEP 5: Success Screen -->
+                <div id="wizard-view-step-5" class="wizard-view" style="display: none;">
+                    <div style="text-align: center; margin-bottom: 16px;">
+                        <div style="width: 54px; height: 54px; border-radius: 50%; background: rgba(16, 185, 129, 0.2); border: 2px solid #10b981; color: #10b981; display: inline-flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 8px;">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <h3 style="margin: 0; color: #34d399; font-size: 18px;">ফর্ম সফলভাবে তৈরি হয়েছে!</h3>
+                        <p style="margin: 4px 0 0 0; font-size: 12.5px; color: var(--text-muted);">
+                            প্রতিষ্ঠানের গুগল ফর্ম ও রেসপন্স শিট প্রস্তুত এবং ডাটাবেজে যুক্ত হয়েছে।
+                        </p>
+                    </div>
+
+                    <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 14px; margin-bottom: 14px; font-size: 12.5px;">
+                        <div style="margin-bottom: 6px;">
+                            <span style="color: var(--text-dim);">প্রতিষ্ঠান:</span> <strong id="wiz-succ-name" style="color: #fff;">-</strong>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <span style="color: var(--text-dim);">মোবাইল:</span> <span id="wiz-succ-phone" style="color: #38bdf8; font-weight: 600;">-</span>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <a id="wiz-succ-form-url" href="#" target="_blank" class="btn btn-primary btn-sm" style="font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                                <i class="fas fa-arrow-up-right-from-square"></i> Google Form খুলুন
+                            </a>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="copyWizardFormUrl()" style="font-size: 11px;">
+                                <i class="fas fa-copy"></i> লিংক কপি
+                            </button>
+                            <a id="wiz-succ-sheet-url" href="#" target="_blank" class="btn btn-secondary btn-sm" style="color: #34d399; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                                <i class="fas fa-table"></i> Google Sheet খুলুন
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Wizard Footer Navigation Buttons -->
+            <div class="modal-fixed-footer" style="border-top: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+                <div id="wizard-footer-left">
+                    <button type="button" id="btn-wiz-cancel" class="btn btn-secondary" onclick="closeModal('modal-create-institution-form')">বাতিল</button>
+                    <button type="button" id="btn-wiz-prev" class="btn btn-secondary" onclick="wizardGoPrev()" style="display: none;">
+                        <i class="fas fa-arrow-left"></i> পূর্ববর্তী
                     </button>
                 </div>
-            </form>
+                <div id="wizard-footer-right" style="display: flex; gap: 8px;">
+                    <button type="button" id="btn-wiz-step1-next" class="btn btn-primary" onclick="wizardStep1Next()" style="font-weight: 600;">
+                        পরবর্তী (তথ্য নির্বাচন) <i class="fas fa-arrow-right"></i>
+                    </button>
+                    <button type="button" id="btn-wiz-step2-next" class="btn btn-primary" onclick="wizardStep2Next()" style="display: none; font-weight: 600;">
+                        পরবর্তী (AI প্রিভিউ) <i class="fas fa-arrow-right"></i>
+                    </button>
+                    <button type="button" id="btn-wiz-create-confirm" class="btn btn-save-modal" onclick="executeWizardFormGeneration()" style="display: none; background: linear-gradient(135deg, #10b981, #059669); font-weight: 700;">
+                        <i class="fas fa-bolt"></i> ⚡ ফর্ম তৈরি করুন
+                    </button>
+                    <button type="button" id="btn-wiz-succ-wa" class="btn btn-primary" onclick="wizardSendFormWhatsApp()" style="display: none; background: #25d366; border: none; font-weight: 600;">
+                        <i class="fab fa-whatsapp"></i> WhatsApp-এ পাঠান
+                    </button>
+                    <button type="button" id="btn-wiz-succ-done" class="btn btn-secondary" onclick="closeModal('modal-create-institution-form')" style="display: none;">
+                        ✓ সম্পন্ন (Done)
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 

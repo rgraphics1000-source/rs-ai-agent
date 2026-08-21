@@ -14,7 +14,10 @@ from app.database import (
 )
 from app.ai_agent.voice_engine import generate_bangla_voice
 from app.ai_agent.order_engine import extract_phone_number, create_order
-from app.google_integration.ai_tool import detect_google_form_intent, create_id_card_google_form
+from app.google_integration.ai_tool import (
+    detect_google_form_intent, create_id_card_google_form,
+    resolve_google_form_workflow
+)
 
 def detect_customer_gender_title(customer_name: str) -> str:
     """
@@ -559,16 +562,19 @@ async def process_customer_message(
             except Exception as e:
                 print(f"[Order Parse Error]: {e}")
 
-        # Check if customer asked for ID Card Google Form
-        form_intent = detect_google_form_intent(message_text)
-        if form_intent:
-            inst_name = form_intent.get("institution_name", customer_name or "আমাদের প্রতিষ্ঠান")
-            form_tool_res = create_id_card_google_form(workspace_id=ws_id, institution_name=inst_name)
-            if form_tool_res.get("success"):
-                form_url = form_tool_res.get("responder_url") or form_tool_res.get("form_url")
-                if form_url and form_url not in clean_reply:
-                    hon = detect_customer_gender_title(customer_name)
-                    clean_reply = f"জি {hon}, *{inst_name}* এর আইডি কার্ড (ID Card) তথ্য ও ছবি সংগ্রহের গুগল ফর্ম প্রস্তুত করা হয়েছে।\n\n📝 ফর্ম লিংক:\n{form_url}\n\nঅনুগ্রহ করে লিংকটিতে প্রবেশ করে শিক্ষার্থীদের তথ্য ও ছবি পূরণ করুন।"
+        # Check and resolve multi-turn Google Form workflow
+        try:
+            workflow_res = resolve_google_form_workflow(
+                user_message=message_text,
+                conversation_history=conversation_history,
+                customer_phone=sender_id,
+                customer_name=customer_name,
+                workspace_id=ws_id
+            )
+            if workflow_res and workflow_res.get("reply"):
+                clean_reply = workflow_res["reply"]
+        except Exception as e:
+            print(f"[Google Form Workflow Error]: {e}")
 
         # Clean markdown image tags & bracket tags from text
         matched_images = []
@@ -651,6 +657,25 @@ async def process_customer_message(
 
     except Exception as e:
         print(f"[GeminiBrain Error]: {e}")
+        try:
+            workflow_res = resolve_google_form_workflow(
+                user_message=message_text,
+                conversation_history=conversation_history,
+                customer_phone=sender_id,
+                customer_name=customer_name,
+                workspace_id=ws_id
+            )
+            if workflow_res and workflow_res.get("reply"):
+                return {
+                    "reply_text": workflow_res["reply"],
+                    "voice_url": "",
+                    "video_url": "",
+                    "order_created": None,
+                    "matched_images": []
+                }
+        except Exception:
+            pass
+
         err_msg = generate_smart_fallback_reply(message_text, customer_name, workspace_id=ws_id, page_id=page_id)
         return {
             "reply_text": err_msg,

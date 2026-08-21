@@ -1,4 +1,5 @@
 import time
+import json
 from typing import Optional, Dict, Any, List, Tuple
 
 from app.database import (
@@ -22,6 +23,7 @@ def create_institution_form(
     template_id: int = None,
     custom_description: str = None,
     fields: List[dict] = None,
+    selected_fields: List[Any] = None,
     institution_phone: str = None,
     allow_duplicate: bool = False
 ) -> dict:
@@ -57,11 +59,13 @@ def create_institution_form(
             "institution_name": clean_inst_name,
             "institution_mobile": canonical_mobile,
             "form_id": existing_form["form_id"],
+            "form_title": existing_form.get("form_title") or f"{clean_inst_name} - {canonical_mobile} - ID Card Form",
             "form_url": existing_form["form_url"],
             "responder_url": existing_form.get("responder_uri") or existing_form["form_url"],
             "edit_url": existing_form.get("edit_url"),
             "sheet_url": existing_form.get("response_sheet_url"),
             "drive_folder_id": existing_form.get("drive_folder_id"),
+            "selected_fields": existing_form.get("selected_fields"),
             "message": f"এই মোবাইল নম্বরের একটি প্রতিষ্ঠান ইতোমধ্যে আছে:\n\nপ্রতিষ্ঠান: {clean_inst_name}\nমোবাইল: {canonical_mobile}\n\nপূর্বের তৈরি ফর্মটি ব্যবহার করতে পারেন অথবা নতুন ফর্ম তৈরি করুন।"
         }
 
@@ -93,7 +97,7 @@ def create_institution_form(
     )
 
     # 5. Clone Master Form using Google Drive API (Tagged with mobile number)
-    form_title = f"{clean_inst_name} | {canonical_mobile} | ID Card Form"
+    form_title = f"{clean_inst_name} - {canonical_mobile} - ID Card Form"
     copy_result = copy_master_form_file(
         workspace_id=ws_id,
         master_form_id=master_form_id,
@@ -109,11 +113,13 @@ def create_institution_form(
         institution_name=clean_inst_name,
         institution_mobile=canonical_mobile,
         custom_description=custom_description,
-        fields=fields
+        fields=fields,
+        selected_fields=selected_fields
     )
 
     responder_url = custom_res.get("responder_url") or get_responder_url(ws_id, cloned_form_id)
     edit_url = custom_res.get("edit_url") or f"https://docs.google.com/forms/d/{cloned_form_id}/edit"
+    final_selected_fields = custom_res.get("selected_fields") or selected_fields or []
 
     # 7. Create dedicated Google Response Sheet in the institution's folder (Tagged with mobile number)
     sheet_data = {}
@@ -127,7 +133,10 @@ def create_institution_form(
     except Exception as s_err:
         print(f"[Sheets creation warning for {clean_inst_name}]: {s_err}")
 
+    sheet_title = sheet_data.get("title") or f"{clean_inst_name} - {canonical_mobile} - ID Card Responses"
+
     # 8. Save generated form record in database
+    selected_fields_str = json.dumps(final_selected_fields, ensure_ascii=False) if isinstance(final_selected_fields, (list, dict)) else str(final_selected_fields or "")
     saved_form = save_generated_form(
         workspace_id=ws_id,
         institution_name=clean_inst_name,
@@ -153,13 +162,14 @@ def create_institution_form(
         "institution_mobile": canonical_mobile,
         "form_id": cloned_form_id,
         "form_title": form_title,
-        "sheet_title": sheet_data.get("title") or f"{clean_inst_name} | {canonical_mobile} | ID Card Responses",
+        "sheet_title": sheet_title,
         "form_url": responder_url,
         "responder_url": responder_url,
         "edit_url": edit_url,
         "sheet_url": sheet_data.get("sheet_url"),
         "drive_folder_id": inst_folder_id,
-        "message": f"'{clean_inst_name}' ({canonical_mobile}) এর জন্য সফলভাবে Google Form ও Google Sheet তৈরি সম্পন্ন হয়েছে।"
+        "selected_fields": final_selected_fields,
+        "message": f"'{clean_inst_name}' এর জন্য নতুন Google Form ও Google Sheet সফলভাবে তৈরি হয়েছে।"
     }
 
 def send_form_link_via_whatsapp(
@@ -169,43 +179,68 @@ def send_form_link_via_whatsapp(
     custom_message: str = None
 ) -> dict:
     """
-    Sends the generated Google Form URL directly via the Workspace's WhatsApp account.
-    Strictly isolated to the workspace's WhatsApp configuration.
+    Sends the generated Google Form URL directly to the customer's WhatsApp.
+    Uses the multi-tenant workspace WhatsApp configuration safely.
     """
     ws_id = int(workspace_id or 1)
-    gen_form = get_generated_form_by_id(form_id)
-    if not gen_form:
-        return {"success": False, "error": f"Form ID '{form_id}' not found."}
+    form_meta = get_generated_form_by_id(form_id)
+    if not form_meta:
+        raise ValueError(f"Form ID '{form_id}' পাওয়া যায়নি।")
 
-    if int(gen_form.get("workspace_id") or 1) != ws_id:
-        raise PermissionError("Access denied: Form belongs to another workspace.")
+    inst_name = form_meta.get("institution_name", "প্রতিষ্ঠান")
+    form_url = form_meta.get("responder_uri") or form_meta.get("form_url")
+    inst_mobile = form_meta.get("institution_mobile", "")
 
-    inst_name = gen_form.get("institution_name", "প্রতিষ্ঠান")
-    form_url = gen_form.get("responder_uri") or gen_form.get("form_url")
+    # Format selected fields summary for WhatsApp message
+    fields_list_str = ""
+    try:
+        raw_sf = form_meta.get("selected_fields")
+        if raw_sf:
+            sf_keys = json.loads(raw_sf) if isinstance(raw_sf, str) and raw_sf.startswith("[") else []
+            from app.google_integration.ai_tool import STANDARD_ID_CARD_FIELDS
+            labels = []
+            for k in sf_keys:
+                for std_f in STANDARD_ID_CARD_FIELDS:
+                    if std_f["key"] == k:
+                        labels.append(f"• {std_f['label']}")
+                        break
+            if labels:
+                fields_list_str = "\n\nফর্মে যে তথ্যগুলো নেওয়া হবে:\n" + "\n".join(labels)
+    except Exception:
+        pass
 
-    from app.channels.whatsapp import send_whatsapp_message_detailed, normalize_whatsapp_phone_number
-    clean_phone = normalize_whatsapp_phone_number(recipient_phone)
-    if not clean_phone:
-        return {"success": False, "error": "Invalid phone number provided."}
+    if custom_message:
+        message_body = custom_message
+    else:
+        mobile_tag = f" ({inst_mobile})" if inst_mobile else ""
+        message_body = (
+            f"আসসালামু আলাইকুম।\n\n"
+            f"*{inst_name}*{mobile_tag}-এর জন্য ID Card Form প্রস্তুত করা হয়েছে।{fields_list_str}\n\n"
+            f"📝 ফর্ম লিংক:\n{form_url}\n\n"
+            f"অনুগ্রহ করে শিক্ষার্থীদের সঠিক তথ্য ও ছবি আপলোড করুন।"
+        )
 
-    default_msg = (
-        f"আসসালামু আলাইকুম।\n\n"
-        f"*{inst_name}* এর আইডি কার্ড (ID Card) তথ্য ও ছবি সংগ্রহের জন্য গুগল ফর্ম প্রস্তুত করা হয়েছে।\n\n"
-        f"📝 ফর্ম লিংক:\n{form_url}\n\n"
-        f"অনুগ্রহ করে ফর্মটিতে শিক্ষার্থীদের সঠিক তথ্য ও ছবি আপলোড করুন।"
-    )
-    final_message = custom_message or default_msg
+    from app.channels.whatsapp import send_whatsapp_message, normalize_phone_number
+    normalized_recip = normalize_phone_number(recipient_phone)
+    if not normalized_recip:
+        raise ValueError("সঠিক প্রাপকের ফোন নম্বর প্রদান করুন।")
 
-    # Send using workspace WhatsApp account
-    send_res = send_whatsapp_message_detailed(
-        to_number=clean_phone,
-        message_text=final_message,
+    wa_acc = get_whatsapp_account_by_workspace_id(ws_id)
+    phone_number_id = wa_acc.get("phone_number_id") if wa_acc else None
+
+    send_success = send_whatsapp_message(
+        to_number=normalized_recip,
+        message_text=message_body,
+        phone_id=phone_number_id,
         workspace_id=ws_id
     )
 
+    if not send_success:
+        raise RuntimeError("WhatsApp বার্তা প্রেরণ ব্যর্থ হয়েছে। অনুগ্রহ করে WhatsApp কানেকশন ও টোকেন চেক করুন।")
+
     return {
-        "success": bool(send_res.get("success", False)),
-        "workspace_id": ws_id,
-        "recipient_phone": clean_phone,
-        "delivery_result": send_res
+        "success": True,
+        "recipient_phone": normalized_recip,
+        "message_preview": message_body,
+        "form_url": form_url
     }

@@ -96,20 +96,23 @@ class TestGoogleAIToolAndWhatsApp(unittest.TestCase):
         self.assertIn("https://docs.google.com/forms/d/e/form_jamia_995/viewform", called_payload["text"]["body"])
         print("✓ WhatsApp form delivery verified with correct URL and phone normalization.")
 
-    @patch("app.ai_agent.gemini_brain.create_id_card_google_form")
+    @patch("app.google_integration.ai_tool.create_institution_form")
     def test_03_gemini_brain_end_to_end_form_intent_response(self, mock_ai_tool):
         """Verifies AI Agent automatically generates and returns the Google Form link when requested."""
         mock_ai_tool.return_value = {
             "success": True,
             "responder_url": "https://docs.google.com/forms/d/e/form_jamia_995/viewform",
             "form_url": "https://docs.google.com/forms/d/e/form_jamia_995/viewform",
-            "institution_name": "জামিয়া রাহমানিয়া আরাবিয়া"
+            "sheet_url": "https://docs.google.com/spreadsheets/d/sheet_jamia_995/edit",
+            "institution_name": "জামিয়া রাহমানিয়া আরাবিয়া",
+            "institution_mobile": "01712345678"
         }
 
-        user_message = "জামিয়া রাহমানিয়া আরাবিয়ার জন্য ID Card Form বানাও"
+        user_message = "জামিয়া রাহমানিয়া আরাবিয়ার জন্য ID Card Form বানাও, তথ্য লাগবে নাম ও ছবি"
         res = asyncio.run(
             process_customer_message(
                 message_text=user_message,
+                sender_id="01712345678",
                 customer_name="মাওলানা আহমেদ",
                 workspace_id=self.workspace_id
             )

@@ -76,14 +76,17 @@ def customize_cloned_institution_form(
     institution_name: str,
     institution_mobile: str = None,
     custom_description: str = None,
-    fields: List[dict] = None
+    fields: List[dict] = None,
+    selected_fields: List[Any] = None
 ) -> dict:
     """
     Customizes the copied Master Form:
-    1. Sets Title to '[Institution Name] | [Mobile] | ID Card Form'
+    1. Sets Title to '[Institution Name] - [Mobile] - ID Card Form'
     2. Sets Description with student submission guidelines
-    3. PRESERVES File Upload questions completely (does not delete them)
-    4. Customizes text/choice questions to match the institution field configuration
+    3. PRESERVES File Upload questions completely (student photo)
+    4. Removes/prunes questions that the institution did NOT request
+    5. Adds any requested questions that are missing
+    6. Verifies that the File Upload question exists after modification
     """
     forms_service = get_forms_client(workspace_id=workspace_id)
     
@@ -98,9 +101,9 @@ def customize_cloned_institution_form(
     if institution_mobile:
         from app.database import normalize_bd_mobile
         canonical = normalize_bd_mobile(institution_mobile)
-        form_title = f"{institution_name} | {canonical} | ID Card Form" if canonical else f"{institution_name} | ID Card Form"
+        form_title = f"{institution_name} - {canonical} - ID Card Form" if canonical else f"{institution_name} - ID Card Form"
     else:
-        form_title = f"{institution_name} | ID Card Form"
+        form_title = f"{institution_name} - ID Card Form"
     
     update_form_title_and_description(
         workspace_id=workspace_id,
@@ -121,35 +124,131 @@ def customize_cloned_institution_form(
         if "fileUploadQuestion" in q:
             file_upload_item_ids.add(itm.get("itemId"))
 
-    # 3. Retrieve fields to ensure are present
-    if not fields:
-        fields = get_google_form_fields(workspace_id=workspace_id)
+    # 3. Resolve selected fields catalog
+    from app.google_integration.ai_tool import STANDARD_ID_CARD_FIELDS, get_standard_fields_catalog
+    
+    target_fields: List[dict] = []
+    target_keys: set = set()
+    
+    if selected_fields:
+        standard_map = {f["key"]: f for f in STANDARD_ID_CARD_FIELDS}
+        for sf in selected_fields:
+            if isinstance(sf, dict):
+                k = sf.get("key") or sf.get("field_key")
+                if k and k in standard_map:
+                    target_fields.append(standard_map[k])
+                    target_keys.add(k)
+                else:
+                    target_fields.append(sf)
+                    if k:
+                        target_keys.add(k)
+            elif isinstance(sf, str):
+                sf_clean = sf.strip().lower()
+                # Check key direct match
+                if sf_clean in standard_map:
+                    target_fields.append(standard_map[sf_clean])
+                    target_keys.add(sf_clean)
+                else:
+                    # Check alias match
+                    matched_field = None
+                    for std_f in STANDARD_ID_CARD_FIELDS:
+                        if std_f["key"] == sf_clean or any(a.lower() == sf_clean for a in std_f["aliases"]):
+                            matched_field = std_f
+                            break
+                    if matched_field:
+                        target_fields.append(matched_field)
+                        target_keys.add(matched_field["key"])
+                    else:
+                        target_fields.append({"key": sf_clean, "label": sf, "type": "short_answer", "required": True})
+                        target_keys.add(sf_clean)
+    elif fields:
+        target_fields = fields
+        target_keys = {f.get("key") or f.get("field_key") for f in fields if f.get("key") or f.get("field_key")}
+    else:
+        db_fields = get_google_form_fields(workspace_id=workspace_id)
+        target_fields = db_fields if db_fields else get_standard_fields_catalog()
+        target_keys = {f.get("key") or f.get("field_key") for f in target_fields if f.get("key") or f.get("field_key")}
 
-    # Map existing item titles to avoid duplicate questions
+    # Helper function to check if an existing item title matches any target field
+    def is_item_matched_to_targets(item_title: str) -> bool:
+        t_clean = item_title.strip().lower()
+        for tf in target_fields:
+            tf_label = (tf.get("label") or tf.get("field_label") or "").strip().lower()
+            tf_key = (tf.get("key") or tf.get("field_key") or "").strip().lower()
+            if tf_label and (tf_label in t_clean or t_clean in tf_label):
+                return True
+            if tf_key and tf_key in t_clean:
+                return True
+            # Also check aliases from standard fields
+            from app.google_integration.ai_tool import STANDARD_ID_CARD_FIELDS
+            for std_f in STANDARD_ID_CARD_FIELDS:
+                if std_f["key"] == tf_key:
+                    for alias in std_f["aliases"]:
+                        if alias.lower() in t_clean or t_clean in alias.lower():
+                            return True
+        return False
+
+    # 4. Prune unselected non-file-upload questions if specific fields were requested
+    delete_requests = []
+    if selected_fields:
+        # Traverse existing items in reverse order to preserve indexes
+        for idx in range(len(existing_items) - 1, -1, -1):
+            itm = existing_items[idx]
+            itm_id = itm.get("itemId")
+            itm_title = itm.get("title", "")
+            
+            # NEVER delete File Upload questions (student photo)
+            if itm_id in file_upload_item_ids:
+                continue
+                
+            if not is_item_matched_to_targets(itm_title):
+                delete_requests.append({
+                    "deleteItem": {
+                        "location": {
+                            "index": idx
+                        }
+                    }
+                })
+
+    if delete_requests:
+        try:
+            forms_service.forms().batchUpdate(
+                formId=str(form_id).strip(),
+                body={"requests": delete_requests}
+            ).execute()
+        except Exception as del_err:
+            print(f"[Forms unselected items prune notice]: {del_err}")
+
+    # Re-fetch items after pruning to compute correct append index
+    try:
+        updated_meta = get_form_details(workspace_id, form_id)
+        current_items = updated_meta.get("items", [])
+    except Exception:
+        current_items = existing_items
+
     existing_titles = {
         itm.get("title", "").strip().lower(): itm 
-        for itm in existing_items
+        for itm in current_items
     }
 
-    # Build requests to add any missing configured fields (except file_upload which is cloned from master)
+    # 5. Build requests to add any missing configured fields (except file_upload which is cloned from master)
     requests_list = []
-    item_index = len(existing_items)
+    item_index = len(current_items)
 
-    for f in fields:
-        f_type = f.get("field_type", "short_answer")
-        f_label = f.get("field_label", "")
+    for f in target_fields:
+        f_type = f.get("type") or f.get("field_type", "short_answer")
+        f_label = f.get("label") or f.get("field_label", "")
         f_req = bool(f.get("required", 1))
         
         # If this is file_upload, it is already preserved from Master Form
         if f_type == "file_upload":
             continue
 
-        # Check if question with similar title already exists in Master Form
+        # Check if question with similar title already exists in Form
         clean_label = f_label.strip().lower()
         if clean_label in existing_titles or any(clean_label in t or t in clean_label for t in existing_titles):
             continue
 
-        # Construct question item based on type
         question_payload = {
             "required": f_req
         }
@@ -161,7 +260,7 @@ def customize_cloned_institution_form(
         elif f_type in ["dropdown", "multiple_choice", "checkbox"]:
             options = []
             try:
-                raw_opts = f.get("options_json") or "[]"
+                raw_opts = f.get("options_json") or f.get("options") or "[]"
                 opt_list = raw_opts if isinstance(raw_opts, list) else json.loads(raw_opts)
                 options = [{"value": str(o)} for o in opt_list]
             except Exception:
@@ -173,7 +272,6 @@ def customize_cloned_institution_form(
                 "options": options if options else [{"value": "Option 1"}]
             }
         else:
-            # Default: Short Answer Text Question
             question_payload["textQuestion"] = {"paragraph": False}
 
         create_item_request = {
@@ -192,7 +290,6 @@ def customize_cloned_institution_form(
         requests_list.append(create_item_request)
         item_index += 1
 
-    # Execute batchUpdate if new fields need to be appended
     if requests_list:
         try:
             forms_service.forms().batchUpdate(
@@ -210,7 +307,8 @@ def customize_cloned_institution_form(
         "form_id": form_id,
         "title": form_title,
         "responder_url": responder_url,
-        "edit_url": edit_url
+        "edit_url": edit_url,
+        "selected_fields": [f.get("key") or f.get("field_key") for f in target_fields if f.get("key") or f.get("field_key")]
     }
 
 def create_base_master_form_template(

@@ -30,9 +30,9 @@ def create_institution_response_sheet(
     if institution_mobile:
         from app.database import normalize_bd_mobile
         canonical = normalize_bd_mobile(institution_mobile)
-        sheet_title = f"{institution_name} | {canonical} | ID Card Responses" if canonical else f"{institution_name} | ID Card Responses"
+        sheet_title = f"{institution_name} - {canonical} - ID Card Responses" if canonical else f"{institution_name} - ID Card Responses"
     else:
-        sheet_title = f"{institution_name} | ID Card Responses"
+        sheet_title = f"{institution_name} - ID Card Responses"
 
     spreadsheet_body = {
         "properties": {

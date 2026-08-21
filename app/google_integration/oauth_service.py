@@ -141,6 +141,23 @@ def get_workspace_credentials(workspace_id: int = 1) -> Optional[Credentials]:
     """Retrieves and refreshes valid google.oauth2.credentials.Credentials for the workspace."""
     conn_data = get_google_connection(workspace_id=workspace_id)
     if not conn_data:
+        # Fallback from environment variables or settings if available for workspace 1
+        env_ref = os.getenv("GOOGLE_REFRESH_TOKEN") or get_setting(f"google_refresh_token_ws_{workspace_id}")
+        env_acc = os.getenv("GOOGLE_ACCESS_TOKEN") or get_setting(f"google_access_token_ws_{workspace_id}")
+        env_email = os.getenv("GOOGLE_ACCOUNT_EMAIL") or get_setting(f"google_account_email_ws_{workspace_id}") or "connected_admin@gmail.com"
+        env_master = os.getenv("GOOGLE_MASTER_FORM_ID") or get_setting(f"google_master_form_id_ws_{workspace_id}")
+        if env_ref or env_acc:
+            save_google_connection(
+                workspace_id=workspace_id,
+                google_account_email=env_email,
+                access_token_encrypted=encrypt_token(env_acc) if env_acc else "",
+                refresh_token_encrypted=encrypt_token(env_ref) if env_ref else "",
+                master_form_id=env_master,
+                status="connected"
+            )
+            conn_data = get_google_connection(workspace_id=workspace_id)
+
+    if not conn_data:
         return None
 
     access_token = decrypt_token(conn_data.get("access_token_encrypted", ""))
@@ -183,6 +200,23 @@ def get_workspace_credentials(workspace_id: int = 1) -> Optional[Credentials]:
 def get_google_account_status(workspace_id: int = 1) -> dict:
     """Returns workspace-isolated Google connection diagnostics without leaking tokens."""
     conn_data = get_google_connection(workspace_id=workspace_id)
+    if not conn_data:
+        # Check settings / env fallback
+        env_ref = os.getenv("GOOGLE_REFRESH_TOKEN") or get_setting(f"google_refresh_token_ws_{workspace_id}")
+        env_acc = os.getenv("GOOGLE_ACCESS_TOKEN") or get_setting(f"google_access_token_ws_{workspace_id}")
+        env_email = os.getenv("GOOGLE_ACCOUNT_EMAIL") or get_setting(f"google_account_email_ws_{workspace_id}")
+        env_master = os.getenv("GOOGLE_MASTER_FORM_ID") or get_setting(f"google_master_form_id_ws_{workspace_id}")
+        if (env_ref or env_acc) and env_email:
+            save_google_connection(
+                workspace_id=workspace_id,
+                google_account_email=env_email,
+                access_token_encrypted=encrypt_token(env_acc) if env_acc else "",
+                refresh_token_encrypted=encrypt_token(env_ref) if env_ref else "",
+                master_form_id=env_master,
+                status="connected"
+            )
+            conn_data = get_google_connection(workspace_id=workspace_id)
+
     if not conn_data:
         return {
             "connected": False,

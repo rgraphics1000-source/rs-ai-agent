@@ -87,7 +87,7 @@ def get_or_create_institution_folder(
     if institution_mobile:
         from app.database import normalize_bd_mobile
         canonical = normalize_bd_mobile(institution_mobile)
-        folder_name = f"{clean_name} | {canonical}" if canonical else clean_name
+        folder_name = f"{clean_name} - {canonical}" if canonical else clean_name
     else:
         folder_name = clean_name
 

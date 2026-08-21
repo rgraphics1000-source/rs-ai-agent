@@ -49,6 +49,10 @@ def normalize_whatsapp_phone_number(raw_phone: str) -> str:
         pass
     return digits
 
+# Backward-compatible alias
+normalize_phone_number = normalize_whatsapp_phone_number
+
+
 _TOKEN_VALIDATION_CACHE = {}
 VALIDATION_CACHE_TTL = 300.0  # 5 minutes
 

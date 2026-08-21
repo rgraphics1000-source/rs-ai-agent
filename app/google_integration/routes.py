@@ -39,7 +39,14 @@ class CreateFormRequest(BaseModel):
     institution_mobile: Optional[str] = None
     institution_phone: Optional[str] = None
     custom_description: Optional[str] = None
+    selected_fields: Optional[List[Any]] = None
+    selected_field_keys: Optional[List[str]] = None
     allow_duplicate: Optional[bool] = False
+
+class PreviewFieldsRequest(BaseModel):
+    workspace_id: int = 1
+    text: Optional[str] = None
+    selected_field_keys: Optional[List[str]] = None
 
 class SendWhatsAppRequest(BaseModel):
     workspace_id: int = 1
@@ -81,7 +88,6 @@ def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, erro
     if not code:
         return HTMLResponse(content="<h3>Missing authorization code.</h3><p><a href='/'>Return to Dashboard</a></p>")
 
-    # Parse workspace_id from state (e.g. ws_1)
     workspace_id = 1
     if state and state.startswith("ws_"):
         try:
@@ -192,16 +198,48 @@ def select_master_form(payload: MasterFormSelectRequest):
         "message": res.get("message") or f"Master Form '{res.get('form_name')}' successfully configured and verified."
     }
 
+@router.get("/fields/standard")
+def get_standard_fields():
+    """Returns the approved immutable standard ID card fields catalog."""
+    from app.google_integration.ai_tool import get_standard_fields_catalog
+    return {"success": True, "fields": get_standard_fields_catalog()}
+
+@router.post("/forms/preview-fields")
+def preview_fields(payload: PreviewFieldsRequest):
+    """Extracts standard fields from natural language text or field keys for preview."""
+    from app.google_integration.ai_tool import detect_fields_from_natural_language, get_standard_fields_catalog, STANDARD_ID_CARD_FIELDS
+    
+    if payload.text and payload.text.strip():
+        detected = detect_fields_from_natural_language(payload.text)
+    elif payload.selected_field_keys:
+        std_map = {f["key"]: f for f in STANDARD_ID_CARD_FIELDS}
+        detected = [
+            {"key": std_map[k]["key"], "label": std_map[k]["label"], "type": std_map[k]["type"], "required": std_map[k]["required"]}
+            for k in payload.selected_field_keys if k in std_map
+        ]
+    else:
+        default_keys = ["student_name", "father_name", "class_name", "roll", "student_photo"]
+        detected = [f for f in get_standard_fields_catalog() if f["key"] in default_keys]
+        
+    return {
+        "success": True,
+        "fields": detected,
+        "field_keys": [f["key"] for f in detected]
+    }
+
 @router.post("/forms/create")
+@router.post("/forms/generate")
 def create_form(payload: CreateFormRequest):
     """Creates a new institution Google Form based on the workspace Master Form."""
     try:
         mobile = payload.institution_mobile or payload.institution_phone
+        selected = payload.selected_fields or payload.selected_field_keys
         res = create_institution_form(
             workspace_id=payload.workspace_id,
             institution_name=payload.institution_name,
             institution_mobile=mobile,
             custom_description=payload.custom_description,
+            selected_fields=selected,
             allow_duplicate=payload.allow_duplicate or False
         )
         return res
