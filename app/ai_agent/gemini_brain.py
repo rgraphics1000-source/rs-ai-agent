@@ -178,6 +178,26 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
    - কখনোই "ফর্ম তৈরি হচ্ছে", "৫ মিনিট লাগবে", "ফর্ম রেডি", "এই লিংকে প্রবেশ করুন" এমন বলবে না যতক্ষণ না ফর্মের আসল URL/লিংক তোমার কাছে থাকে।
    - কাস্টমার ফর্ম চাইলে বলবে: "জি {honorific}, গুগল ফর্ম তৈরি করতে আপনার প্রতিষ্ঠানের নামটি টাইপ করে দিন, আমরা সাথে সাথে ফর্ম তৈরি করে দিচ্ছি।"
    - কখনোই placeholder বা ভুয়া লিংক দেবে না। শুধুমাত্র আসল লিংকই দেবে।
+
+১০. আইডি কার্ড সংশোধন ও ম্যানুয়াল কারেকশন সংক্রান্ত নিয়ম:
+   - এআই নিজে কোনো ফটোশপ এডিট বা আইডি কার্ড কারেকশন করতে পারে না। কাস্টমার কার্ডের নাম, ছবি বা কোনো তথ্যের কারেকশন চাইলে কখনোই বলবে না "আমি ঠিক করে দিচ্ছি" বা "সংশোধন হয়ে গেছে"। সরাসরি বলবে: "জি {honorific}, আপনার সংশোধনের বিষয়টি আমাদের মূল টিমকে জানিয়েছি। আমাদের ডিজাইন টিম এটি দেখে আপনাকে মেসেজ দেবে।"
+
+১১. কোনো ভুয়া ওয়েটিং টাইম বা মিথ্যা সময় না বলা:
+   - কখনোই "৫-১০ মিনিট লাগবে", "২ মিনিট লাগবে", "কিছুক্ষণ পর হয়ে যাবে" ইত্যাদি মনগড়া সময় বলবে না।
+
+১২. পূর্ববর্তী চ্যাট হিস্ট্রি ও পরিচিত তথ্য পুনরায় জিজ্ঞাসা না করা:
+   - চ্যাট হিস্ট্রিতে যদি ইতিমধ্যে কাস্টমার বা অ্যাডমিনের আলাপে প্রতিষ্ঠানের নাম, মোবাইল নম্বর বা অন্য কোনো তথ্য উল্লেখ থাকে, তবে সেই তথ্য কখনোই পুনরায় চাইবে না।
+
+১৩. অপ্রয়োজনীয় প্রশ্ন ও ফিলার বাক্য পরিহার করা (No Unnecessary Questions & No Filler):
+   - কাস্টমারের অনুরোধ স্পষ্ট হলে সরাসরি কাজটি সম্পন্ন করবে বা উত্তর দেবে।
+   - কথোপকথন দীর্ঘায়িত করার জন্য কখনোই "আর কিছু লাগবে?", "আর কোনো সাহায্য লাগবে?", "আপনি কি নিশ্চিত?", "কিছু পরিবর্তন করতে চান?" এমন অপ্রয়োজনীয় প্রশ্ন বা বাক্য যোগ করবে না।
+
+১৪. স্ক্রিনশট ও ছবির নিখুঁত পর্যবেক্ষণ (Screenshot & Image Understanding):
+   - কাস্টমারের পাঠানো স্ক্রিনশট ও ছবির প্রতিটি দৃশ্যমান টেক্সট, নাম, মোবাইল নম্বর, প্রতিষ্ঠানের নাম, ভুলত্রুটি বা সংশোধন নির্দেশ মনোযোগ সহকারে পড়বে।
+   - ছবিতে যা নেই বা স্পষ্ট নয়, তা নিজে থেকে আন্দাজে বানিয়ে বলবে না।
+
+১৫. পূর্ববর্তী প্রসঙ্গের ধারাবাহিকতা রক্ষা (Context Continuity):
+   - কাস্টমার যদি ছোট কোনো মেসেজ দেয় (যেমন: "ওটা", "হ্যাঁ", "এইটাই", "আগেরটার মতো", "ওই কার্ডটা", "আগের নামটাই থাকবে"), তবে পূর্ববর্তী কথোপকথন দেখে রেফারেন্স বুঝে সরাসরি প্রাসঙ্গিক উত্তর দেবে।
 """
         return prompt
 
@@ -202,7 +222,7 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
    - কখনোই বলবে না: 'টাইপ করে দিন' বা 'ভয়েস পেয়েছি'।
 
 ১. স্মৃতিশক্তি ও পূর্ববর্তী কথোপকথন মনে রাখা:
-   - কাস্টমার ইতিপূর্বে যেসব তথ্যের উত্তর দিয়ে দিয়েছেন, সেই একই কথা বা প্রশ্ন কখনোই পুনরায় জিজ্ঞাসা করবে না।
+   - কাস্টমার বা মূল অ্যাডমিন ইতিপূর্বে যেসব তথ্যের উত্তর দিয়ে দিয়েছেন, সেই একই কথা বা প্রশ্ন কখনোই পুনরায় জিজ্ঞাসা করবে না।
 
 ২. সংক্ষিপ্ত ও টু-দ্য-পয়েন্ট উত্তর:
    - কাস্টমার যতটুকু প্রশ্ন করবে শুধু ততটুকুরই উত্তর দেবে।
@@ -219,6 +239,7 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
 
 ৫. অজানা বিষয়ের উত্তর বানিয়ে না বলা (Strict Anti-Hallucination):
    - যে পণ্য, সেবা বা পলিসি সম্পর্কে তোমার ক্যাটালগ বা ট্রেনিংয়ে কোনো উল্লেখ নেই, সে বিষয়ে নিজে থেকে কোনো মনগড়া উত্তর দেবে না।
+   - কখনোই মিথ্যা ওয়েটিং টাইম বা ভুয়া লিংক দেবে না।
    - সরাসরি বলবে: "জি {honorific}, এই বিষয়টি আমাদের টিমকে জানিয়েছি। কিছুক্ষণের মধ্যে আমাদের টিম আপনার সাথে যোগাযোগ করে সঠিক তথ্যটি জানিয়ে দেবে।"
 """
     return prompt
@@ -509,7 +530,20 @@ async def process_customer_message(
     api_key = get_setting("gemini_api_key", settings.GEMINI_API_KEY)
     ws_id = int(workspace_id or 1)
 
-    # 0. HIGHEST-PRIORITY: Deterministic Google Form Creation Workflow
+    # 0. ZERO-REPLY SAFETY GUARD: If Admin Takeover is active, AI MUST BE 100% SILENT
+    from app.database import is_conversation_ai_active
+    if not is_conversation_ai_active(sender_id=sender_id, workspace_id=ws_id):
+        print(f"[AI_BRAIN_SILENCE] sender={sender_id} workspace_id={ws_id} action=COMPLETE_SILENCE reason=admin_takeover_active")
+        return {
+            "reply_text": "",
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "matched_images": [],
+            "response_source": "admin_takeover_silence"
+        }
+
+    # 1. HIGHEST-PRIORITY: Deterministic Google Form Creation Workflow (Only for AI-Enabled customers)
     try:
         workflow_res = resolve_google_form_workflow(
             user_message=message_text,
@@ -548,15 +582,24 @@ async def process_customer_message(
         client = genai.Client(api_key=api_key)
         contents = []
         
-        # Add conversation history (up to last 15 turns for deep memory)
+        # Add conversation history (up to last 15 turns for deep memory) with normalized roles
         if conversation_history:
             history_text = "[পূর্ববর্তী চ্যাট হিস্ট্রি - এটি সম্পূর্ণ মনে রেখে কথা বলবে]:\n"
             for msg in conversation_history[-15:]:
-                role = "কাস্টমার" if msg.get("sender_type") == "user" else "সেলস ম্যানেজার"
-                history_text += f"{role}: {msg.get('content', '')}\n"
+                s_val = str(msg.get("sender") or msg.get("sender_type") or msg.get("role") or "").lower()
+                if s_val in ("admin", "owner", "main_admin", "seller"):
+                    role_tag = "মূল অ্যাডমিন / শপ ওনার (ADMIN)"
+                elif s_val in ("bot", "assistant", "ai"):
+                    role_tag = "এআই সেলস সহকারী (AI)"
+                elif s_val in ("system",):
+                    role_tag = "সিস্টেম ইভেন্ট (SYSTEM)"
+                else:
+                    role_tag = "কাস্টমার (CUSTOMER)"
+                c_text = msg.get('content') or msg.get('text') or ''
+                history_text += f"{role_tag}: {c_text}\n"
             contents.append(history_text)
 
-        # Add image attachment
+        # Add image attachment (supports photos, ID card samples, screenshots)
         if image_bytes:
             contents.append(types.Part.from_bytes(data=image_bytes, mime_type=image_mime))
             if not message_text:

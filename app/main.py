@@ -31,7 +31,8 @@ from app.database import (
     get_whatsapp_account_by_workspace_id, save_whatsapp_account, delete_whatsapp_account, get_page_ai_config,
     get_all_workspaces, get_workspace, save_workspace, delete_workspace,
     get_faqs, create_faq, delete_faq, ensure_whatsapp_account_consistency,
-    ensure_facebook_page_consistency
+    ensure_facebook_page_consistency, enable_conversation_ai, set_admin_takeover,
+    get_conversation_state, is_conversation_ai_active
 )
 from app.ai_agent.gemini_brain import process_customer_message
 from app.ai_agent.voice_engine import generate_bangla_voice, list_available_voices
@@ -673,9 +674,23 @@ async def api_send_saved_media(request: Request):
         INSERT INTO messages (conversation_id, sender_type, message_type, content, media_url)
         VALUES (?, 'admin', ?, ?, ?)
     """, (cid, m_type, f"[{m_type.upper()}] {m_title}", m_url))
-    cursor.execute("UPDATE conversations SET last_message = ?, human_takeover = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (f"[{m_type.upper()}] {m_title}", cid))
+    cursor.execute("""
+        UPDATE conversations 
+        SET last_message = ?, human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
+            takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_ui_media', takeover_reason = 'human_admin_media',
+            conversation_version = COALESCE(conversation_version, 1) + 1,
+            updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ?
+    """, (f"[{m_type.upper()}] {m_title}", cid))
     conn.commit()
     conn.close()
+    if sender_id:
+        add_muted_number(sender_id)
+        try:
+            from app.channels.debouncer import message_debouncer
+            message_debouncer.cancel_batch(channel, ws_id, sender_id)
+        except Exception:
+            pass
     return {"success": True}
 
 # ==========================================
@@ -738,9 +753,25 @@ async def api_admin_send_reply(request: Request):
         INSERT INTO messages (conversation_id, sender_type, message_type, content)
         VALUES (?, 'admin', 'text', ?)
     """, (cid, reply_text))
-    cursor.execute("UPDATE conversations SET last_message = ?, human_takeover = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (reply_text, cid))
+    cursor.execute("""
+        UPDATE conversations 
+        SET last_message = ?, human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
+            takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_ui', takeover_reason = 'human_admin_reply',
+            conversation_version = COALESCE(conversation_version, 1) + 1,
+            updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ?
+    """, (reply_text, cid))
     conn.commit()
     conn.close()
+    
+    if sender_id:
+        add_muted_number(sender_id)
+        try:
+            from app.channels.debouncer import message_debouncer
+            message_debouncer.cancel_batch(channel, workspace_id, sender_id)
+        except Exception:
+            pass
+            
     return {"success": True, "message": "Reply delivered successfully"}
 
 @app.post("/api/omnichat/toggle-ai")
@@ -753,7 +784,7 @@ async def api_toggle_chat_ai(request: Request):
         try:
             conn = get_db_connection()
             c = conn.cursor()
-            c.execute("SELECT human_takeover FROM conversations WHERE id = ?", (cid,))
+            c.execute("SELECT human_takeover, admin_takeover, ai_enabled FROM conversations WHERE id = ?", (cid,))
             row = c.fetchone()
             if row:
                 human_takeover = row["human_takeover"]
@@ -761,6 +792,16 @@ async def api_toggle_chat_ai(request: Request):
         except Exception:
             pass
     return {"success": True, "human_takeover": human_takeover}
+
+@app.post("/api/omnichat/enable-ai")
+@app.post("/api/conversations/enable-ai")
+async def api_enable_chat_ai(request: Request):
+    data = await request.json()
+    cid = data.get("conversation_id")
+    sender_id = data.get("sender_id")
+    workspace_id = data.get("workspace_id", 1)
+    new_version = enable_conversation_ai(sender_id=sender_id, conversation_id=cid, workspace_id=workspace_id, enabled_by="admin_ui")
+    return {"success": True, "ai_enabled": True, "admin_takeover": False, "conversation_version": new_version}
 
 # ==========================================
 # WORKSPACE / BUSINESS MANAGEMENT APIS

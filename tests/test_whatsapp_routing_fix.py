@@ -46,6 +46,13 @@ class TestWhatsAppRoutingFix(unittest.TestCase):
 
     def setUp(self):
         init_db()
+        from app.database import enable_conversation_ai, remove_muted_number, get_db_connection
+        enable_conversation_ai(sender_id="8801816504097", workspace_id=1)
+        remove_muted_number("8801816504097")
+        conn = get_db_connection()
+        conn.execute("DELETE FROM processed_webhook_events WHERE event_id LIKE 'wam_%' OR event_id LIKE 'wamid%'")
+        conn.commit()
+        conn.close()
 
     def test_a_b_rs_graphics_phone_id_resolves(self):
         """Test A & B: 4184514263660680 resolves to Workspace 1 / RS Graphics."""

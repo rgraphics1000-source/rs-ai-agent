@@ -91,6 +91,12 @@ def init_db():
         customer_name TEXT,
         last_message TEXT,
         human_takeover INTEGER DEFAULT 0,
+        admin_takeover INTEGER DEFAULT 0,
+        ai_enabled INTEGER DEFAULT 1,
+        takeover_at TIMESTAMP,
+        takeover_by TEXT,
+        takeover_reason TEXT,
+        conversation_version INTEGER DEFAULT 1,
         page_id TEXT DEFAULT '',
         page_connection_id INTEGER,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -463,6 +469,21 @@ def init_db():
         cursor.execute("ALTER TABLE comment_logs ADD COLUMN page_id TEXT DEFAULT ''")
     except Exception:
         pass
+
+    # Auto-migration columns for conversations (Admin Takeover, AI Control, & Versioning)
+    conv_takeover_cols = [
+        ("admin_takeover", "INTEGER DEFAULT 0"),
+        ("ai_enabled", "INTEGER DEFAULT 1"),
+        ("takeover_at", "TIMESTAMP"),
+        ("takeover_by", "TEXT"),
+        ("takeover_reason", "TEXT"),
+        ("conversation_version", "INTEGER DEFAULT 1")
+    ]
+    for col_name, col_type in conv_takeover_cols:
+        try:
+            cursor.execute(f"ALTER TABLE conversations ADD COLUMN {col_name} {col_type}")
+        except Exception:
+            pass
 
     # Auto-migration columns for google_connections (Master Form Metadata)
     google_conn_cols = [
@@ -1082,10 +1103,39 @@ def delete_saved_media(media_id: int) -> bool:
 def toggle_conversation_ai(conversation_id: int, status: int = None) -> bool:
     conn = get_db_connection()
     cursor = conn.cursor()
-    if status is not None:
-        cursor.execute("UPDATE conversations SET human_takeover = ? WHERE id = ?", (status, conversation_id))
+    cursor.execute("SELECT sender_id, human_takeover, admin_takeover FROM conversations WHERE id = ?", (conversation_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+        
+    sender_id = row["sender_id"]
+    current_human = row["human_takeover"] or row["admin_takeover"] or 0
+    new_takeover = status if status is not None else (0 if current_human == 1 else 1)
+    
+    if new_takeover == 1:
+        cursor.execute("""
+            UPDATE conversations 
+            SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
+                takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_toggle', takeover_reason = 'manual_toggle',
+                conversation_version = COALESCE(conversation_version, 1) + 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (conversation_id,))
+        if sender_id:
+            add_muted_number(sender_id)
     else:
-        cursor.execute("UPDATE conversations SET human_takeover = CASE WHEN human_takeover = 1 THEN 0 ELSE 1 END WHERE id = ?", (conversation_id,))
+        cursor.execute("""
+            UPDATE conversations 
+            SET human_takeover = 0, admin_takeover = 0, ai_enabled = 1,
+                takeover_at = NULL, takeover_by = NULL, takeover_reason = NULL,
+                conversation_version = COALESCE(conversation_version, 1) + 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (conversation_id,))
+        if sender_id:
+            remove_muted_number(sender_id)
+            
     conn.commit()
     conn.close()
     return True
@@ -1142,9 +1192,9 @@ def add_muted_number(phone: str) -> list:
         conn = get_db_connection()
         cursor = conn.cursor()
         if target_last10:
-            cursor.execute("UPDATE conversations SET human_takeover = 1 WHERE sender_id LIKE ?", (f"%{target_last10}%",))
+            cursor.execute("UPDATE conversations SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE sender_id LIKE ?", (f"%{target_last10}%",))
         else:
-            cursor.execute("UPDATE conversations SET human_takeover = 1 WHERE sender_id = ?", (phone,))
+            cursor.execute("UPDATE conversations SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE sender_id = ?", (phone,))
         conn.commit()
         conn.close()
     except Exception:
@@ -1173,9 +1223,9 @@ def remove_muted_number(phone: str) -> list:
         conn = get_db_connection()
         cursor = conn.cursor()
         if target_last10:
-            cursor.execute("UPDATE conversations SET human_takeover = 0 WHERE sender_id LIKE ?", (f"%{target_last10}%",))
+            cursor.execute("UPDATE conversations SET human_takeover = 0, admin_takeover = 0, ai_enabled = 1, updated_at = CURRENT_TIMESTAMP WHERE sender_id LIKE ?", (f"%{target_last10}%",))
         else:
-            cursor.execute("UPDATE conversations SET human_takeover = 0 WHERE sender_id = ?", (phone,))
+            cursor.execute("UPDATE conversations SET human_takeover = 0, admin_takeover = 0, ai_enabled = 1, updated_at = CURRENT_TIMESTAMP WHERE sender_id = ?", (phone,))
         conn.commit()
         conn.close()
     except Exception:
@@ -1213,11 +1263,28 @@ def get_muted_contacts_detailed() -> list:
     conn.close()
     return detailed
 
-def is_conversation_ai_active(sender_id: str = None, conversation_id: int = None) -> bool:
-    """Returns True if AI is allowed to auto-reply to this customer."""
+def get_conversation_state(sender_id: str = None, conversation_id: int = None, workspace_id: int = 1) -> dict:
+    """Returns full deterministic state dict for a conversation / customer."""
+    default_state = {
+        "id": conversation_id,
+        "sender_id": sender_id,
+        "workspace_id": workspace_id,
+        "admin_takeover": False,
+        "ai_enabled": True,
+        "human_takeover": 0,
+        "conversation_version": 1,
+        "takeover_at": None,
+        "takeover_by": None,
+        "takeover_reason": None
+    }
+    
     # 1. Check Master Switch
     if get_setting("ai_enabled", "true").lower() == "false":
-        return False
+        default_state["ai_enabled"] = False
+        default_state["admin_takeover"] = True
+        default_state["human_takeover"] = 1
+        default_state["takeover_reason"] = "master_switch_disabled"
+        return default_state
 
     # 2. Check Blacklisted / Muted Phone Numbers
     blacklisted = get_setting("blacklisted_ai_numbers", "")
@@ -1225,34 +1292,235 @@ def is_conversation_ai_active(sender_id: str = None, conversation_id: int = None
         s_raw = str(sender_id).strip()
         clean_sender = "".join([c for c in s_raw if c.isdigit()])
         sender_last10 = clean_sender[-10:] if len(clean_sender) >= 10 else ""
-
         for bl in blacklisted.replace(",", "\n").split("\n"):
             bl_item = bl.strip()
             if not bl_item:
                 continue
             if s_raw == bl_item:
-                return False
+                default_state["ai_enabled"] = False
+                default_state["admin_takeover"] = True
+                default_state["human_takeover"] = 1
+                default_state["takeover_reason"] = "blacklisted_number"
+                return default_state
             bl_clean = "".join([c for c in bl_item if c.isdigit()])
             bl_last10 = bl_clean[-10:] if len(bl_clean) >= 10 else ""
-            if clean_sender and bl_clean:
-                if clean_sender == bl_clean:
-                    return False
-                if sender_last10 and bl_last10 and sender_last10 == bl_last10:
-                    return False
+            if len(clean_sender) >= 8 and len(bl_clean) >= 8:
+                if clean_sender == bl_clean or (sender_last10 and bl_last10 and sender_last10 == bl_last10):
+                    default_state["ai_enabled"] = False
+                    default_state["admin_takeover"] = True
+                    default_state["human_takeover"] = 1
+                    default_state["takeover_reason"] = "blacklisted_number"
+                    return default_state
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    if conversation_id:
-        cursor.execute("SELECT human_takeover FROM conversations WHERE id = ?", (conversation_id,))
-    elif sender_id:
-        cursor.execute("SELECT human_takeover FROM conversations WHERE sender_id = ? ORDER BY id DESC LIMIT 1", (sender_id,))
-    else:
+    # 3. Query DB conversation record
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if conversation_id:
+            cursor.execute("""
+                SELECT id, sender_id, workspace_id, human_takeover,
+                       COALESCE(admin_takeover, human_takeover, 0) as admin_takeover,
+                       COALESCE(ai_enabled, CASE WHEN human_takeover = 1 THEN 0 ELSE 1 END) as ai_enabled,
+                       COALESCE(conversation_version, 1) as conversation_version,
+                       takeover_at, takeover_by, takeover_reason
+                FROM conversations WHERE id = ?
+            """, (conversation_id,))
+            row = cursor.fetchone()
+        elif sender_id:
+            ws_id = int(workspace_id or 1)
+            cursor.execute("""
+                SELECT id, sender_id, workspace_id, human_takeover,
+                       COALESCE(admin_takeover, human_takeover, 0) as admin_takeover,
+                       COALESCE(ai_enabled, CASE WHEN human_takeover = 1 THEN 0 ELSE 1 END) as ai_enabled,
+                       COALESCE(conversation_version, 1) as conversation_version,
+                       takeover_at, takeover_by, takeover_reason
+                FROM conversations WHERE sender_id = ? AND workspace_id = ?
+                ORDER BY id DESC LIMIT 1
+            """, (str(sender_id), ws_id))
+            row = cursor.fetchone()
+            if not row:
+                cursor.execute("""
+                    SELECT id, sender_id, workspace_id, human_takeover,
+                           COALESCE(admin_takeover, human_takeover, 0) as admin_takeover,
+                           COALESCE(ai_enabled, CASE WHEN human_takeover = 1 THEN 0 ELSE 1 END) as ai_enabled,
+                           COALESCE(conversation_version, 1) as conversation_version,
+                           takeover_at, takeover_by, takeover_reason
+                    FROM conversations WHERE sender_id = ?
+                    ORDER BY id DESC LIMIT 1
+                """, (str(sender_id),))
+                row = cursor.fetchone()
+        else:
+            conn.close()
+            return default_state
+
         conn.close()
-        return True
+        
+        if row:
+            row_dict = dict(row)
+            is_takeover = bool(
+                row_dict.get("admin_takeover", 0) == 1 or 
+                row_dict.get("human_takeover", 0) == 1 or 
+                row_dict.get("ai_enabled", 1) == 0
+            )
+            default_state["id"] = row_dict.get("id")
+            default_state["sender_id"] = row_dict.get("sender_id") or sender_id
+            default_state["workspace_id"] = row_dict.get("workspace_id") or workspace_id
+            default_state["admin_takeover"] = is_takeover
+            default_state["ai_enabled"] = not is_takeover
+            default_state["human_takeover"] = 1 if is_takeover else 0
+            default_state["conversation_version"] = int(row_dict.get("conversation_version") or 1)
+            default_state["takeover_at"] = row_dict.get("takeover_at")
+            default_state["takeover_by"] = row_dict.get("takeover_by")
+            default_state["takeover_reason"] = row_dict.get("takeover_reason")
+    except Exception as e:
+        print(f"[DB get_conversation_state Error]: {e}")
 
-    row = cursor.fetchone()
-    conn.close()
-    if row and row["human_takeover"] == 1:
+    return default_state
+
+def set_admin_takeover(
+    sender_id: str = None,
+    conversation_id: int = None,
+    workspace_id: int = 1,
+    takeover_by: str = "main_admin",
+    takeover_reason: str = "human_admin_message"
+) -> int:
+    """
+    Deterministically enables ADMIN TAKEOVER for a customer / conversation.
+    Increments conversation_version to instantly invalidate any in-flight/pending AI jobs.
+    Returns the new conversation_version.
+    """
+    new_version = 1
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ws_id = int(workspace_id or 1)
+        
+        target_conv_ids = []
+        if conversation_id:
+            target_conv_ids = [conversation_id]
+        elif sender_id:
+            cursor.execute("SELECT id FROM conversations WHERE sender_id = ?", (str(sender_id),))
+            rows = cursor.fetchall()
+            target_conv_ids = [r["id"] for r in rows]
+            
+        if not target_conv_ids and sender_id:
+            cursor.execute("""
+                INSERT INTO conversations (
+                    workspace_id, channel, sender_id, customer_name, last_message,
+                    admin_takeover, human_takeover, ai_enabled, takeover_at, takeover_by, takeover_reason, conversation_version
+                )
+                VALUES (?, 'whatsapp', ?, 'Customer', '[Admin Takeover]', 1, 1, 0, CURRENT_TIMESTAMP, ?, ?, 2)
+            """, (ws_id, str(sender_id), takeover_by, takeover_reason))
+            new_version = 2
+        else:
+            for cid in target_conv_ids:
+                cursor.execute("""
+                    UPDATE conversations 
+                    SET admin_takeover = 1,
+                        human_takeover = 1,
+                        ai_enabled = 0,
+                        takeover_at = CURRENT_TIMESTAMP,
+                        takeover_by = ?,
+                        takeover_reason = ?,
+                        conversation_version = COALESCE(conversation_version, 1) + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (takeover_by, takeover_reason, cid))
+                
+                cursor.execute("SELECT conversation_version FROM conversations WHERE id = ?", (cid,))
+                vrow = cursor.fetchone()
+                if vrow and vrow["conversation_version"]:
+                    new_version = max(new_version, int(vrow["conversation_version"]))
+
+        conn.commit()
+        conn.close()
+        
+        # Also add to muted numbers list for fast phone-level checking
+        if sender_id:
+            add_muted_number(str(sender_id))
+            
+        print(f"[ADMIN_TAKEOVER_ENABLED] sender={sender_id} conv_id={conversation_id} new_version={new_version} by={takeover_by} reason={takeover_reason}")
+    except Exception as e:
+        print(f"[DB set_admin_takeover Error]: {e}")
+        
+    return new_version
+
+def enable_conversation_ai(
+    sender_id: str = None,
+    conversation_id: int = None,
+    workspace_id: int = 1,
+    enabled_by: str = "admin"
+) -> int:
+    """
+    Explicitly re-enables AI auto-response for a customer / conversation.
+    Increments conversation_version so any stale pending jobs from past takeover cannot fire.
+    Returns the new conversation_version.
+    """
+    new_version = 1
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ws_id = int(workspace_id or 1)
+        
+        target_conv_ids = []
+        if conversation_id:
+            target_conv_ids = [conversation_id]
+        elif sender_id:
+            cursor.execute("SELECT id FROM conversations WHERE sender_id = ?", (str(sender_id),))
+            rows = cursor.fetchall()
+            target_conv_ids = [r["id"] for r in rows]
+            
+        if not target_conv_ids and sender_id:
+            cursor.execute("""
+                INSERT INTO conversations (
+                    workspace_id, channel, sender_id, customer_name, last_message,
+                    admin_takeover, human_takeover, ai_enabled, takeover_at, takeover_by, takeover_reason, conversation_version
+                )
+                VALUES (?, 'whatsapp', ?, 'Customer', '', 0, 0, 1, NULL, NULL, NULL, 2)
+            """, (ws_id, str(sender_id)))
+            new_version = 2
+        else:
+            for cid in target_conv_ids:
+                cursor.execute("""
+                    UPDATE conversations 
+                    SET admin_takeover = 0,
+                        human_takeover = 0,
+                        ai_enabled = 1,
+                        takeover_at = NULL,
+                        takeover_by = NULL,
+                        takeover_reason = NULL,
+                        conversation_version = COALESCE(conversation_version, 1) + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (cid,))
+                
+                cursor.execute("SELECT conversation_version FROM conversations WHERE id = ?", (cid,))
+                vrow = cursor.fetchone()
+                if vrow and vrow["conversation_version"]:
+                    new_version = max(new_version, int(vrow["conversation_version"]))
+
+        conn.commit()
+        conn.close()
+        
+        if sender_id:
+            remove_muted_number(str(sender_id))
+            
+        print(f"[AI_REENABLED] sender={sender_id} conv_id={conversation_id} new_version={new_version} by={enabled_by}")
+    except Exception as e:
+        print(f"[DB enable_conversation_ai Error]: {e}")
+        
+    return new_version
+
+def is_conversation_ai_active(sender_id: str = None, conversation_id: int = None, workspace_id: int = 1) -> bool:
+    """
+    Zero-Reply Safety Guard: Returns True ONLY IF AI is strictly allowed to reply to this customer.
+    Returns False if:
+    - Master Switch is OFF
+    - Phone number is in blacklist/muted
+    - admin_takeover == 1 or human_takeover == 1 or ai_enabled == 0 in conversations table
+    """
+    state = get_conversation_state(sender_id=sender_id, conversation_id=conversation_id, workspace_id=workspace_id)
+    if state.get("admin_takeover") is True or state.get("ai_enabled") is False or state.get("human_takeover", 0) == 1:
         return False
     return True
 

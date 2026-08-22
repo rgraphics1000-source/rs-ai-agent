@@ -91,6 +91,12 @@ class TestWorkspaceIsolationSuite(unittest.TestCase):
         self.assertIsNotNone(self.w2_id)
         self.assertGreater(self.w2_id, 1)
 
+        conn = get_db_connection()
+        conn.execute("DELETE FROM conversations WHERE sender_id LIKE 'fb_cust_%' OR sender_id LIKE '880170000000%'")
+        conn.execute("DELETE FROM processed_webhook_events WHERE event_id LIKE 'mid.%' OR event_id LIKE 'wamid.%'")
+        conn.commit()
+        conn.close()
+
     def tearDown(self):
         # Clean up secondary workspace data
         if self.w2_id and self.w2_id > 1:

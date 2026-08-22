@@ -15,11 +15,13 @@ if hasattr(sys.stdout, "reconfigure"):
 from app.config import settings
 from app.database import (
     get_setting, set_setting, get_all_settings, get_db_connection,
-    is_conversation_ai_active, get_whatsapp_account_by_phone_id,
+    is_conversation_ai_active, get_conversation_state, set_admin_takeover,
+    enable_conversation_ai, get_whatsapp_account_by_phone_id,
     get_whatsapp_account_by_page_id, get_whatsapp_account_by_workspace_id,
     get_all_whatsapp_accounts, get_page_ai_config,
     ensure_whatsapp_account_consistency, get_active_training_rules,
-    get_all_faqs, get_all_products
+    get_all_faqs, get_all_products, is_webhook_event_processed,
+    mark_webhook_event_processed
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.ai_agent.gemini_brain import process_customer_message, detect_customer_gender_title
@@ -848,10 +850,11 @@ async def handle_whatsapp_webhook_event(data: dict):
                 for msg in messages:
                     msg_id = msg.get("id")
                     if msg_id:
-                        if msg_id in PROCESSED_WA_MESSAGE_IDS:
+                        if msg_id in PROCESSED_WA_MESSAGE_IDS or is_webhook_event_processed("whatsapp", msg_id):
                             print(f"[WhatsApp Webhook] Duplicate message skipped: msg_id={msg_id}")
                             continue
                         PROCESSED_WA_MESSAGE_IDS.add(msg_id)
+                        mark_webhook_event_processed("whatsapp", msg_id, workspace_id=workspace_id, page_id_or_phone_id=effective_phone_id)
                         if len(PROCESSED_WA_MESSAGE_IDS) > 2000:
                             PROCESSED_WA_MESSAGE_IDS.pop()
 
@@ -957,19 +960,17 @@ async def handle_whatsapp_webhook_event(data: dict):
                     # Check for Admin / Customer AI Control Commands
                     clean_cmd = combined_text.strip().lower()
                     if clean_cmd in ["#ai", "[ai]", "start ai", "এআই চালু", "এআই অন"]:
-                        from app.database import remove_muted_number
-                        remove_muted_number(sender_phone)
+                        enable_conversation_ai(sender_id=sender_phone, workspace_id=workspace_id)
                         send_whatsapp_message(sender_phone, "জি স্যার, আপনার জন্য এআই অটোমেশন পুনরায় চালু করা হয়েছে।", phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id)
                         continue
                     elif clean_cmd in ["#pause", "[pause]", "[stop]", "এআই বন্ধ", "এআই অফ", "আমি কথা বলছি"]:
-                        from app.database import add_muted_number
-                        add_muted_number(sender_phone)
+                        set_admin_takeover(sender_id=sender_phone, workspace_id=workspace_id, takeover_by="customer_command", takeover_reason="command_pause")
                         send_whatsapp_message(sender_phone, "জি স্যার, এআই অটোমেশন সাময়িকভাবে বন্ধ (Paused) করা হয়েছে। আপনি সরাসরি কথা বলতে পারবেন।", phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id)
                         continue
 
-                    # Check if AI Master Switch or Per-Customer Takeover is active
-                    if not is_conversation_ai_active(sender_id=sender_phone):
-                        print(f"[WhatsApp]: AI is PAUSED for customer {masked_sender} on account {effective_phone_id} (Human Takeover). AI will stay silent.")
+                    # Check if AI Master Switch or Per-Customer Takeover is active (Strict Zero-Reply Check)
+                    if not is_conversation_ai_active(sender_id=sender_phone, workspace_id=workspace_id):
+                        print(f"[WhatsApp]: AI is PAUSED / TAKEN OVER for customer {masked_sender} on account {effective_phone_id}. AI will stay silent.")
                         continue
 
                     # Stale Message Filter: If older than 5 minutes, do NOT send retroactive AI replies
@@ -978,7 +979,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                         continue
 
                     # Fetch conversation history scoped strictly to Workspace
-                    history = get_conversation_history("whatsapp", sender_phone, limit=8, page_id=page_id, workspace_id=workspace_id)
+                    history = get_conversation_history("whatsapp", sender_phone, limit=12, page_id=page_id, workspace_id=workspace_id)
                     
                     # Load workspace specific data and log
                     training_rules = get_active_training_rules(workspace_id=workspace_id)
@@ -1001,6 +1002,11 @@ async def handle_whatsapp_webhook_event(data: dict):
                         workspace_id=workspace_id,
                         page_id=page_id
                     )
+
+                    # Pre-Send Safety Guard: Double-check takeover state before delivering to customer
+                    if not is_conversation_ai_active(sender_id=sender_phone, workspace_id=workspace_id):
+                        print(f"[WhatsApp Pre-Send Guard]: Blocked AI message to {masked_sender} due to human takeover.")
+                        continue
 
                     reply_text = ai_result.get("reply_text", "")
                     

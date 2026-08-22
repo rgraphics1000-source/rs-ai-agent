@@ -84,10 +84,21 @@ def record_conversation_message(
         conn = get_db_connection()
         cursor = conn.cursor()
         ws_id = int(workspace_id or 1)
+        normalized_sender_type = str(sender_type or "user").strip().lower()
+        if normalized_sender_type in ["admin", "owner", "main_admin", "seller"]:
+            normalized_sender_type = "admin"
+        elif normalized_sender_type in ["bot", "assistant", "ai"]:
+            normalized_sender_type = "bot"
+        elif normalized_sender_type in ["system"]:
+            normalized_sender_type = "system"
+        else:
+            normalized_sender_type = "user"
+            
+        is_admin_msg = (normalized_sender_type == "admin")
         
         # Check if conversation exists scoped to this workspace
         cursor.execute("""
-            SELECT id, customer_name, page_id, workspace_id
+            SELECT id, customer_name, page_id, workspace_id, conversation_version
             FROM conversations
             WHERE sender_id = ? AND workspace_id = ?
             ORDER BY id DESC LIMIT 1
@@ -99,16 +110,36 @@ def record_conversation_message(
         if row:
             conv_id = row["id"]
             cust_name = row["customer_name"] if row["customer_name"] and row["customer_name"] not in ["Facebook User", "Customer", ""] else customer_name
-            cursor.execute("""
-                UPDATE conversations 
-                SET last_message = ?, customer_name = ?, page_id = COALESCE(NULLIF(?, ''), page_id), updated_at = CURRENT_TIMESTAMP 
-                WHERE id = ?
-            """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
+            if is_admin_msg:
+                cursor.execute("""
+                    UPDATE conversations 
+                    SET last_message = ?, customer_name = ?, page_id = COALESCE(NULLIF(?, ''), page_id),
+                        admin_takeover = 1, human_takeover = 1, ai_enabled = 0,
+                        takeover_at = CURRENT_TIMESTAMP, takeover_by = 'main_admin', takeover_reason = 'human_admin_message',
+                        conversation_version = COALESCE(conversation_version, 1) + 1,
+                        updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = ?
+                """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
+            else:
+                cursor.execute("""
+                    UPDATE conversations 
+                    SET last_message = ?, customer_name = ?, page_id = COALESCE(NULLIF(?, ''), page_id), updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = ?
+                """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
         else:
-            cursor.execute("""
-                INSERT INTO conversations (workspace_id, channel, sender_id, customer_name, last_message, page_id)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (ws_id, channel, sender_id, customer_name, preview_text, str(page_id) if page_id else ""))
+            if is_admin_msg:
+                cursor.execute("""
+                    INSERT INTO conversations (
+                        workspace_id, channel, sender_id, customer_name, last_message, page_id,
+                        admin_takeover, human_takeover, ai_enabled, takeover_at, takeover_by, takeover_reason, conversation_version
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 1, 1, 0, CURRENT_TIMESTAMP, 'main_admin', 'human_admin_message', 2)
+                """, (ws_id, channel, sender_id, customer_name, preview_text, str(page_id) if page_id else ""))
+            else:
+                cursor.execute("""
+                    INSERT INTO conversations (workspace_id, channel, sender_id, customer_name, last_message, page_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (ws_id, channel, sender_id, customer_name, preview_text, str(page_id) if page_id else ""))
             conv_id = cursor.lastrowid
             
         # Insert message
@@ -116,9 +147,20 @@ def record_conversation_message(
         cursor.execute("""
             INSERT INTO messages (conversation_id, sender_type, message_type, content, media_url)
             VALUES (?, ?, ?, ?, ?)
-        """, (conv_id, sender_type, msg_type, content, media_url))
+        """, (conv_id, normalized_sender_type, msg_type, content, media_url))
         
         conn.commit()
+        
+        # If admin message, also add to muted numbers & cancel pending batches
+        if is_admin_msg and sender_id:
+            from app.database import add_muted_number
+            add_muted_number(str(sender_id))
+            try:
+                from app.channels.debouncer import message_debouncer
+                message_debouncer.cancel_batch(channel, ws_id, sender_id)
+            except Exception:
+                pass
+                
         return conv_id
     except Exception as e:
         print(f"[Omnichat Record Error]: {e}")

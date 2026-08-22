@@ -582,9 +582,9 @@ async def handle_facebook_webhook_event(data: dict):
                     if is_echo or (sender_id == page_id) or (get_connected_page(sender_id) is not None):
                         actual_cust_id = recipient_id if (sender_id == page_id or get_connected_page(sender_id) is not None) else sender_id
                         echo_text = msg.get("text", "")
-                        from app.database import add_muted_number
+                        from app.database import set_admin_takeover
+                        set_admin_takeover(sender_id=actual_cust_id, workspace_id=workspace_id, takeover_by="page_admin_echo", takeover_reason="human_admin_message")
                         record_conversation_message("facebook", actual_cust_id, "Customer", "admin", echo_text, page_id=page_id, workspace_id=workspace_id)
-                        add_muted_number(actual_cust_id)
                         print(f"[Facebook Human Takeover AUTO-ACTIVATED]: Page Owner/Admin replied to customer {actual_cust_id}: '{echo_text[:30]}'. AI paused for this conversation.")
                         continue
 
@@ -633,23 +633,23 @@ async def handle_facebook_webhook_event(data: dict):
                     # Check for Admin / Customer AI Control Commands
                     clean_cmd = msg_text.strip().lower()
                     if clean_cmd in ["#ai", "[ai]", "start ai", "এআই চালু", "এআই অন"]:
-                        from app.database import remove_muted_number
-                        remove_muted_number(sender_id)
+                        from app.database import enable_conversation_ai
+                        enable_conversation_ai(sender_id=sender_id, workspace_id=workspace_id)
                         send_fb_text_message(sender_id, "জি স্যার, আপনার জন্য এআই অটোমেশন পুনরায় চালু করা হয়েছে।", page_token=page_token, page_id=page_id)
                         continue
                     elif clean_cmd in ["#pause", "[pause]", "[stop]", "এআই বন্ধ", "এআই অফ", "আমি কথা বলছি"]:
-                        from app.database import add_muted_number
-                        add_muted_number(sender_id)
+                        from app.database import set_admin_takeover
+                        set_admin_takeover(sender_id=sender_id, workspace_id=workspace_id, takeover_by="customer_command", takeover_reason="command_pause")
                         send_fb_text_message(sender_id, "জি স্যার, এআই অটোমেশন সাময়িকভাবে বন্ধ (Paused) করা হয়েছে। আপনি সরাসরি কথা বলতে পারবেন।", page_token=page_token, page_id=page_id)
                         continue
 
                     # Check if AI Master Switch or Per-Customer Takeover is active
-                    if not is_conversation_ai_active(sender_id=sender_id):
+                    if not is_conversation_ai_active(sender_id=sender_id, workspace_id=workspace_id):
                         print(f"[Facebook Messenger]: AI is PAUSED for customer {sender_id} on Page {page_name} (Human Takeover). AI will stay silent.")
                         continue
 
                     # Fetch conversation history scoped strictly to this Workspace
-                    history = get_conversation_history("facebook", sender_id, limit=8, page_id=page_id, workspace_id=workspace_id)
+                    history = get_conversation_history("facebook", sender_id, limit=12, page_id=page_id, workspace_id=workspace_id)
 
                     # Process with Gemini AI Brain with Workspace-isolated context
                     ai_result = await process_customer_message(
@@ -666,6 +666,11 @@ async def handle_facebook_webhook_event(data: dict):
                         workspace_id=workspace_id,
                         page_id=page_id
                     )
+
+                    # Pre-Send Safety Guard: Double-check takeover state before delivering to user
+                    if not is_conversation_ai_active(sender_id=sender_id, workspace_id=workspace_id):
+                        print(f"[Facebook Pre-Send Guard]: Blocked AI message to {sender_id} due to human takeover.")
+                        continue
 
                     reply_text = ai_result.get("reply_text", "")
                     if reply_text:
