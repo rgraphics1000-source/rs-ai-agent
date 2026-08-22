@@ -15,13 +15,15 @@ if hasattr(sys.stdout, "reconfigure"):
 import hashlib
 from app.config import settings
 from app.database import (
-    get_db_connection, get_setting, is_conversation_ai_active,
+    get_db_connection, get_setting, is_conversation_ai_active, get_conversation_state,
     get_connected_page, get_all_connected_pages, get_page_ai_config,
     ensure_facebook_page_consistency,
     is_webhook_event_processed, mark_webhook_event_processed,
-    claim_media_delivery, update_media_delivery_status
+    claim_media_delivery, update_media_delivery_status,
+    record_outbound_ai_message, is_outbound_ai_message, claim_webhook_event
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
+from app.channels.debouncer import message_debouncer, PendingBatch
 from app.ai_agent.gemini_brain import process_customer_message, detect_customer_gender_title
 
 GRAPH_API_URL = "https://graph.facebook.com/v19.0"
@@ -203,6 +205,13 @@ def send_fb_text_message(recipient_id: str, text: str, page_token: str = None, p
     try:
         r = requests.post(url, params=params, json=payload, timeout=10)
         status_ok = r.status_code == 200
+        if status_ok:
+            try:
+                out_mid = r.json().get("message_id")
+                if out_mid:
+                    record_outbound_ai_message("facebook", out_mid, workspace_id=1, page_id_or_phone_id=page_id)
+            except Exception:
+                pass
         print(f"[Facebook Send Result]: HTTP {r.status_code}, Body: {r.text}")
         return status_ok
     except Exception as e:
@@ -533,8 +542,152 @@ def send_fb_private_reply_to_comment(comment_id: str, message: str, page_token: 
         print(f"[Facebook Private Reply Exception]: {e}")
         return False
 
+async def process_facebook_batch(batch: PendingBatch):
+    """
+    Executes exactly ONE AI generation turn and delivers ONE response for a finalized Facebook Messenger message batch.
+    """
+    sender_id = batch.sender_id
+    workspace_id = batch.workspace_id
+    page_id = batch.page_id
+    customer_name = batch.customer_name
+    page_token = batch.effective_token or get_fb_token(page_id)
+
+    text_parts = [m.get("text", "") for m in batch.messages if m.get("text")]
+    combined_text = "\n".join([t for t in text_parts if t.strip()]).strip()
+
+    images = [m for m in batch.messages if m.get("image_bytes")]
+    audios = [m for m in batch.messages if m.get("audio_bytes")]
+
+    if len(images) > 1 and not combined_text:
+        combined_text = f"কাস্টমার একসাথে {len(images)}টি ছবি পাঠিয়েছেন।"
+    elif len(images) > 1 and combined_text:
+        combined_text = f"{combined_text}\n(কাস্টমার একসাথে {len(images)}টি ছবি পাঠিয়েছেন)"
+
+    image_bytes = images[0].get("image_bytes") if images else None
+    image_mime = images[0].get("image_mime", "image/jpeg") if images else "image/jpeg"
+    audio_bytes = audios[0].get("audio_bytes") if audios else None
+    audio_mime = audios[0].get("audio_mime", "audio/mp4") if audios else "audio/mp4"
+
+    if not combined_text and not image_bytes and not audio_bytes:
+        return
+
+    # Fetch conversation history scoped strictly to this Workspace
+    history = get_conversation_history("facebook", sender_id, limit=12, page_id=page_id, workspace_id=workspace_id)
+
+    # Process with Gemini AI Brain with Workspace-isolated context
+    ai_result = await process_customer_message(
+        message_text=combined_text,
+        image_bytes=image_bytes,
+        image_mime=image_mime,
+        audio_bytes=audio_bytes,
+        audio_mime=audio_mime,
+        conversation_history=history,
+        channel="facebook",
+        sender_id=sender_id,
+        customer_name=customer_name,
+        generate_voice_reply=bool(audio_bytes),
+        workspace_id=workspace_id,
+        page_id=page_id
+    )
+
+    # Pre-Send Safety Guard: Double-check takeover state & version before delivering to user
+    state = get_conversation_state(sender_id=sender_id, workspace_id=workspace_id)
+    if state.get("admin_takeover") or not state.get("ai_enabled") or state.get("human_takeover", 0) == 1 or state.get("conversation_version", 1) != batch.initial_version:
+        print(f"[Facebook Pre-Send Guard]: Blocked AI message to {sender_id} due to human takeover or stale version. Discarding response.")
+        return
+
+    reply_text = ai_result.get("reply_text", "")
+    if reply_text:
+        print(f"[Facebook Messenger Replying on Workspace {workspace_id}]: '{reply_text[:60]}...' to {sender_id}")
+        send_ok = send_fb_text_message(sender_id, reply_text, page_token=page_token, page_id=page_id)
+        if send_ok:
+            record_conversation_message(
+                "facebook", sender_id, customer_name, "bot", reply_text,
+                page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
+            )
+            print(f"[OUTBOUND] message_id={batch.batch_id} conversation_id={batch.conversation_id}")
+
+    # Send all matched product images as rich media attachments with media-level idempotency
+    matched_images = ai_result.get("matched_images", [])
+    base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
+    fb_img_sent_count = 0
+
+    for img_path in matched_images:
+        if not img_path:
+            continue
+        full_img_url = img_path if img_path.startswith("http") else f"{base_server_url}{img_path}"
+        img_sent = send_fb_media_message(
+            recipient_id=sender_id,
+            media_type="image",
+            media_url=img_path,
+            page_token=page_token,
+            page_id=page_id,
+            workspace_id=workspace_id,
+            batch_id=batch.batch_id
+        )
+        if img_sent:
+            fb_img_sent_count += 1
+            record_conversation_message(
+                "facebook", sender_id, customer_name, "bot", "", full_img_url,
+                page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
+            )
+        await asyncio.sleep(0.2)
+
+    # Send concluding follow-up message after all photos are delivered
+    if fb_img_sent_count > 0 and sender_id:
+        honorific = detect_customer_gender_title(customer_name)
+        if any("pakage" in str(p).lower() or "pkg" in str(p).lower() for p in matched_images):
+            fb_followup = f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+        else:
+            fb_followup = f"আপনার কত পিস প্রয়োজন জানাবেন {honorific}।"
+
+        await asyncio.sleep(0.4)
+        send_fb_text_message(
+            sender_id, fb_followup,
+            page_token=page_token, page_id=page_id
+        )
+        record_conversation_message(
+            "facebook", sender_id, customer_name, "bot", fb_followup,
+            page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
+        )
+
+    # Send video demo if requested
+    matched_video = ai_result.get("video_url", "")
+    if matched_video:
+        vid_sent = send_fb_video_message(
+            recipient_id=sender_id,
+            video_url=matched_video,
+            page_token=page_token,
+            page_id=page_id,
+            workspace_id=workspace_id,
+            batch_id=batch.batch_id
+        )
+        if vid_sent:
+            record_conversation_message(
+                "facebook", sender_id, customer_name, "bot", "[Video Demo]", matched_video,
+                page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
+            )
+
+    # Send voice note if requested / generated
+    voice_url = ai_result.get("voice_url", "")
+    if voice_url:
+        voice_sent = send_fb_audio_message(
+            recipient_id=sender_id,
+            audio_url=voice_url,
+            page_token=page_token,
+            page_id=page_id,
+            workspace_id=workspace_id,
+            batch_id=batch.batch_id
+        )
+        if voice_sent:
+            record_conversation_message(
+                "facebook", sender_id, customer_name, "bot", "[Voice Note]", voice_url,
+                page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
+            )
+
+
 async def handle_facebook_webhook_event(data: dict):
-    """Processes incoming Facebook Messenger messages and post comments across multiple connected Pages with strict workspace isolation."""
+    """Processes incoming Facebook Messenger messages and post comments across multiple connected Pages with strict workspace isolation and debounce."""
     try:
         entries = data.get("entry", [])
         for entry in entries:
@@ -578,24 +731,45 @@ async def handle_facebook_webhook_event(data: dict):
                     page_token = page_conn.get("page_access_token")
                     page_name = page_conn.get("page_name", "Facebook Page")
 
-                    # Detect if message was sent by the Page Owner / Human Admin
+                    msg_id = str(msg.get("mid", "")).strip()
+                    app_id = msg.get("app_id")
+
+                    # Detect if message was an echo or sent by the Page
                     if is_echo or (sender_id == page_id) or (get_connected_page(sender_id) is not None):
                         actual_cust_id = recipient_id if (sender_id == page_id or get_connected_page(sender_id) is not None) else sender_id
+                        
+                        # Distinguish AI bot outgoing echo vs Human Admin takeover
+                        is_our_app = bool(app_id and str(app_id).strip() == str(settings.META_APP_ID).strip())
+                        is_ai_outbound = is_outbound_ai_message("facebook", msg_id) if msg_id else False
+
+                        if is_our_app or is_ai_outbound:
+                            print(f"[OUTBOUND_ECHO] ignored=true mid={msg_id} recipient={actual_cust_id}")
+                            continue
+
+                        # Page Owner / Human Admin typed a message manually in Meta Business Suite / Page Inbox
                         echo_text = msg.get("text", "")
                         from app.database import set_admin_takeover
                         set_admin_takeover(sender_id=actual_cust_id, workspace_id=workspace_id, takeover_by="page_admin_echo", takeover_reason="human_admin_message")
-                        record_conversation_message("facebook", actual_cust_id, "Customer", "admin", echo_text, page_id=page_id, workspace_id=workspace_id)
+                        record_conversation_message(
+                            "facebook", actual_cust_id, "Customer", "admin", echo_text,
+                            page_id=page_id, workspace_id=workspace_id, external_message_id=msg_id,
+                            direction="OUTBOUND", sender_role="ADMIN"
+                        )
+                        message_debouncer.cancel_batch("facebook", workspace_id, actual_cust_id)
                         print(f"[Facebook Human Takeover AUTO-ACTIVATED]: Page Owner/Admin replied to customer {actual_cust_id}: '{echo_text[:30]}'. AI paused for this conversation.")
                         continue
 
-                    print(f"[Facebook Routing] recipient_id={target_page_id} matched_page_id={page_id} workspace_id={workspace_id} page_name={page_name}")
+                    # Inbound Customer Message Check
+                    if is_outbound_ai_message("facebook", msg_id):
+                        print(f"[OUTBOUND_ECHO] ignored=true mid={msg_id} sender_id={sender_id}")
+                        continue
 
-                    msg_id = msg.get("mid")
                     if msg_id:
-                        if is_webhook_event_processed("facebook", msg_id):
-                            print(f"[Facebook Webhook DUPLICATE] event_id={msg_id} action=ignored_already_processed")
+                        if not claim_webhook_event("facebook", msg_id, workspace_id=workspace_id, page_id_or_phone_id=page_id, direction="INBOUND", sender_role="CUSTOMER"):
+                            print(f"[DEDUP] event_id={msg_id} already_processed=true")
                             continue
-                        mark_webhook_event_processed("facebook", msg_id, workspace_id=workspace_id, page_id_or_phone_id=page_id)
+
+                    print(f"[INBOUND] event_id={msg_id} external_message_id={msg_id} conversation_id=facebook_{sender_id} sender_id={sender_id} direction=INBOUND sender_role=CUSTOMER")
 
                     msg_text = msg.get("text", "")
                     attachments = msg.get("attachments", [])
@@ -628,7 +802,11 @@ async def handle_facebook_webhook_event(data: dict):
 
                     # Fetch customer name and record customer message scoped to this Workspace & Page
                     customer_name = get_fb_user_profile(sender_id, page_token=page_token, page_id=page_id)
-                    record_conversation_message("facebook", sender_id, customer_name, "user", msg_text, page_id=page_id, workspace_id=workspace_id)
+                    record_conversation_message(
+                        "facebook", sender_id, customer_name, "user", msg_text,
+                        page_id=page_id, workspace_id=workspace_id, external_message_id=msg_id,
+                        direction="INBOUND", sender_role="CUSTOMER"
+                    )
 
                     # Check for Admin / Customer AI Control Commands
                     clean_cmd = msg_text.strip().lower()
@@ -648,103 +826,23 @@ async def handle_facebook_webhook_event(data: dict):
                         print(f"[Facebook Messenger]: AI is PAUSED for customer {sender_id} on Page {page_name} (Human Takeover). AI will stay silent.")
                         continue
 
-                    # Fetch conversation history scoped strictly to this Workspace
-                    history = get_conversation_history("facebook", sender_id, limit=12, page_id=page_id, workspace_id=workspace_id)
-
-                    # Process with Gemini AI Brain with Workspace-isolated context
-                    ai_result = await process_customer_message(
-                        message_text=msg_text,
+                    # Enqueue into 3-Second Mandatory Debouncer Gate
+                    await message_debouncer.add_message(
+                        channel="facebook",
+                        workspace_id=workspace_id,
+                        sender_id=sender_id,
+                        customer_name=customer_name,
+                        msg_id=msg_id or "",
+                        text=msg_text,
                         image_bytes=image_bytes,
                         image_mime=image_mime,
                         audio_bytes=audio_bytes,
                         audio_mime=audio_mime,
-                        conversation_history=history,
-                        channel="facebook",
-                        sender_id=sender_id,
-                        customer_name=customer_name,
-                        generate_voice_reply=bool(audio_bytes),
-                        workspace_id=workspace_id,
-                        page_id=page_id
+                        page_id=page_id,
+                        effective_phone_id=page_id,
+                        effective_token=page_token,
+                        callback=process_facebook_batch
                     )
-
-                    # Pre-Send Safety Guard: Double-check takeover state before delivering to user
-                    if not is_conversation_ai_active(sender_id=sender_id, workspace_id=workspace_id):
-                        print(f"[Facebook Pre-Send Guard]: Blocked AI message to {sender_id} due to human takeover.")
-                        continue
-
-                    reply_text = ai_result.get("reply_text", "")
-                    if reply_text:
-                        print(f"[Facebook Messenger Replying on Workspace {workspace_id} ('{page_name}')]: '{reply_text[:60]}...' to {sender_id}")
-                        send_ok = send_fb_text_message(sender_id, reply_text, page_token=page_token, page_id=page_id)
-                        if send_ok:
-                            record_conversation_message("facebook", sender_id, customer_name, "bot", reply_text, page_id=page_id, workspace_id=workspace_id)
-
-                    # Send all matched product images as rich media attachments with media-level idempotency
-                    matched_images = ai_result.get("matched_images", [])
-                    base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
-                    batch_id = f"fb_batch_{sender_id}_{msg_id or int(time.time()*1000)}"
-                    fb_img_sent_count = 0
-
-                    for img_path in matched_images:
-                        if not img_path:
-                            continue
-                        full_img_url = img_path if img_path.startswith("http") else f"{base_server_url}{img_path}"
-                        img_sent = send_fb_media_message(
-                            recipient_id=sender_id,
-                            media_type="image",
-                            media_url=img_path,
-                            page_token=page_token,
-                            page_id=page_id,
-                            workspace_id=workspace_id,
-                            batch_id=batch_id
-                        )
-                        if img_sent:
-                            fb_img_sent_count += 1
-                            record_conversation_message("facebook", sender_id, customer_name, "bot", "", full_img_url, page_id=page_id, workspace_id=workspace_id)
-                        await asyncio.sleep(0.2)
-
-                    # Send concluding follow-up message after all photos are delivered
-                    if fb_img_sent_count > 0 and sender_id:
-                        honorific = detect_customer_gender_title(customer_name)
-                        if any("pakage" in str(p).lower() or "pkg" in str(p).lower() for p in matched_images):
-                            fb_followup = f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
-                        else:
-                            fb_followup = f"আপনার কত পিস প্রয়োজন জানাবেন {honorific}।"
-
-                        await asyncio.sleep(0.4)
-                        send_fb_message(
-                            sender_id, fb_followup,
-                            page_token=page_token, page_id=page_id, workspace_id=workspace_id
-                        )
-                        record_conversation_message("facebook", sender_id, customer_name, "bot", fb_followup, page_id=page_id, workspace_id=workspace_id)
-
-                    # Send video demo if requested
-                    matched_video = ai_result.get("video_url", "")
-                    if matched_video:
-                        vid_sent = send_fb_video_message(
-                            recipient_id=sender_id,
-                            video_url=matched_video,
-                            page_token=page_token,
-                            page_id=page_id,
-                            workspace_id=workspace_id,
-                            batch_id=batch_id
-                        )
-                        if vid_sent:
-                            record_conversation_message("facebook", sender_id, customer_name, "bot", "[Video Demo]", matched_video, page_id=page_id, workspace_id=workspace_id)
-
-                    # Send voice note if requested / generated
-                    voice_url = ai_result.get("voice_url", "")
-                    if voice_url:
-                        voice_sent = send_fb_audio_message(
-                            recipient_id=sender_id,
-                            audio_url=voice_url,
-                            page_token=page_token,
-                            page_id=page_id,
-                            workspace_id=workspace_id,
-                            batch_id=batch_id
-                        )
-                        if voice_sent:
-                            record_conversation_message("facebook", sender_id, customer_name, "bot", "[Voice Note]", voice_url, page_id=page_id, workspace_id=workspace_id)
 
             # 2. Handle Feed Comments (Auto Comment Reply & Private Inbox Message)
             if "changes" in entry:

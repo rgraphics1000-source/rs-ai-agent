@@ -347,7 +347,11 @@ class TestPreDeploymentAuditAToK(unittest.TestCase):
                     }]
                 }]
             }
-            asyncio.run(handle_whatsapp_webhook_event(payload))
+            from app.channels.debouncer import message_debouncer
+            async def run_h():
+                await handle_whatsapp_webhook_event(payload)
+                await message_debouncer.flush("whatsapp", 1, self.wa_cust)
+            asyncio.run(run_h())
             self.assertEqual(mock_send.call_count, 1)
         print("[ITEM H PASSED] Explicit AI Re-enablement activated AI for future incoming messages.")
 

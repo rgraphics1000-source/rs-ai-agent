@@ -586,7 +586,7 @@ async def process_customer_message(
         if conversation_history:
             history_text = "[পূর্ববর্তী চ্যাট হিস্ট্রি - এটি সম্পূর্ণ মনে রেখে কথা বলবে]:\n"
             for msg in conversation_history[-15:]:
-                s_val = str(msg.get("sender") or msg.get("sender_type") or msg.get("role") or "").lower()
+                s_val = str(msg.get("sender_role") or msg.get("sender") or msg.get("sender_type") or msg.get("role") or "").lower()
                 if s_val in ("admin", "owner", "main_admin", "seller"):
                     role_tag = "মূল অ্যাডমিন / শপ ওনার (ADMIN)"
                 elif s_val in ("bot", "assistant", "ai"):

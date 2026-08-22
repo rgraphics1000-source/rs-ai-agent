@@ -41,7 +41,8 @@ def get_conversation_messages(conversation_id: int) -> list:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, conversation_id, sender_type, message_type, content, media_url, created_at
+            SELECT id, conversation_id, sender_type, message_type, content, media_url,
+                   direction, sender_role, source, external_message_id, turn_version, created_at
             FROM messages
             WHERE conversation_id = ?
             ORDER BY id ASC
@@ -76,7 +77,11 @@ def record_conversation_message(
     content: str = "",
     media_url: str = "",
     page_id: str = "",
-    workspace_id: int = 1
+    workspace_id: int = 1,
+    external_message_id: str = "",
+    direction: str = None,
+    sender_role: str = None,
+    source: str = None
 ):
     """Saves incoming and outgoing messages to conversations & messages table scoped strictly to workspace."""
     conn = None
@@ -85,20 +90,31 @@ def record_conversation_message(
         cursor = conn.cursor()
         ws_id = int(workspace_id or 1)
         normalized_sender_type = str(sender_type or "user").strip().lower()
+        
         if normalized_sender_type in ["admin", "owner", "main_admin", "seller"]:
             normalized_sender_type = "admin"
+            actual_sender_role = sender_role or "ADMIN"
+            actual_direction = direction or "OUTBOUND"
         elif normalized_sender_type in ["bot", "assistant", "ai"]:
             normalized_sender_type = "bot"
+            actual_sender_role = sender_role or "AI"
+            actual_direction = direction or "OUTBOUND"
         elif normalized_sender_type in ["system"]:
             normalized_sender_type = "system"
+            actual_sender_role = sender_role or "SYSTEM"
+            actual_direction = direction or "OUTBOUND"
         else:
             normalized_sender_type = "user"
+            actual_sender_role = sender_role or "CUSTOMER"
+            actual_direction = direction or "INBOUND"
             
-        is_admin_msg = (normalized_sender_type == "admin")
+        is_admin_msg = (actual_sender_role == "ADMIN" or normalized_sender_type == "admin")
+        is_customer_msg = (actual_sender_role == "CUSTOMER" and actual_direction == "INBOUND")
+        actual_source = source or channel.upper()
         
         # Check if conversation exists scoped to this workspace
         cursor.execute("""
-            SELECT id, customer_name, page_id, workspace_id, conversation_version
+            SELECT id, customer_name, page_id, workspace_id, conversation_version, customer_turn_version
             FROM conversations
             WHERE sender_id = ? AND workspace_id = ?
             ORDER BY id DESC LIMIT 1
@@ -106,6 +122,7 @@ def record_conversation_message(
         row = cursor.fetchone()
         
         preview_text = content if content else ("[Image]" if media_url else "")
+        current_turn_version = 1
 
         if row:
             conv_id = row["id"]
@@ -120,34 +137,65 @@ def record_conversation_message(
                         updated_at = CURRENT_TIMESTAMP 
                     WHERE id = ?
                 """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
+                current_turn_version = row["customer_turn_version"] or 1
+            elif is_customer_msg:
+                cursor.execute("""
+                    UPDATE conversations 
+                    SET last_message = ?, customer_name = ?, page_id = COALESCE(NULLIF(?, ''), page_id),
+                        customer_turn_version = COALESCE(customer_turn_version, 1) + 1,
+                        updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = ?
+                """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
+                current_turn_version = (row["customer_turn_version"] or 1) + 1
             else:
                 cursor.execute("""
                     UPDATE conversations 
                     SET last_message = ?, customer_name = ?, page_id = COALESCE(NULLIF(?, ''), page_id), updated_at = CURRENT_TIMESTAMP 
                     WHERE id = ?
                 """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
+                current_turn_version = row["customer_turn_version"] or 1
         else:
             if is_admin_msg:
                 cursor.execute("""
                     INSERT INTO conversations (
                         workspace_id, channel, sender_id, customer_name, last_message, page_id,
-                        admin_takeover, human_takeover, ai_enabled, takeover_at, takeover_by, takeover_reason, conversation_version
+                        admin_takeover, human_takeover, ai_enabled, takeover_at, takeover_by, takeover_reason, conversation_version,
+                        customer_turn_version, last_responded_turn_version
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, 1, 1, 0, CURRENT_TIMESTAMP, 'main_admin', 'human_admin_message', 2)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, 1, 0, CURRENT_TIMESTAMP, 'main_admin', 'human_admin_message', 2, 1, 0)
                 """, (ws_id, channel, sender_id, customer_name, preview_text, str(page_id) if page_id else ""))
+                current_turn_version = 1
+            elif is_customer_msg:
+                cursor.execute("""
+                    INSERT INTO conversations (
+                        workspace_id, channel, sender_id, customer_name, last_message, page_id,
+                        customer_turn_version, last_responded_turn_version
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 1, 0)
+                """, (ws_id, channel, sender_id, customer_name, preview_text, str(page_id) if page_id else ""))
+                current_turn_version = 1
             else:
                 cursor.execute("""
                     INSERT INTO conversations (workspace_id, channel, sender_id, customer_name, last_message, page_id)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (ws_id, channel, sender_id, customer_name, preview_text, str(page_id) if page_id else ""))
+                current_turn_version = 1
             conv_id = cursor.lastrowid
             
-        # Insert message
+        # Insert message with full role, direction, source, and processing status
         msg_type = "image" if media_url else "text"
+        proc_status = "RECEIVED" if is_customer_msg else "PROCESSED"
         cursor.execute("""
-            INSERT INTO messages (conversation_id, sender_type, message_type, content, media_url)
-            VALUES (?, ?, ?, ?, ?)
-        """, (conv_id, normalized_sender_type, msg_type, content, media_url))
+            INSERT INTO messages (
+                conversation_id, sender_type, message_type, content, media_url,
+                sender_role, direction, source, processing_status, external_message_id, turn_version
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            conv_id, normalized_sender_type, msg_type, content, media_url,
+            actual_sender_role, actual_direction, actual_source, proc_status,
+            str(external_message_id or ""), current_turn_version
+        ))
         
         conn.commit()
         
@@ -183,7 +231,8 @@ def get_conversation_history(channel: str = "all", sender_id: str = "", limit: i
         ws_id = int(workspace_id or 1)
         
         cursor.execute("""
-            SELECT m.sender_type, m.content, m.media_url, m.created_at
+            SELECT m.sender_type, m.content, m.media_url, m.created_at,
+                   m.direction, m.sender_role, m.source, m.external_message_id, m.turn_version
             FROM messages m
             JOIN conversations c ON m.conversation_id = c.id
             WHERE c.sender_id = ? AND c.workspace_id = ?

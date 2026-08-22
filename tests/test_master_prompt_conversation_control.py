@@ -411,12 +411,19 @@ class TestMasterPromptConversationControl(unittest.TestCase):
                     }]
                 }]
             }
+            from app.channels.debouncer import message_debouncer
             # First delivery
-            asyncio.run(handle_whatsapp_webhook_event(payload))
+            async def run_d1():
+                await handle_whatsapp_webhook_event(payload)
+                await message_debouncer.flush("whatsapp", 1, self.cust_a)
+            asyncio.run(run_d1())
             self.assertEqual(mock_send.call_count, 1)
 
             # Duplicate delivery (same message ID)
-            asyncio.run(handle_whatsapp_webhook_event(payload))
+            async def run_d2():
+                await handle_whatsapp_webhook_event(payload)
+                await message_debouncer.flush("whatsapp", 1, self.cust_a)
+            asyncio.run(run_d2())
             self.assertEqual(mock_send.call_count, 1, "Duplicate webhook event must be ignored.")
         print("✓ Test 14 Passed: Duplicate webhook event ignored by idempotency filter.")
 

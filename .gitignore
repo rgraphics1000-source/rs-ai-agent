@@ -15,3 +15,4 @@ android_app/**/build/
 android_app/local.properties
 rs_ai_backup_*.db
 ecommerce.db
+*.apk

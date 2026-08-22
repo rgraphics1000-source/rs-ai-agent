@@ -25,8 +25,13 @@ def normalize_bd_mobile(phone: str) -> str:
     return digits
 
 def get_db_connection():
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=30000;")
+    except Exception:
+        pass
     return conn
 
 def init_db():
@@ -542,11 +547,47 @@ def init_db():
             conn.commit()
         except Exception:
             pass
-    try:
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gforms_mobile ON generated_forms(workspace_id, institution_mobile)")
-        conn.commit()
-    except Exception:
-        pass
+    # Auto-migration columns for messages
+    msg_cols = [
+        ("sender_role", "TEXT DEFAULT 'CUSTOMER'"),
+        ("direction", "TEXT DEFAULT 'INBOUND'"),
+        ("source", "TEXT DEFAULT 'WHATSAPP'"),
+        ("processing_status", "TEXT DEFAULT 'RECEIVED'"),
+        ("external_message_id", "TEXT"),
+        ("turn_version", "INTEGER DEFAULT 1")
+    ]
+    for col_name, col_type in msg_cols:
+        try:
+            cursor.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}")
+            conn.commit()
+        except Exception:
+            pass
+
+    # Auto-migration columns for conversations
+    conv_cols = [
+        ("customer_turn_version", "INTEGER DEFAULT 1"),
+        ("last_responded_turn_version", "INTEGER DEFAULT 0"),
+        ("is_generating", "INTEGER DEFAULT 0"),
+        ("generation_lock_at", "TIMESTAMP")
+    ]
+    for col_name, col_type in conv_cols:
+        try:
+            cursor.execute(f"ALTER TABLE conversations ADD COLUMN {col_name} {col_type}")
+            conn.commit()
+        except Exception:
+            pass
+
+    # Auto-migration columns for processed_webhook_events
+    pwe_cols = [
+        ("direction", "TEXT DEFAULT 'INBOUND'"),
+        ("sender_role", "TEXT DEFAULT 'CUSTOMER'")
+    ]
+    for col_name, col_type in pwe_cols:
+        try:
+            cursor.execute(f"ALTER TABLE processed_webhook_events ADD COLUMN {col_name} {col_type}")
+            conn.commit()
+        except Exception:
+            pass
 
     # Migrate conversations table if legacy single-column UNIQUE(sender_id) exists
     try:
@@ -2373,6 +2414,221 @@ def mark_webhook_event_processed(channel: str, event_id: str, workspace_id: int 
     except Exception as e:
         print(f"[DB mark_webhook_event_processed Error]: {e}")
         return False
+
+def record_outbound_ai_message(channel: str, message_id: str, workspace_id: int = 1, page_id_or_phone_id: str = "") -> bool:
+    """Records an outgoing AI message ID atomically so incoming echo webhooks are dropped immediately."""
+    if not message_id:
+        return False
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR IGNORE INTO processed_webhook_events (channel, event_id, workspace_id, page_id_or_phone_id, direction, sender_role)
+            VALUES (?, ?, ?, ?, 'OUTBOUND', 'AI')
+        """, (channel, str(message_id).strip(), int(workspace_id or 1), str(page_id_or_phone_id or "").strip()))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[DB record_outbound_ai_message Error]: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+def is_outbound_ai_message(channel: str, message_id: str) -> bool:
+    """Checks if an event/message ID was sent by our own AI or business account."""
+    if not message_id:
+        return False
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id FROM processed_webhook_events
+            WHERE channel = ? AND event_id = ? AND (direction = 'OUTBOUND' OR sender_role = 'AI')
+        """, (channel, str(message_id).strip()))
+        row = cursor.fetchone()
+        return row is not None
+    except Exception as e:
+        print(f"[DB is_outbound_ai_message Error]: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+def claim_webhook_event(channel: str, event_id: str, workspace_id: int = 1, page_id_or_phone_id: str = "", direction: str = "INBOUND", sender_role: str = "CUSTOMER") -> bool:
+    """
+    Atomically claims a webhook event ID. Returns True ONLY for the first worker that claims it.
+    Returns False if the event was already processed or claimed by another worker.
+    """
+    if not event_id:
+        return False
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO processed_webhook_events (channel, event_id, workspace_id, page_id_or_phone_id, direction, sender_role)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (channel, str(event_id).strip(), int(workspace_id or 1), str(page_id_or_phone_id or "").strip(), direction, sender_role))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    except Exception as e:
+        print(f"[DB claim_webhook_event Error]: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+def is_own_whatsapp_number(phone_or_id: str) -> bool:
+    """Determines if a phone number or ID belongs to our own business WhatsApp account."""
+    if not phone_or_id:
+        return False
+    clean = "".join(c for c in str(phone_or_id) if c.isdigit())
+    if not clean:
+        return False
+    known_own = {
+        "4184514263660680", "418451426636680",
+        "8801816504097", "01816504097", "1816504097"
+    }
+    if clean in known_own:
+        return True
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT phone_number_id, display_phone_number FROM whatsapp_accounts")
+        rows = cursor.fetchall()
+        for r in rows:
+            p_id = str(r["phone_number_id"] or "").strip()
+            d_num = "".join(c for c in str(r["display_phone_number"] or "") if c.isdigit())
+            if clean in (p_id, d_num) or (len(clean) >= 10 and (clean in d_num or d_num.endswith(clean))):
+                return True
+        cursor.execute("SELECT value FROM settings WHERE key IN ('whatsapp_phone_number_id', 'whatsapp_display_phone_number', 'shop_phone')")
+        s_rows = cursor.fetchall()
+        for sr in s_rows:
+            val = "".join(c for c in str(sr["value"] or "") if c.isdigit())
+            if val and (clean == val or (len(clean) >= 10 and clean.endswith(val[-10:]))):
+                return True
+    except Exception as e:
+        print(f"[DB is_own_whatsapp_number Error]: {e}")
+    finally:
+        if conn:
+            conn.close()
+    return False
+
+_ACTIVE_GENERATION_LOCKS = set()
+_GENERATION_LOCK_MUTEX = None
+
+def _get_generation_lock_mutex():
+    global _GENERATION_LOCK_MUTEX
+    if _GENERATION_LOCK_MUTEX is None:
+        import asyncio
+        _GENERATION_LOCK_MUTEX = asyncio.Lock()
+    return _GENERATION_LOCK_MUTEX
+
+async def acquire_generation_lock(conversation_id: str) -> bool:
+    """Acquires an exclusive in-memory generation lock for a conversation. Returns True if acquired, False if already generating."""
+    global _ACTIVE_GENERATION_LOCKS
+    if not conversation_id:
+        return False
+    mutex = _get_generation_lock_mutex()
+    async with mutex:
+        if conversation_id in _ACTIVE_GENERATION_LOCKS:
+            print(f"[GENERATION_BLOCKED] conversation_id={conversation_id} reason=already_generating")
+            return False
+        _ACTIVE_GENERATION_LOCKS.add(conversation_id)
+        return True
+
+async def release_generation_lock(conversation_id: str):
+    """Releases the exclusive generation lock for a conversation."""
+    global _ACTIVE_GENERATION_LOCKS
+    if not conversation_id:
+        return
+    mutex = _get_generation_lock_mutex()
+    async with mutex:
+        _ACTIVE_GENERATION_LOCKS.discard(conversation_id)
+
+def get_conversation_turn_versions(channel: str, sender_id: str, workspace_id: int = 1) -> dict:
+    """Retrieves customer_turn_version and last_responded_turn_version for a conversation."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COALESCE(customer_turn_version, 1) as customer_turn_version,
+                   COALESCE(last_responded_turn_version, 0) as last_responded_turn_version,
+                   COALESCE(conversation_version, 1) as conversation_version
+            FROM conversations
+            WHERE channel = ? AND sender_id = ? AND workspace_id = ?
+            ORDER BY id DESC LIMIT 1
+        """, (channel, str(sender_id), int(workspace_id or 1)))
+        row = cursor.fetchone()
+        if row:
+            return {
+                "customer_turn_version": row["customer_turn_version"],
+                "last_responded_turn_version": row["last_responded_turn_version"],
+                "conversation_version": row["conversation_version"]
+            }
+        return {"customer_turn_version": 1, "last_responded_turn_version": 0, "conversation_version": 1}
+    except Exception as e:
+        print(f"[DB get_conversation_turn_versions Error]: {e}")
+        return {"customer_turn_version": 1, "last_responded_turn_version": 0, "conversation_version": 1}
+    finally:
+        if conn:
+            conn.close()
+
+def increment_customer_turn_version(channel: str, sender_id: str, workspace_id: int = 1) -> int:
+    """Increments customer_turn_version when a genuine INBOUND CUSTOMER message is recorded."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE conversations
+            SET customer_turn_version = COALESCE(customer_turn_version, 1) + 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE channel = ? AND sender_id = ? AND workspace_id = ?
+        """, (channel, str(sender_id), int(workspace_id or 1)))
+        conn.commit()
+        cursor.execute("""
+            SELECT COALESCE(customer_turn_version, 1) as v
+            FROM conversations
+            WHERE channel = ? AND sender_id = ? AND workspace_id = ?
+            ORDER BY id DESC LIMIT 1
+        """, (channel, str(sender_id), int(workspace_id or 1)))
+        row = cursor.fetchone()
+        return row["v"] if row else 1
+    except Exception as e:
+        print(f"[DB increment_customer_turn_version Error]: {e}")
+        return 1
+    finally:
+        if conn:
+            conn.close()
+
+def mark_turn_responded(channel: str, sender_id: str, turn_version: int, workspace_id: int = 1) -> bool:
+    """Sets last_responded_turn_version to prevent repeated generation on the same customer turn."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE conversations
+            SET last_responded_turn_version = MAX(COALESCE(last_responded_turn_version, 0), ?),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE channel = ? AND sender_id = ? AND workspace_id = ?
+        """, (int(turn_version), channel, str(sender_id), int(workspace_id or 1)))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[DB mark_turn_responded Error]: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
 
 def get_media_delivery(delivery_key: str) -> Optional[dict]:
     """Fetches a media delivery record by deterministic delivery key."""
