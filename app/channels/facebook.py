@@ -118,7 +118,7 @@ def subscribe_facebook_page_webhooks(page_id: str = None, page_token: str = None
         }
 
 def get_fb_page_details(page_id: str = None, page_token: str = None) -> Dict[str, Any]:
-    """Fetches real-time status and metadata for the Facebook Page from Graph API."""
+    """Fetches real-time status, metadata, and permissions for the Facebook Page from Graph API."""
     pid = page_id or get_setting("fb_page_id") or os.getenv("FB_PAGE_ID") or settings.FB_PAGE_ID or "105116472071659"
     token = page_token or get_fb_token(pid)
     clean_token = str(token or "").strip().strip('"').strip("'")
@@ -136,6 +136,20 @@ def get_fb_page_details(page_id: str = None, page_token: str = None) -> Dict[str
     url = f"https://graph.facebook.com/{graph_version}/{pid}"
     try:
         r = requests.get(url, params={"fields": "id,name,link,category,verification_status", "access_token": clean_token}, timeout=8)
+        
+        # Check granted permissions
+        granted_permissions = []
+        try:
+            p_res = requests.get(f"https://graph.facebook.com/{graph_version}/me/permissions", params={"access_token": clean_token}, timeout=5)
+            if p_res.status_code == 200:
+                p_data = p_res.json().get("data", [])
+                granted_permissions = [p.get("permission") for p in p_data if p.get("status") == "granted"]
+        except Exception:
+            pass
+
+        required_permissions = ["pages_manage_metadata", "pages_messaging", "pages_read_engagement", "pages_manage_posts"]
+        missing_permissions = [p for p in required_permissions if p not in granted_permissions and ("pages_manage_engagement" not in granted_permissions if p == "pages_manage_posts" else True)]
+
         if r.status_code == 200:
             data = r.json()
             return {
@@ -144,14 +158,18 @@ def get_fb_page_details(page_id: str = None, page_token: str = None) -> Dict[str
                 "page_name": data.get("name", "RS Graphics"),
                 "link": data.get("link", ""),
                 "category": data.get("category", ""),
-                "token_valid": True
+                "token_valid": True,
+                "granted_permissions": granted_permissions,
+                "missing_permissions": missing_permissions
             }
         else:
             return {
                 "connected": False,
                 "page_id": pid,
                 "error": r.json().get("error", {}).get("message", r.text),
-                "token_valid": False
+                "token_valid": False,
+                "granted_permissions": granted_permissions,
+                "missing_permissions": missing_permissions
             }
     except Exception as e:
         return {
