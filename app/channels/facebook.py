@@ -817,17 +817,19 @@ async def handle_facebook_webhook_event(data: dict):
                         direction="INBOUND", sender_role="CUSTOMER"
                     )
 
-                    # Check for Admin / Customer AI Control Commands
+                    # Check for Admin / Customer AI Control Commands (Direct inside Messenger)
                     clean_cmd = msg_text.strip().lower()
-                    if clean_cmd in ["#ai", "[ai]", "start ai", "এআই চালু", "এআই অন"]:
-                        from app.database import enable_conversation_ai
+                    if clean_cmd in ["#ai", "[ai]", "start ai", "#start", "#unmute", "#resume", "এআই চালু", "এআই অন", "চালু", "অন"]:
+                        from app.database import enable_conversation_ai, remove_muted_number
                         enable_conversation_ai(sender_id=sender_id, workspace_id=workspace_id)
+                        remove_muted_number(sender_id)
                         send_fb_text_message(sender_id, "জি স্যার, আপনার জন্য এআই অটোমেশন পুনরায় চালু করা হয়েছে।", page_token=page_token, page_id=page_id)
                         continue
-                    elif clean_cmd in ["#pause", "[pause]", "[stop]", "এআই বন্ধ", "এআই অফ", "আমি কথা বলছি"]:
-                        from app.database import set_admin_takeover
+                    elif clean_cmd in ["#pause", "[pause]", "[stop]", "#stop", "#mute", "#block", "stop", "mute", "block", "এআই বন্ধ", "এআই অফ", "আমি কথা বলছি", "বন্ধ", "ব্লক", "স্টপ"]:
+                        from app.database import set_admin_takeover, add_muted_number
                         set_admin_takeover(sender_id=sender_id, workspace_id=workspace_id, takeover_by="customer_command", takeover_reason="command_pause")
-                        send_fb_text_message(sender_id, "জি স্যার, এআই অটোমেশন সাময়িকভাবে বন্ধ (Paused) করা হয়েছে। আপনি সরাসরি কথা বলতে পারবেন।", page_token=page_token, page_id=page_id)
+                        add_muted_number(sender_id)
+                        send_fb_text_message(sender_id, "জি স্যার, এআই অটোমেশন সাময়িকভাবে বন্ধ (Paused/Blocked) করা হয়েছে। আপনি সরাসরি কথা বলতে পারবেন।", page_token=page_token, page_id=page_id)
                         continue
 
                     # Check if AI Master Switch or Per-Customer Takeover is active

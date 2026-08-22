@@ -16,7 +16,8 @@ from app.config import settings
 from app.database import (
     get_setting, set_setting, get_all_settings, get_db_connection,
     is_conversation_ai_active, get_conversation_state, set_admin_takeover,
-    enable_conversation_ai, get_whatsapp_account_by_phone_id,
+    enable_conversation_ai, add_muted_number, remove_muted_number,
+    get_whatsapp_account_by_phone_id,
     get_whatsapp_account_by_page_id, get_whatsapp_account_by_workspace_id,
     get_all_whatsapp_accounts, get_page_ai_config,
     ensure_whatsapp_account_consistency, get_active_training_rules,
@@ -1173,15 +1174,17 @@ async def handle_whatsapp_webhook_event(data: dict):
                         direction="INBOUND", sender_role="CUSTOMER"
                     )
 
-                    # Check for Admin / Customer AI Control Commands
+                    # Check for Admin / Customer AI Control Commands (Direct inside WhatsApp)
                     clean_cmd = msg_text.strip().lower()
-                    if clean_cmd in ["#ai", "[ai]", "start ai", "এআই চালু", "এআই অন"]:
+                    if clean_cmd in ["#ai", "[ai]", "start ai", "#start", "#unmute", "#resume", "এআই চালু", "এআই অন", "চালু", "অন"]:
                         enable_conversation_ai(sender_id=sender_phone, workspace_id=workspace_id)
+                        remove_muted_number(sender_phone)
                         send_whatsapp_message(sender_phone, "জি স্যার, আপনার জন্য এআই অটোমেশন পুনরায় চালু করা হয়েছে।", phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id)
                         continue
-                    elif clean_cmd in ["#pause", "[pause]", "[stop]", "এআই বন্ধ", "এআই অফ", "আমি কথা বলছি"]:
+                    elif clean_cmd in ["#pause", "[pause]", "[stop]", "#stop", "#mute", "#block", "stop", "mute", "block", "এআই বন্ধ", "এআই অফ", "আমি কথা বলছি", "বন্ধ", "ব্লক", "স্টপ"]:
                         set_admin_takeover(sender_id=sender_phone, workspace_id=workspace_id, takeover_by="customer_command", takeover_reason="command_pause")
-                        send_whatsapp_message(sender_phone, "জি স্যার, এআই অটোমেশন সাময়িকভাবে বন্ধ (Paused) করা হয়েছে। আপনি সরাসরি কথা বলতে পারবেন।", phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id)
+                        add_muted_number(sender_phone)
+                        send_whatsapp_message(sender_phone, "জি স্যার, এআই অটোমেশন সাময়িকভাবে বন্ধ (Paused/Blocked) করা হয়েছে। আপনি সরাসরি কথা বলতে পারবেন।", phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id)
                         continue
 
                     # Check if AI Master Switch or Per-Customer Takeover is active (Strict Zero-Reply Check)
