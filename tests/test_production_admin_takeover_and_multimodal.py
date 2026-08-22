@@ -617,6 +617,58 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
         self.assertIn("মুহা. রাশেদুল ইসলাম", instructions)
         self.assertIn("রাশেদ", instructions)
 
+    def test_14_saved_media_persistence_and_defaults(self):
+        """
+        Validates that the 3 essential saved media items (2 videos + 1 voice note)
+        are permanently seeded in DB and never wiped on query/reload.
+        """
+        from app.database import get_saved_media, ensure_default_saved_media
+        ensure_default_saved_media()
+        media = get_saved_media(workspace_id=1)
+        titles = [m["title"] for m in media]
+        urls = [m["file_url"] for m in media]
+        
+        self.assertIn("/static/uploads/media/google_form_submission_guide.mp4", urls)
+        self.assertIn("/static/uploads/media/google_form_edit_correction_guide.mp4", urls)
+        self.assertIn("/static/uploads/media/id_card_features_voice_note.mp3", urls)
+
+    def test_15_detect_saved_media_smart_routing(self):
+        """
+        Validates that asking for Google form upload sends Video 1,
+        asking for correction sends Video 2,
+        and asking for features/quality sends Voice 1.
+        """
+        from app.ai_agent.gemini_brain import detect_saved_media_to_send
+
+        # 1. Google form submission / upload guide video
+        res1 = detect_saved_media_to_send("গুগল ফর্মের মাধ্যমে তথ্য কিভাবে দিব এবং ছবি আপলোড করব?", workspace_id=1)
+        self.assertEqual(res1["video_url"], "/static/uploads/media/google_form_submission_guide.mp4")
+
+        # 2. Google form correction guide video
+        res2 = detect_saved_media_to_send("তথ্য দেওয়ার পর কোনো ভুল হলে সংশোধন কিভাবে করব?", workspace_id=1)
+        self.assertEqual(res2["video_url"], "/static/uploads/media/google_form_edit_correction_guide.mp4")
+
+        # 3. Features voice note
+        res3 = detect_saved_media_to_send("আপনাদের আইডি কার্ড ও ফিতার বৈশিষ্ট্য এবং কোয়ালিটি কেমন?", workspace_id=1)
+        self.assertEqual(res3["voice_url"], "/static/uploads/media/id_card_features_voice_note.mp3")
+
+    def test_16_moq_tier_pricing_and_delivery_rules(self):
+        """
+        Validates that system prompt embeds:
+        - MOQ: 30 pcs
+        - Quantity Tier Pricing: <50 pcs (+10৳), 50-80 pcs (fixed), 100+ pcs (discount, pkg 7 20৳ discount)
+        - Standalone items: ID Card 35৳, 2cm Lanyard 28৳, 1.5cm Lanyard 25৳
+        - Delivery: Inside Dhaka 80৳, Outside 130৳ + 20৳/kg + 10৳ COD
+        - Timeline: 5-6 days proof + 24-48 hours courier
+        """
+        instructions = build_system_instruction(workspace_id=1)
+        self.assertIn("৩০ পিস", instructions)
+        self.assertIn("১০ টাকা বাড়িয়ে", instructions)
+        self.assertIn("৮০ টাকা", instructions)
+        self.assertIn("১৩০ টাকা", instructions)
+        self.assertIn("৫ থেকে ৬ দিন", instructions)
+        self.assertIn("২৪ থেকে ৪৮ ঘণ্টা", instructions)
+
 
 if __name__ == "__main__":
     unittest.main()

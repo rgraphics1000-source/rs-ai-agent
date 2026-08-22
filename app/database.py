@@ -1100,7 +1100,56 @@ def delete_faq(faq_id: int) -> bool:
 # SAVED MEDIA LIBRARY HELPERS (VOICE NOTES & VIDEOS)
 # ============================================================
 
+def ensure_default_saved_media(conn=None):
+    """Ensures the 3 essential saved media items (2 videos + 1 voice note) are permanently populated for Workspace 1."""
+    should_close = False
+    if conn is None:
+        conn = get_db_connection()
+        should_close = True
+    try:
+        cursor = conn.cursor()
+        defaults = [
+            (
+                "গুগল ফর্মে আইডি কার্ডের তথ্য ও ছবি আপলোড করার নিয়ম",
+                "video",
+                "/static/uploads/media/google_form_submission_guide.mp4",
+                "গুগল ফর্মের মাধ্যমে আইডি কার্ডের তথ্য এবং ছবিগুলো কীভাবে আপলোড দিতে হয় তার পূর্ণাঙ্গ ডেমো ভিডিও।",
+                0,
+                1
+            ),
+            (
+                "গুগল ফর্মে তথ্য সংশোধন করার নিয়ম",
+                "video",
+                "/static/uploads/media/google_form_edit_correction_guide.mp4",
+                "তথ্য সাবমিট করার পর কোনো ভুল হলে তা কীভাবে এডিট বা সংশোধন করবেন তার নির্দেশিকা ভিডিও।",
+                0,
+                1
+            ),
+            (
+                "আইডি কার্ড, ফিতা ও কভারের বৈশিষ্ট্য ও কোয়ালিটি",
+                "voice",
+                "/static/uploads/media/id_card_features_voice_note.mp3",
+                "আমাদের জাপানি UV কালার প্রিন্ট পিভিসি আইডি কার্ড, ডিজিটাল সাবলিমেশন ফিতা ও কভারের প্রিমিয়াম বৈশিষ্ট্য সংক্রান্ত ভয়েস বার্তা।",
+                0,
+                1
+            )
+        ]
+        for title, m_type, f_url, desc, dur, ws_id in defaults:
+            cursor.execute("SELECT id FROM saved_media WHERE (file_url = ? OR title = ?) AND workspace_id = ?", (f_url, title, ws_id))
+            if not cursor.fetchone():
+                cursor.execute("""
+                    INSERT INTO saved_media (title, media_type, file_url, description, duration_seconds, workspace_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (title, m_type, f_url, desc, dur, ws_id))
+        conn.commit()
+    except Exception as e:
+        print(f"[DB ensure_default_saved_media Error]: {e}")
+    finally:
+        if should_close and conn:
+            conn.close()
+
 def get_saved_media(media_type: str = None, workspace_id: Optional[int] = None) -> list:
+    ensure_default_saved_media()
     conn = get_db_connection()
     cursor = conn.cursor()
     query = "SELECT * FROM saved_media WHERE 1=1"
@@ -1109,7 +1158,7 @@ def get_saved_media(media_type: str = None, workspace_id: Optional[int] = None) 
         query += " AND media_type = ?"
         params.append(media_type)
     if workspace_id is not None:
-        query += " AND workspace_id = ?"
+        query += " AND (workspace_id = ? OR workspace_id = 1)"
         params.append(int(workspace_id))
     query += " ORDER BY id DESC"
     cursor.execute(query, params)

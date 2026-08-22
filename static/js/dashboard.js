@@ -2391,66 +2391,6 @@ async function deleteTrainingRuleById(id) {
     }
 }
 
-async function loadSavedMediaList() {
-    const grid = document.getElementById("saved-media-grid");
-    if (!grid) return;
-
-    try {
-        const res = await fetch(`/api/saved-media?workspace_id=${currentWorkspaceId}`);
-        const data = await res.json();
-        const media = data.media || [];
-
-        if (media.length === 0) {
-            grid.innerHTML = `
-                <div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">
-                    কোনো সেভ করা ভয়েস ক্লিপ বা ডেমো ভিডিও নেই। উপরে '+ Upload Voice / Video' বাটনে ক্লিক করুন।
-                </div>
-            `;
-            return;
-        }
-
-        grid.innerHTML = media.map(m => `
-            <div class="glass-card" style="padding: 14px; margin-bottom: 0; background: rgba(13, 17, 28, 0.75);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <span class="badge" style="background: ${m.media_type === 'voice' ? 'rgba(236,72,153,0.2)' : 'rgba(59,130,246,0.2)'}; color: ${m.media_type === 'voice' ? '#f472b6' : '#60a5fa'}; font-size: 11px;">
-                        <i class="fas ${m.media_type === 'voice' ? 'fa-microphone' : 'fa-video'}"></i> ${m.media_type.toUpperCase()}
-                    </span>
-                    <button class="btn btn-sm" style="background: rgba(239,68,68,0.2); color: #f87171; padding: 2px 6px;" onclick="deleteSavedMediaById(${m.id})">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-                <strong style="font-size: 13px; color: #fff; display: block; margin-bottom: 6px;">${m.title}</strong>
-                ${m.media_type === 'voice' ? `
-                    <audio controls style="width: 100%; height: 32px; margin-top: 6px;">
-                        <source src="${m.file_url}" type="audio/mpeg">
-                    </audio>
-                ` : `
-                    <video controls style="width: 100%; max-height: 140px; border-radius: 6px; margin-top: 6px; background: #000;">
-                        <source src="${m.file_url}" type="video/mp4">
-                    </video>
-                `}
-                <small style="color: var(--text-dim); display: block; margin-top: 6px;">${m.description || ''}</small>
-            </div>
-        `).join('');
-    } catch (e) {
-        console.error("loadSavedMediaList error:", e);
-    }
-}
-
-async function deleteSavedMediaById(id) {
-    if (!confirm("আপনি কি নিশ্চিত এই মিডিয়া ফাইলটি মুছে ফেলতে চান?")) return;
-    try {
-        const res = await fetch(`/api/saved-media/${id}`, { method: "DELETE" });
-        const data = await res.json();
-        if (data.success) {
-            showToast("মিডিয়া ফাইলটি মুছে ফেলা হয়েছে", "info");
-            loadSavedMediaList();
-        }
-    } catch (e) {
-        console.error("deleteSavedMediaById error:", e);
-    }
-}
-
 // ==========================================
 // 12. GENERAL & BLACKLIST SETTINGS
 // ==========================================
