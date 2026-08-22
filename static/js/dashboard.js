@@ -1058,6 +1058,21 @@ async function loadCommentLogs() {
     }
 }
 
+async function subscribeFacebookWebhooksManually() {
+    showToast("Meta Webhooks সিঙ্ক ও সাবস্ক্রাইব করা হচ্ছে...", "info");
+    try {
+        const res = await fetch("/api/facebook/subscribe", { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+            showToast("✅ ফেসবুক পেজ সফলভাবে মেটা ওয়েব হুকে (feed, messages) সাবস্ক্রাইব হয়েছে!", "success");
+        } else {
+            showToast(`⚠️ Webhook Subscribe: ${data.message || data.error || 'টোকেন পারমিশন চেক করুন'}`, "warning");
+        }
+    } catch (e) {
+        showToast("Webhook সাবস্ক্রাইব রিকোয়েস্ট ব্যর্থ হয়েছে", "danger");
+    }
+}
+
 // ==========================================
 // 6. CONTENT & AI BRAIN TRAINING SUBTABS
 // ==========================================

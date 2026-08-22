@@ -43,7 +43,10 @@ from app.channels.facebook import (
     send_fb_media_message,
     send_fb_audio_message,
     send_fb_video_message,
-    handle_facebook_webhook_event
+    handle_facebook_webhook_event,
+    subscribe_facebook_page_webhooks,
+    get_fb_page_details,
+    reply_to_fb_comment
 )
 from app.channels.whatsapp import (
     send_whatsapp_message,
@@ -93,6 +96,12 @@ app.include_router(google_router)
 @app.on_event("startup")
 def startup_event():
     init_db()
+    ensure_facebook_page_consistency()
+    ensure_whatsapp_account_consistency()
+    try:
+        subscribe_facebook_page_webhooks()
+    except Exception as e:
+        print(f"[Facebook Auto-Subscribe on Startup Exception]: {e}")
     print(f"[{settings.PROJECT_NAME}] Database initialized successfully.")
 
 # Lightweight Health Check Endpoints
@@ -975,8 +984,56 @@ async def api_save_settings(request: Request):
     # Sync Facebook connected pages if credentials updated
     if any(k in data for k in ["fb_page_id", "fb_page_access_token"]):
         ensure_facebook_page_consistency()
+        try:
+            subscribe_facebook_page_webhooks()
+        except Exception as sub_e:
+            print(f"[Facebook Auto-Subscribe Settings Exception]: {sub_e}")
 
     return {"success": True, "message": "Settings updated successfully"}
+
+# Dedicated Facebook Webhook Subscription & Diagnostic Endpoints
+@app.get("/api/facebook/status")
+async def api_facebook_status():
+    """Returns live connection, verification, and webhook subscription status of the Facebook Page."""
+    details = get_fb_page_details()
+    return {"success": True, "details": details}
+
+@app.post("/api/facebook/subscribe")
+async def api_facebook_subscribe():
+    """Forces subscription of the Facebook Page to Meta Webhook events (feed, messages)."""
+    res = subscribe_facebook_page_webhooks()
+    return res
+
+@app.post("/api/facebook/test-comment-reply")
+async def api_facebook_test_comment_reply(request: Request):
+    """Allows testing comment reply against a specific comment_id live."""
+    data = await request.json()
+    comment_id = data.get("comment_id", "").strip()
+    message = data.get("message", "").strip() or "ধন্যবাদ! এটি RS AI Agent-এর একটি স্বয়ংক্রিয় টেস্ট কমেন্ট রিপ্লাই।"
+    page_id = data.get("page_id", "").strip() or None
+    page_token = data.get("page_access_token", "").strip() or None
+
+    if not comment_id:
+        raise HTTPException(status_code=400, detail="comment_id is required")
+
+    success = reply_to_fb_comment(comment_id, message, page_token=page_token, page_id=page_id)
+    return {
+        "success": success,
+        "comment_id": comment_id,
+        "message": "Comment reply successfully sent to Facebook Graph API!" if success else "Failed to send comment reply to Facebook Graph API. Check server logs or token permissions."
+    }
+
+@app.delete("/api/comment-logs/clear-sample")
+async def api_clear_sample_comment_logs():
+    """Clears legacy dummy/sample comment logs so the dashboard only shows real activity."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM comment_logs WHERE post_id IN ('post_777', 'post_888') OR user_id IN ('user_123', 'user_456')")
+        conn.commit()
+        return {"success": True, "message": "Sample comment logs cleared successfully."}
+    finally:
+        conn.close()
 
 # Dedicated Muted / Blacklisted Contacts Endpoints
 @app.get("/api/muted-contacts")

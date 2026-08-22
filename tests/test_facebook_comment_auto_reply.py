@@ -30,11 +30,21 @@ class TestFacebookCommentAutoReply(unittest.TestCase):
         set_setting("private_message_on_comment", "true")
         set_setting("comment_ai_mode", "ai_smart")
 
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM processed_webhook_events WHERE event_id LIKE '%105116472071659%'")
+            cur.execute("DELETE FROM comment_logs WHERE page_id = ?", (self.page_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
     def tearDown(self):
         conn = get_db_connection()
         try:
             cur = conn.cursor()
             cur.execute("DELETE FROM comment_logs WHERE page_id = ?", (self.page_id,))
+            cur.execute("DELETE FROM processed_webhook_events WHERE event_id LIKE '%105116472071659%'")
             conn.commit()
         finally:
             conn.close()
@@ -146,6 +156,35 @@ class TestFacebookCommentAutoReply(unittest.TestCase):
                             "name": "RS Graphics"
                         },
                         "message": "Page reply text"
+                    }
+                }]
+            }]
+        }
+
+        asyncio.run(handle_facebook_webhook_event(payload))
+        self.assertFalse(mock_reply.called)
+
+    @patch("app.channels.facebook.reply_to_fb_comment")
+    def test_05_old_historical_comments_ignored(self, mock_reply):
+        """Historical comments created more than 10 minutes ago are ignored."""
+        old_time = 1600000000 # very old timestamp
+        payload = {
+            "object": "page",
+            "entry": [{
+                "id": self.page_id,
+                "changes": [{
+                    "field": "feed",
+                    "value": {
+                        "item": "comment",
+                        "verb": "add",
+                        "comment_id": "105116472071659_old_comment_123",
+                        "post_id": "105116472071659_112233",
+                        "created_time": old_time,
+                        "from": {
+                            "id": "5197770284",
+                            "name": "Mahmudul Hasan"
+                        },
+                        "message": "আগের পোস্টের কমেন্ট"
                     }
                 }]
             }]
