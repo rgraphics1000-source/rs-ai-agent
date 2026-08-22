@@ -513,6 +513,7 @@ async def process_customer_message(
     message_text: str = "",
     image_bytes: bytes = None,
     image_mime: str = "image/jpeg",
+    image_list: list = None,
     audio_bytes: bytes = None,
     audio_mime: str = "audio/mp3",
     conversation_history: list = None,
@@ -525,7 +526,7 @@ async def process_customer_message(
 ) -> dict:
     """
     Multimodal message processing via Google GenAI with strict multi-tenant workspace isolation.
-    Handles text, images, voice notes, gender recognition, and batch sample delivery.
+    Handles text, single/multiple images, voice notes, gender recognition, and batch sample delivery.
     """
     api_key = get_setting("gemini_api_key", settings.GEMINI_API_KEY)
     ws_id = int(workspace_id or 1)
@@ -533,6 +534,7 @@ async def process_customer_message(
     # 0. ZERO-REPLY SAFETY GUARD: If Admin Takeover is active, AI MUST BE 100% SILENT
     from app.database import is_conversation_ai_active
     if not is_conversation_ai_active(sender_id=sender_id, workspace_id=ws_id):
+        print(f"[AI_BLOCKED] reason=admin_takeover workspace_id={ws_id} sender_id={sender_id}")
         print(f"[AI_BRAIN_SILENCE] sender={sender_id} workspace_id={ws_id} action=COMPLETE_SILENCE reason=admin_takeover_active")
         return {
             "reply_text": "",
@@ -599,8 +601,16 @@ async def process_customer_message(
                 history_text += f"{role_tag}: {c_text}\n"
             contents.append(history_text)
 
-        # Add image attachment (supports photos, ID card samples, screenshots)
-        if image_bytes:
+        # Add image attachments (supports single image or multiple batch package images)
+        if image_list and len(image_list) > 0:
+            for img_item in image_list:
+                i_bytes = img_item.get("bytes") or img_item.get("image_bytes")
+                i_mime = img_item.get("mime") or img_item.get("image_mime") or "image/jpeg"
+                if i_bytes:
+                    contents.append(types.Part.from_bytes(data=i_bytes, mime_type=i_mime))
+            if not message_text:
+                message_text = f"কাস্টমার একসাথে {len(image_list)}টি ছবি পাঠিয়েছেন। ছবিগুলোর প্রতিটি মনোযোগ দিয়ে দেখে প্রতিটি আলাদা প্যাকেজ/প্রডাক্ট শনাক্ত করে বিস্তারিত জানান।"
+        elif image_bytes:
             contents.append(types.Part.from_bytes(data=image_bytes, mime_type=image_mime))
             if not message_text:
                 message_text = "আমি এই ছবিটি পাঠিয়েছি। এই প্রডাক্ট বা ছবি দেখে বিস্তারিত জানান।"

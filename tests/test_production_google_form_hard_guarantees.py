@@ -274,7 +274,13 @@ class TestProductionGoogleFormHardGuarantees(unittest.TestCase):
             }]
         }
 
-        asyncio.run(handle_whatsapp_webhook_event(payload))
+        from app.channels.debouncer import message_debouncer
+
+        async def _run():
+            await handle_whatsapp_webhook_event(payload)
+            await message_debouncer.flush("whatsapp", 1, "8801929770001")
+
+        asyncio.run(_run())
         
         mock_create.assert_called_once()
         mock_send.assert_called_once()

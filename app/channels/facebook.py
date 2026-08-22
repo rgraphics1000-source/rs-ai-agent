@@ -563,22 +563,29 @@ async def process_facebook_batch(batch: PendingBatch):
     elif len(images) > 1 and combined_text:
         combined_text = f"{combined_text}\n(কাস্টমার একসাথে {len(images)}টি ছবি পাঠিয়েছেন)"
 
+    image_list = [{"bytes": m["image_bytes"], "mime": m.get("image_mime", "image/jpeg")} for m in images]
     image_bytes = images[0].get("image_bytes") if images else None
     image_mime = images[0].get("image_mime", "image/jpeg") if images else "image/jpeg"
     audio_bytes = audios[0].get("audio_bytes") if audios else None
     audio_mime = audios[0].get("audio_mime", "audio/mp4") if audios else "audio/mp4"
 
-    if not combined_text and not image_bytes and not audio_bytes:
+    if not combined_text and not image_bytes and not audio_bytes and not image_list:
+        return
+
+    # Pre-Brain Zero-Reply Safety Guard: If Admin Takeover active, terminate immediately
+    if not is_conversation_ai_active(sender_id=sender_id, workspace_id=workspace_id):
+        print(f"[AI_BLOCKED] reason=admin_takeover workspace_id={workspace_id} sender_id={sender_id}")
         return
 
     # Fetch conversation history scoped strictly to this Workspace
     history = get_conversation_history("facebook", sender_id, limit=12, page_id=page_id, workspace_id=workspace_id)
 
-    # Process with Gemini AI Brain with Workspace-isolated context
+    # Process with Gemini AI Brain with Workspace-isolated context & full image list
     ai_result = await process_customer_message(
         message_text=combined_text,
         image_bytes=image_bytes,
         image_mime=image_mime,
+        image_list=image_list,
         audio_bytes=audio_bytes,
         audio_mime=audio_mime,
         conversation_history=history,
@@ -749,13 +756,15 @@ async def handle_facebook_webhook_event(data: dict):
                         # Page Owner / Human Admin typed a message manually in Meta Business Suite / Page Inbox
                         echo_text = msg.get("text", "")
                         from app.database import set_admin_takeover
-                        set_admin_takeover(sender_id=actual_cust_id, workspace_id=workspace_id, takeover_by="page_admin_echo", takeover_reason="human_admin_message")
+                        new_v = set_admin_takeover(sender_id=actual_cust_id, workspace_id=workspace_id, takeover_by="page_admin_echo", takeover_reason="human_admin_message")
                         record_conversation_message(
                             "facebook", actual_cust_id, "Customer", "admin", echo_text,
                             page_id=page_id, workspace_id=workspace_id, external_message_id=msg_id,
                             direction="OUTBOUND", sender_role="ADMIN"
                         )
                         message_debouncer.cancel_batch("facebook", workspace_id, actual_cust_id)
+                        print(f"[ADMIN_TAKEOVER] workspace_id={workspace_id} conversation_id=facebook_{actual_cust_id} customer_id={actual_cust_id} source=facebook takeover_by=page_admin_echo conversation_version={new_v}")
+                        print(f"[ADMIN_MESSAGE] sender_role=ADMIN channel=facebook customer_id={actual_cust_id} mid={msg_id}")
                         print(f"[Facebook Human Takeover AUTO-ACTIVATED]: Page Owner/Admin replied to customer {actual_cust_id}: '{echo_text[:30]}'. AI paused for this conversation.")
                         continue
 
@@ -823,6 +832,7 @@ async def handle_facebook_webhook_event(data: dict):
 
                     # Check if AI Master Switch or Per-Customer Takeover is active
                     if not is_conversation_ai_active(sender_id=sender_id, workspace_id=workspace_id):
+                        print(f"[AI_BLOCKED] reason=admin_takeover workspace_id={workspace_id} conversation_id=facebook_{sender_id}")
                         print(f"[Facebook Messenger]: AI is PAUSED for customer {sender_id} on Page {page_name} (Human Takeover). AI will stay silent.")
                         continue
 

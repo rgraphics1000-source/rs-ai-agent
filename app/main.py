@@ -671,26 +671,21 @@ async def api_send_saved_media(request: Request):
         return JSONResponse(status_code=500, content={"success": False, "error": "Failed to deliver media to recipient via API"})
         
     cursor.execute("""
-        INSERT INTO messages (conversation_id, sender_type, message_type, content, media_url)
-        VALUES (?, 'admin', ?, ?, ?)
+        INSERT INTO messages (conversation_id, sender_type, message_type, content, media_url, direction, sender_role)
+        VALUES (?, 'admin', ?, ?, ?, 'OUTBOUND', 'ADMIN')
     """, (cid, m_type, f"[{m_type.upper()}] {m_title}", m_url))
-    cursor.execute("""
-        UPDATE conversations 
-        SET last_message = ?, human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
-            takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_ui_media', takeover_reason = 'human_admin_media',
-            conversation_version = COALESCE(conversation_version, 1) + 1,
-            updated_at = CURRENT_TIMESTAMP 
-        WHERE id = ?
-    """, (f"[{m_type.upper()}] {m_title}", cid))
     conn.commit()
     conn.close()
-    if sender_id:
-        add_muted_number(sender_id)
-        try:
-            from app.channels.debouncer import message_debouncer
-            message_debouncer.cancel_batch(channel, ws_id, sender_id)
-        except Exception:
-            pass
+    
+    new_v = set_admin_takeover(
+        conversation_id=cid,
+        sender_id=sender_id,
+        workspace_id=ws_id,
+        takeover_by="admin_ui_media",
+        takeover_reason="human_admin_media"
+    )
+    print(f"[ADMIN_TAKEOVER] workspace_id={ws_id} conversation_id={cid} customer_id={sender_id} source=omnichat_media takeover_by=admin_ui_media conversation_version={new_v}")
+    print(f"[ADMIN_MESSAGE] sender_role=ADMIN channel={channel} customer_id={sender_id}")
     return {"success": True}
 
 # ==========================================
@@ -750,27 +745,21 @@ async def api_admin_send_reply(request: Request):
         return JSONResponse(status_code=500, content={"success": False, "error": f"Failed to send manual message via {channel} (Page ID: {page_id or 'default'})"})
 
     cursor.execute("""
-        INSERT INTO messages (conversation_id, sender_type, message_type, content)
-        VALUES (?, 'admin', 'text', ?)
+        INSERT INTO messages (conversation_id, sender_type, message_type, content, direction, sender_role)
+        VALUES (?, 'admin', 'text', ?, 'OUTBOUND', 'ADMIN')
     """, (cid, reply_text))
-    cursor.execute("""
-        UPDATE conversations 
-        SET last_message = ?, human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
-            takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_ui', takeover_reason = 'human_admin_reply',
-            conversation_version = COALESCE(conversation_version, 1) + 1,
-            updated_at = CURRENT_TIMESTAMP 
-        WHERE id = ?
-    """, (reply_text, cid))
     conn.commit()
     conn.close()
     
-    if sender_id:
-        add_muted_number(sender_id)
-        try:
-            from app.channels.debouncer import message_debouncer
-            message_debouncer.cancel_batch(channel, workspace_id, sender_id)
-        except Exception:
-            pass
+    new_v = set_admin_takeover(
+        conversation_id=cid,
+        sender_id=sender_id,
+        workspace_id=workspace_id,
+        takeover_by="admin_ui",
+        takeover_reason="human_admin_reply"
+    )
+    print(f"[ADMIN_TAKEOVER] workspace_id={workspace_id} conversation_id={cid} customer_id={sender_id} source=omnichat_ui takeover_by=admin_ui conversation_version={new_v}")
+    print(f"[ADMIN_MESSAGE] sender_role=ADMIN channel={channel} customer_id={sender_id}")
             
     return {"success": True, "message": "Reply delivered successfully"}
 

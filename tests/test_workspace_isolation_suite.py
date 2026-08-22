@@ -276,6 +276,8 @@ class TestWorkspaceIsolationSuite(unittest.TestCase):
 
             mid_1 = f"mid.111_{uuid.uuid4().hex[:6]}"
             mid_2 = f"mid.222_{uuid.uuid4().hex[:6]}"
+            from app.channels.debouncer import message_debouncer
+
             # Test A: Known Page 1 routes to Workspace 1
             payload_p1 = {
                 "object": "page",
@@ -291,7 +293,11 @@ class TestWorkspaceIsolationSuite(unittest.TestCase):
             with patch("app.channels.facebook.send_fb_text_message") as mock_send, \
                  patch("app.channels.facebook.process_customer_message") as mock_ai:
                 mock_ai.return_value = {"reply": "Hello from W1", "orders": []}
-                asyncio.run(handle_facebook_webhook_event(payload_p1))
+                async def _run_p1():
+                    await handle_facebook_webhook_event(payload_p1)
+                    await message_debouncer.flush("facebook", 1, "fb_cust_11")
+
+                asyncio.run(_run_p1())
                 self.assertTrue(mock_ai.called)
                 call_kwargs = mock_ai.call_args.kwargs
                 self.assertEqual(call_kwargs.get("workspace_id"), 1)
@@ -311,7 +317,11 @@ class TestWorkspaceIsolationSuite(unittest.TestCase):
             with patch("app.channels.facebook.send_fb_text_message") as mock_send, \
                  patch("app.channels.facebook.process_customer_message") as mock_ai:
                 mock_ai.return_value = {"reply": "Hello from W2", "orders": []}
-                asyncio.run(handle_facebook_webhook_event(payload_p2))
+                async def _run_p2():
+                    await handle_facebook_webhook_event(payload_p2)
+                    await message_debouncer.flush("facebook", self.w2_id, "fb_cust_22")
+
+                asyncio.run(_run_p2())
                 self.assertTrue(mock_ai.called)
                 call_kwargs = mock_ai.call_args.kwargs
                 self.assertEqual(call_kwargs.get("workspace_id"), self.w2_id)
@@ -349,6 +359,7 @@ class TestWorkspaceIsolationSuite(unittest.TestCase):
     def test_07_whatsapp_webhook_routing_and_no_fallback(self):
         print("\n[TEST 7] WhatsApp Routing & Strict No-Fallback Check...")
         import asyncio
+        from app.channels.debouncer import message_debouncer
         uid = uuid.uuid4().hex[:6]
         phone1_id = f"wa_phone_101_{uid}"
         phone2_id = f"wa_phone_202_{uid}"
@@ -384,7 +395,11 @@ class TestWorkspaceIsolationSuite(unittest.TestCase):
         with patch("app.channels.whatsapp.send_whatsapp_message") as mock_send, \
              patch("app.channels.whatsapp.process_customer_message") as mock_ai:
             mock_ai.return_value = {"reply": "WA Reply 1", "orders": []}
-            asyncio.run(handle_whatsapp_webhook_event(payload_wa1))
+            async def _run_wa1():
+                await handle_whatsapp_webhook_event(payload_wa1)
+                await message_debouncer.flush("whatsapp", 1, "8801700000001")
+
+            asyncio.run(_run_wa1())
             self.assertTrue(mock_ai.called)
             self.assertEqual(mock_ai.call_args.kwargs.get("workspace_id"), 1)
 
@@ -404,7 +419,11 @@ class TestWorkspaceIsolationSuite(unittest.TestCase):
         with patch("app.channels.whatsapp.send_whatsapp_message") as mock_send, \
              patch("app.channels.whatsapp.process_customer_message") as mock_ai:
             mock_ai.return_value = {"reply": "WA Reply 2", "orders": []}
-            asyncio.run(handle_whatsapp_webhook_event(payload_wa2))
+            async def _run_wa2():
+                await handle_whatsapp_webhook_event(payload_wa2)
+                await message_debouncer.flush("whatsapp", self.w2_id, "8801700000002")
+
+            asyncio.run(_run_wa2())
             self.assertTrue(mock_ai.called)
             self.assertEqual(mock_ai.call_args.kwargs.get("workspace_id"), self.w2_id)
 

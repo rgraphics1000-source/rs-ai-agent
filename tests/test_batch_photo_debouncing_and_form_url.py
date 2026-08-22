@@ -14,6 +14,8 @@ from app.database import (
     save_generated_form, get_db_connection, remove_muted_number
 )
 
+from app.channels.debouncer import message_debouncer
+
 class TestBatchPhotoDebouncingAndFormUrl(unittest.TestCase):
     def setUp(self):
         self.test_phone = "8801929778581"
@@ -65,7 +67,11 @@ class TestBatchPhotoDebouncingAndFormUrl(unittest.TestCase):
             }]
         }
 
-        asyncio.run(handle_whatsapp_webhook_event(payload))
+        async def _run():
+            await handle_whatsapp_webhook_event(payload)
+            await message_debouncer.flush("whatsapp", 1, self.test_phone)
+
+        asyncio.run(_run())
 
         # Verify process_customer_message was called EXACTLY ONCE for all 5 images
         self.assertEqual(mock_process.call_count, 1, "Must call AI brain exactly once for 5 photos in one batch.")

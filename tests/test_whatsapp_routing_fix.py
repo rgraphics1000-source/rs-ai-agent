@@ -262,6 +262,8 @@ class TestWhatsAppRoutingFix(unittest.TestCase):
 
     def test_m_webhook_e2e_ai_reply_flow(self):
         """Test M: Webhook event with 4184514263660680 generates AI reply and sends using Workspace 1 credentials."""
+        from app.channels.debouncer import message_debouncer
+        cust_num = "8801712345678"
         webhook_data = {
             "entry": [{
                 "changes": [{
@@ -273,7 +275,7 @@ class TestWhatsAppRoutingFix(unittest.TestCase):
                         "contacts": [{"profile": {"name": "Test Client"}}],
                         "messages": [{
                             "id": "wam_e2e_test_9999",
-                            "from": "8801816504097",
+                            "from": cust_num,
                             "type": "text",
                             "text": {"body": "আইডি কার্ডের দাম কত?"}
                         }]
@@ -284,12 +286,16 @@ class TestWhatsAppRoutingFix(unittest.TestCase):
 
         with patch("app.channels.whatsapp.send_whatsapp_message") as mock_send:
             mock_send.return_value = True
-            with patch("app.ai_agent.gemini_brain.process_customer_message") as mock_ai:
+            with patch("app.channels.whatsapp.process_customer_message") as mock_ai:
                 mock_ai.return_value = {"reply_text": "আইডি কার্ড প্রতি পিস ৫০ টাকা।", "matched_images": []}
-                asyncio.run(handle_whatsapp_webhook_event(webhook_data))
+                async def _run():
+                    await handle_whatsapp_webhook_event(webhook_data)
+                    await message_debouncer.flush("whatsapp", 1, cust_num)
+
+                asyncio.run(_run())
                 mock_send.assert_called_once()
                 args, kwargs = mock_send.call_args
-                self.assertEqual(args[0], "8801816504097")
+                self.assertEqual(args[0], cust_num)
                 self.assertEqual(kwargs.get("phone_id"), "4184514263660680")
                 self.assertEqual(kwargs.get("workspace_id"), 1)
 

@@ -831,12 +831,18 @@ async def process_whatsapp_batch(batch: PendingBatch):
     elif len(images) > 1 and combined_text:
         combined_text = f"{combined_text}\n(কাস্টমার একসাথে {len(images)}টি ছবি পাঠিয়েছেন)"
 
+    image_list = [{"bytes": m["image_bytes"], "mime": m.get("image_mime", "image/jpeg")} for m in images]
     image_bytes = images[0].get("image_bytes") if images else None
     image_mime = images[0].get("image_mime", "image/jpeg") if images else "image/jpeg"
     audio_bytes = audios[0].get("audio_bytes") if audios else None
     audio_mime = audios[0].get("audio_mime", "audio/mp4") if audios else "audio/mp4"
 
-    if not combined_text and not image_bytes and not audio_bytes:
+    if not combined_text and not image_bytes and not audio_bytes and not image_list:
+        return
+
+    # Pre-Brain Zero-Reply Safety Guard: If Admin Takeover active, terminate immediately
+    if not is_conversation_ai_active(sender_id=sender_phone, workspace_id=workspace_id):
+        print(f"[AI_BLOCKED] reason=admin_takeover workspace_id={workspace_id} sender_id={masked_sender}")
         return
 
     # Fetch conversation history scoped strictly to Workspace
@@ -848,11 +854,12 @@ async def process_whatsapp_batch(batch: PendingBatch):
     products = get_all_products(workspace_id=workspace_id)
     print(f"[WhatsApp AI] workspace_id={workspace_id} training_rules_loaded={len(training_rules)} faqs_loaded={len(faqs)} products_loaded={len(products)}")
 
-    # Process with Gemini AI Brain with Workspace isolation
+    # Process with Gemini AI Brain with Workspace isolation & full multi-image list
     ai_result = await process_customer_message(
         message_text=combined_text,
         image_bytes=image_bytes,
         image_mime=image_mime,
+        image_list=image_list,
         audio_bytes=audio_bytes,
         audio_mime=audio_mime,
         conversation_history=history,
@@ -1041,10 +1048,49 @@ async def handle_whatsapp_webhook_event(data: dict):
                         if 1800 < diff < 315360000:
                             is_stale = True
 
-                    # 4. Outbound / Echo Immunity: Drop own outgoing messages immediately
-                    if is_own_whatsapp_number(raw_from) or is_own_whatsapp_number(sender_phone) or is_outbound_ai_message("whatsapp", msg_id):
-                        print(f"[OUTBOUND_ECHO] ignored=true msg_id={msg_id} from={masked_sender}")
-                        continue
+                    # 4. Outbound / Echo Immunity & Human Admin Takeover Detection
+                    is_own_from = is_own_whatsapp_number(raw_from) or is_own_whatsapp_number(sender_phone)
+                    is_ai_msg = is_outbound_ai_message("whatsapp", msg_id) if msg_id else False
+
+                    if is_own_from:
+                        if is_ai_msg:
+                            print(f"[OUTBOUND_ECHO] ignored=true mid={msg_id} from={masked_sender}")
+                            continue
+                        else:
+                            # HUMAN ADMIN / SHOP OWNER MESSAGE sent from WhatsApp Business App / Phone / Coexistence!
+                            cust_phone = msg.get("recipient_id") or msg.get("to")
+                            if not cust_phone and contacts:
+                                for c in contacts:
+                                    w_id = normalize_whatsapp_phone_number(c.get("wa_id", ""))
+                                    if w_id and not is_own_whatsapp_number(w_id):
+                                        cust_phone = w_id
+                                        break
+                            if not cust_phone:
+                                for st in value.get("statuses", []):
+                                    st_rec = normalize_whatsapp_phone_number(st.get("recipient_id", ""))
+                                    if st_rec and not is_own_whatsapp_number(st_rec):
+                                        cust_phone = st_rec
+                                        break
+
+                            if cust_phone:
+                                admin_msg_text = msg.get("text", {}).get("body", "") or "[Admin Message/Media]"
+                                new_v = set_admin_takeover(
+                                    sender_id=cust_phone,
+                                    workspace_id=workspace_id,
+                                    takeover_by="human_admin_whatsapp",
+                                    takeover_reason="human_admin_message"
+                                )
+                                record_conversation_message(
+                                    "whatsapp", cust_phone, "Customer", "admin", admin_msg_text,
+                                    page_id=page_id, workspace_id=workspace_id, external_message_id=msg_id,
+                                    direction="OUTBOUND", sender_role="ADMIN"
+                                )
+                                message_debouncer.cancel_batch("whatsapp", workspace_id, cust_phone)
+                                print(f"[ADMIN_TAKEOVER] workspace_id={workspace_id} conversation_id=whatsapp_{cust_phone} customer_id={cust_phone} source=whatsapp takeover_by=human_admin_whatsapp conversation_version={new_v}")
+                                print(f"[ADMIN_MESSAGE] sender_role=ADMIN channel=whatsapp customer_id={cust_phone} mid={msg_id}")
+                            else:
+                                print(f"[OUTBOUND_ECHO] ignored=true mid={msg_id} from={masked_sender}")
+                            continue
 
                     # 5. Atomic Event Deduplication Check
                     if msg_id:
@@ -1114,6 +1160,7 @@ async def handle_whatsapp_webhook_event(data: dict):
 
                     # Check if AI Master Switch or Per-Customer Takeover is active (Strict Zero-Reply Check)
                     if not is_conversation_ai_active(sender_id=sender_phone, workspace_id=workspace_id):
+                        print(f"[AI_BLOCKED] reason=admin_takeover workspace_id={workspace_id} conversation_id=whatsapp_{sender_phone}")
                         print(f"[WhatsApp]: AI is PAUSED / TAKEN OVER for customer {masked_sender} on account {effective_phone_id}. AI will stay silent.")
                         continue
 

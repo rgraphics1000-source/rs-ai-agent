@@ -24,6 +24,7 @@ from app.channels.whatsapp import (
     send_whatsapp_message,
     send_whatsapp_image
 )
+from app.channels.debouncer import message_debouncer
 
 class TestFacebookMediaIdempotencySuite(unittest.TestCase):
     def setUp(self):
@@ -65,12 +66,16 @@ class TestFacebookMediaIdempotencySuite(unittest.TestCase):
             }
             mock_send_text.return_value = True
 
+            async def _run():
+                await handle_facebook_webhook_event(data)
+                await message_debouncer.flush("facebook", self.workspace_id, self.recipient_id)
+
             # First delivery
-            asyncio.run(handle_facebook_webhook_event(data))
+            asyncio.run(_run())
             self.assertEqual(mock_ai.call_count, 1)
 
             # Second duplicate delivery
-            asyncio.run(handle_facebook_webhook_event(data))
+            asyncio.run(_run())
             # AI should NOT be called again
             self.assertEqual(mock_ai.call_count, 1)
 
@@ -347,8 +352,11 @@ class TestFacebookMediaIdempotencySuite(unittest.TestCase):
         with patch("app.channels.facebook.process_customer_message") as mock_ai, \
              patch("app.channels.facebook.send_fb_text_message") as mock_send:
             mock_ai.return_value = {"reply_text": "উত্তর", "matched_images": []}
-            mock_send.return_value = True
-            asyncio.run(handle_facebook_webhook_event(data))
+            async def _run():
+                await handle_facebook_webhook_event(data)
+                await message_debouncer.flush("facebook", 1, self.recipient_id)
+
+            asyncio.run(_run())
             self.assertEqual(mock_ai.call_count, 1)
             # Verify workspace_id=1 was passed
             call_kwargs = mock_ai.call_args[1]
