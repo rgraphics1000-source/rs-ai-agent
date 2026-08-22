@@ -997,11 +997,6 @@ async def handle_whatsapp_webhook_event(data: dict):
             for change in entry.get("changes", []):
                 value = change.get("value", {})
                 
-                # 1. Drop WhatsApp status callbacks (sent, delivered, read) without customer messages
-                if "statuses" in value and not value.get("messages"):
-                    print(f"[OUTBOUND_STATUS_WEBHOOK] ignored=true status_count={len(value.get('statuses', []))}")
-                    continue
-
                 # Identify exact recipient WhatsApp Phone Number ID from metadata
                 metadata = value.get("metadata", {})
                 meta_phone_id = str(metadata.get("phone_number_id", "")).strip()
@@ -1029,6 +1024,34 @@ async def handle_whatsapp_webhook_event(data: dict):
 
                 print(f"[WhatsApp Routing] matched_account_id={wa_account.get('id')} workspace_id={workspace_id} workspace={workspace_name}")
 
+                # 1. Process WhatsApp status callbacks (sent, delivered, read) to detect Human Admin / Shop Owner messages from Phone/Web
+                statuses = value.get("statuses", [])
+                for st in statuses:
+                    st_id = str(st.get("id", "")).strip()
+                    st_status = str(st.get("status", "")).strip()
+                    st_rec_raw = str(st.get("recipient_id", "")).strip()
+                    st_rec_phone = normalize_whatsapp_phone_number(st_rec_raw)
+                    
+                    if st_rec_phone and not is_own_whatsapp_number(st_rec_phone):
+                        # If this status callback is for a message NOT sent by our AI engine:
+                        # It was sent by the Shop Owner / Main Admin (মুহা. রাশেদুল ইসলাম / রাশেদ) from the WhatsApp Business mobile app or WhatsApp Web!
+                        if st_id and not is_outbound_ai_message("whatsapp", st_id):
+                            new_v = set_admin_takeover(
+                                sender_id=st_rec_phone,
+                                workspace_id=workspace_id,
+                                takeover_by="human_admin_whatsapp_phone",
+                                takeover_reason=f"human_admin_status_{st_status}"
+                            )
+                            message_debouncer.cancel_batch("whatsapp", workspace_id, st_rec_phone)
+                            print(f"[ADMIN_TAKEOVER] workspace_id={workspace_id} conversation_id=whatsapp_{st_rec_phone} customer_id={st_rec_phone} source=whatsapp_phone_status status={st_status} mid={st_id} conversation_version={new_v}")
+                            print(f"[ADMIN_MESSAGE] sender_role=ADMIN channel=whatsapp customer_id={st_rec_phone} mid={st_id}")
+
+                # Drop WhatsApp status callbacks if no customer message entries are present
+                if not value.get("messages"):
+                    if statuses:
+                        print(f"[OUTBOUND_STATUS_WEBHOOK] processed=true status_count={len(statuses)}")
+                    continue
+
                 messages = value.get("messages", [])
                 contacts = value.get("contacts", [])
                 
@@ -1050,15 +1073,16 @@ async def handle_whatsapp_webhook_event(data: dict):
 
                     # 4. Outbound / Echo Immunity & Human Admin Takeover Detection
                     is_own_from = is_own_whatsapp_number(raw_from) or is_own_whatsapp_number(sender_phone)
+                    is_from_me = bool(msg.get("from_me") or msg.get("is_echo"))
                     is_ai_msg = is_outbound_ai_message("whatsapp", msg_id) if msg_id else False
 
-                    if is_own_from:
+                    if is_own_from or is_from_me:
                         if is_ai_msg:
                             print(f"[OUTBOUND_ECHO] ignored=true mid={msg_id} from={masked_sender}")
                             continue
                         else:
                             # HUMAN ADMIN / SHOP OWNER MESSAGE sent from WhatsApp Business App / Phone / Coexistence!
-                            cust_phone = msg.get("recipient_id") or msg.get("to")
+                            cust_phone = msg.get("recipient_id") or msg.get("to") or msg.get("chat_id")
                             if not cust_phone and contacts:
                                 for c in contacts:
                                     w_id = normalize_whatsapp_phone_number(c.get("wa_id", ""))
@@ -1071,9 +1095,11 @@ async def handle_whatsapp_webhook_event(data: dict):
                                     if st_rec and not is_own_whatsapp_number(st_rec):
                                         cust_phone = st_rec
                                         break
+                            if not cust_phone and sender_phone and not is_own_whatsapp_number(sender_phone):
+                                cust_phone = sender_phone
 
                             if cust_phone:
-                                admin_msg_text = msg.get("text", {}).get("body", "") or "[Admin Message/Media]"
+                                admin_msg_text = msg.get("text", {}).get("body", "") or msg.get("image", {}).get("caption", "") or "[Admin Message/Media]"
                                 new_v = set_admin_takeover(
                                     sender_id=cust_phone,
                                     workspace_id=workspace_id,

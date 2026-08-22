@@ -532,6 +532,91 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
         for i in range(5):
             self.assertIn(f"FAKE_IMAGE_DATA_BYTES_{i+1}".encode("utf-8"), passed_images[i]["bytes"])
 
+    async def test_12_whatsapp_mobile_status_callback_triggers_takeover(self):
+        """
+        Validates that when the shop owner replies from their WhatsApp Business mobile app,
+        Meta's status callback (status='sent') triggers immediate set_admin_takeover,
+        and follow-up customer messages receive 0 AI replies and 0 Gemini calls.
+        """
+        enable_conversation_ai(sender_id=self.cust_a, workspace_id=1)
+        self.assertTrue(is_conversation_ai_active(sender_id=self.cust_a, workspace_id=1))
+
+        status_mid = f"wamid.mobile_admin_{uuid.uuid4().hex[:6]}"
+        # Simulate Meta status webhook for message sent from mobile app (NOT AI sent)
+        status_payload = {
+            "object": "whatsapp_business_account",
+            "entry": [{
+                "id": "271335301757320",
+                "changes": [{
+                    "value": {
+                        "messaging_product": "whatsapp",
+                        "metadata": {
+                            "display_phone_number": "+8801816504097",
+                            "phone_number_id": self.wa_phone_id
+                        },
+                        "statuses": [{
+                            "id": status_mid,
+                            "status": "sent",
+                            "timestamp": str(int(time.time())),
+                            "recipient_id": self.cust_a
+                        }]
+                    },
+                    "field": "messages"
+                }]
+            }]
+        }
+
+        await handle_whatsapp_webhook_event(status_payload)
+
+        # Assert AI is now permanently TAKEN OVER / SILENT for this customer
+        state = get_conversation_state(sender_id=self.cust_a, workspace_id=1)
+        self.assertEqual(state.get("admin_takeover"), 1)
+        self.assertFalse(is_conversation_ai_active(sender_id=self.cust_a, workspace_id=1))
+
+        # Now simulate 5 customer messages arriving
+        gemini_mock = MagicMock()
+        for idx in range(1, 6):
+            cust_payload = {
+                "object": "whatsapp_business_account",
+                "entry": [{
+                    "id": "271335301757320",
+                    "changes": [{
+                        "value": {
+                            "messaging_product": "whatsapp",
+                            "metadata": {
+                                "display_phone_number": "+8801816504097",
+                                "phone_number_id": self.wa_phone_id
+                            },
+                            "contacts": [{"profile": {"name": "Customer A"}, "wa_id": self.cust_a}],
+                            "messages": [{
+                                "from": self.cust_a,
+                                "id": f"wamid.post_status_cust_{idx}_{uuid.uuid4().hex[:6]}",
+                                "timestamp": str(int(time.time())),
+                                "type": "text",
+                                "text": {"body": f"Customer post-status message {idx}"}
+                            }]
+                        },
+                        "field": "messages"
+                    }]
+                }]
+            }
+            with patch("app.channels.whatsapp.process_customer_message", gemini_mock):
+                await handle_whatsapp_webhook_event(cust_payload)
+                await message_debouncer.flush("whatsapp", 1, self.cust_a)
+
+        # Assert 0 Gemini calls occurred
+        self.assertEqual(gemini_mock.call_count, 0)
+
+    def test_13_ai_agent_persona_nadim_and_owner_rashed(self):
+        """
+        Validates that Gemini AI system instructions embed the AI Agent name 'নাদিম' (Nadim)
+        and the Shop Owner 'মুহা. রাশেদুল ইসলাম' (সংক্ষেপে 'রাশেদ').
+        """
+        instructions = build_system_instruction(workspace_id=1)
+        self.assertIn("নাদিম", instructions)
+        self.assertIn("মুহা. রাশেদুল ইসলাম", instructions)
+        self.assertIn("রাশেদ", instructions)
+
 
 if __name__ == "__main__":
     unittest.main()
