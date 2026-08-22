@@ -2616,6 +2616,10 @@ window.onNativeContactPicked = async function(name, phone) {
 // 2. Chat Selector Modal (WhatsApp & Messenger Chats)
 let cachedConversationsForMute = [];
 
+async function openWhatsAppMuteSelectorModal() {
+    await openChatSelectorModal();
+}
+
 async function openChatSelectorModal() {
     openModal("modal-select-chats-to-mute");
     const container = document.getElementById("chat-selector-list-container");
@@ -2639,7 +2643,13 @@ function renderMuteChatSelectorList(convs) {
     if (!container) return;
 
     if (!convs || convs.length === 0) {
-        container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 20px;">কোনো সক্রিয় চ্যাট পাওয়া যায়নি।</div>`;
+        container.innerHTML = `
+            <div style="text-align: center; color: var(--text-dim); padding: 25px;">
+                <i class="fab fa-whatsapp" style="font-size: 28px; opacity: 0.3; margin-bottom: 8px; display: block;"></i>
+                কোনো সক্রিয় চ্যাট হিস্ট্রি পাওয়া যায়নি।<br>
+                উপরের বক্সে নম্বর লিখে <strong>'যোগ'</strong> করুন অথবা <strong>'ফোনবুক থেকে বাছুন'</strong> বাটনে চাপুন।
+            </div>
+        `;
         return;
     }
 
@@ -2648,23 +2658,59 @@ function renderMuteChatSelectorList(convs) {
     container.innerHTML = convs.map(c => {
         const sender = c.sender_id || "";
         const isChecked = currentMutedNumbers.some(m => sender.includes(m) || m.includes(sender));
-        const channelIcon = c.channel === "whatsapp" ? "fab fa-whatsapp" : "fab fa-facebook-messenger";
-        const channelColor = c.channel === "whatsapp" ? "#25d366" : "#0084ff";
+        const isWA = c.channel === "whatsapp" || /^\d+$/.test(sender);
+        const channelIcon = isWA ? "fab fa-whatsapp" : "fab fa-facebook-messenger";
+        const channelColor = isWA ? "#25d366" : "#0084ff";
 
         return `
-            <label style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,0.03); cursor: pointer; border: 1px solid rgba(255,255,255,0.06);">
-                <input type="checkbox" class="mute-chat-checkbox" value="${sender}" ${isChecked ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: #ef4444;">
+            <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.03); cursor: pointer; border: 1px solid rgba(255,255,255,0.06); transition: all 0.2s ease;">
+                <input type="checkbox" class="mute-chat-checkbox" value="${sender}" ${isChecked ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: #ef4444; cursor: pointer;">
                 <div style="flex: 1;">
                     <div style="display: flex; align-items: center; gap: 6px;">
-                        <i class="${channelIcon}" style="color: ${channelColor};"></i>
-                        <strong style="font-size: 13px; color: #fff;">${c.customer_name || 'Customer'}</strong>
+                        <i class="${channelIcon}" style="color: ${channelColor}; font-size: 15px;"></i>
+                        <strong style="font-size: 13.5px; color: #fff;">${c.customer_name || 'Customer'}</strong>
+                        ${isWA ? '<span class="badge" style="background: rgba(37,211,102,0.15); color: #34d399; font-size: 10px;">WhatsApp</span>' : '<span class="badge" style="background: rgba(0,132,255,0.15); color: #60a5fa; font-size: 10px;">Messenger</span>'}
                     </div>
-                    <span style="font-size: 11.5px; color: var(--text-muted);">${c.sender_id || ''}</span>
+                    <span style="font-size: 12px; color: var(--text-muted);">${c.sender_id || ''}</span>
                 </div>
-                ${isChecked ? '<span class="badge" style="background: rgba(239,68,68,0.2); color: #f87171; font-size: 10px;">Muted</span>' : ''}
+                ${isChecked ? '<span class="badge" style="background: rgba(239,68,68,0.2); color: #f87171; font-size: 11px;"><i class="fas fa-ban"></i> ব্লকড</span>' : '<span style="font-size: 11px; color: var(--text-dim);">ক্লিক করে ব্লক করুন</span>'}
             </label>
         `;
     }).join('');
+}
+
+function toggleSelectAllMuteChats(select) {
+    const checkboxes = document.querySelectorAll(".mute-chat-checkbox");
+    checkboxes.forEach(cb => {
+        cb.checked = select;
+    });
+}
+
+async function handleModalDirectAddMute() {
+    const input = document.getElementById("modal-direct-mute-phone");
+    const val = input ? input.value.trim() : "";
+    if (!val) {
+        showToast("দয়া করে একটি মোবাইল নম্বর লিখুন", "danger");
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/muted-contacts/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone: val })
+        });
+        const data = await res.json();
+        if (data.success) {
+            input.value = "";
+            showToast(`✅ ${val} সফলভাবে ব্লক লিস্টে যুক্ত হয়েছে!`, "success");
+            await loadMutedContacts();
+            await openChatSelectorModal();
+        }
+    } catch (e) {
+        console.error("handleModalDirectAddMute error:", e);
+        showToast("নম্বর যুক্ত করা সম্ভব হয়নি", "danger");
+    }
 }
 
 function filterMuteChatSelectorList() {
@@ -2709,7 +2755,7 @@ async function confirmChatSelectorMute() {
 
     await loadMutedContacts();
     closeModal("modal-select-chats-to-mute");
-    showToast(`✅ কন্টাক্ট ব্লক লিস্ট সফলভাবে আপডেট হয়েছে!`, "success");
+    showToast(`🚫 সিলেক্ট করা কন্টাক্টগুলোতে এআই সফলভাবে ব্লক (বন্ধ) করা হয়েছে!`, "success");
 }
 
 async function saveAllSettings() {

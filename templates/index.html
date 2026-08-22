@@ -1154,8 +1154,8 @@
                                 </p>
                             </div>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                <button type="button" class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-size: 11.5px; padding: 8px 12px; font-weight: 600; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);" onclick="openWhatsAppBusinessApp()">
-                                    <i class="fab fa-whatsapp"></i> 💼 হোয়াটসঅ্যাপ বিজনেস
+                                <button type="button" class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-size: 11.5px; padding: 8px 12px; font-weight: 600; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);" onclick="openWhatsAppMuteSelectorModal()">
+                                    <i class="fab fa-whatsapp"></i> 💼 হোয়াটসঅ্যাপ বিজনেস সিলেক্টর
                                 </button>
                                 <button type="button" class="btn" style="background: linear-gradient(135deg, #2563eb, #06b6d4); color: #fff; font-size: 11.5px; padding: 8px 12px; font-weight: 600;" onclick="pickPhoneOrWhatsAppContact()">
                                     <i class="fas fa-address-book"></i> 📱 ফোনবুক কন্টাক্ট
@@ -1163,8 +1163,8 @@
                                 <button type="button" class="btn" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #e2e8f0; font-size: 11.5px; padding: 8px 12px; font-weight: 600;" onclick="openChatSelectorModal()">
                                     <i class="fas fa-comments"></i> 💬 চ্যাট লিস্ট সিলেক্টর
                                 </button>
-                                <button type="button" class="btn" style="background: rgba(37, 211, 102, 0.1); border: 1px solid rgba(37, 211, 102, 0.4); color: #34d399; font-size: 11.5px; padding: 8px 12px; font-weight: 600;" onclick="openWhatsAppAppDirectly()">
-                                    <i class="fab fa-whatsapp"></i> 🟢 পার্সোনাল WA
+                                <button type="button" class="btn" style="background: rgba(37, 211, 102, 0.1); border: 1px solid rgba(37, 211, 102, 0.4); color: #34d399; font-size: 11.5px; padding: 8px 12px; font-weight: 600;" onclick="openWhatsAppBusinessApp()" title="সরাসরি হোয়াটসঅ্যাপ বিজনেস অ্যাপ ওপেন করুন">
+                                    <i class="fas fa-external-link-alt"></i> 📲 WA Business অ্যাপ
                                 </button>
                             </div>
                         </div>
@@ -1663,24 +1663,53 @@
 
     <!-- Modal: Select WhatsApp & Messenger Chats to Mute -->
     <div id="modal-select-chats-to-mute" class="modal-overlay">
-        <div class="modal-content" style="max-width: 520px;">
+        <div class="modal-content" style="max-width: 560px;">
             <div class="modal-header">
-                <h3><i class="fab fa-whatsapp" style="color: #25d366;"></i> হোয়াটসঅ্যাপ / ইনবক্স কাস্টমার সিলেক্টর</h3>
+                <h3><i class="fab fa-whatsapp" style="color: #25d366;"></i> 💼 হোয়াটসঅ্যাপ বিজনেস ও কন্টাক্ট ব্লক সিলেক্টর</h3>
                 <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-select-chats-to-mute')">&times;</button>
             </div>
-            <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 12px;">
-                যাদের সিলেক্ট করবেন, এআই এজেন্ট তাদের কোনো মেসেজে স্বয়ংক্রিয় উত্তর দেবে না (সম্পূর্ণ নীরব থাকবে):
+            <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5;">
+                যেসব হোয়াটসঅ্যাপ নম্বর বা গ্রাহক আপনি সিলেক্ট করে ওকে করবেন, <strong style="color: #f87171;">সেগুলোতে এআই এজেন্ট সম্পূর্ণ বন্ধ (ব্লক) থাকবে</strong> এবং কোনো অটো-রিপ্লাই দেবে না:
             </p>
-            <div class="form-group" style="margin-bottom: 10px;">
-                <input type="text" id="chat-selector-search-input" class="form-control" style="font-size: 13px;" placeholder="🔍 নাম বা মোবাইল নম্বর দিয়ে খুঁজুন..." oninput="filterMuteChatSelectorList()">
+
+            <!-- Quick Action Toolbar inside Modal -->
+            <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+                <button type="button" class="btn" style="background: rgba(37, 99, 235, 0.15); border: 1px solid #3b82f6; color: #60a5fa; font-size: 11.5px; padding: 6px 12px;" onclick="pickPhoneOrWhatsAppContact()">
+                    <i class="fas fa-address-book"></i> 📱 ফোনবুক থেকে বাছুন
+                </button>
+                <button type="button" class="btn" style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; font-size: 11.5px; padding: 6px 12px;" onclick="openWhatsAppBusinessApp()">
+                    <i class="fab fa-whatsapp"></i> 📲 WA Business অ্যাপ খুলুন
+                </button>
+                <button type="button" class="btn" style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255,255,255,0.15); color: #e2e8f0; font-size: 11.5px; padding: 6px 10px;" onclick="toggleSelectAllMuteChats(true)">
+                    <i class="fas fa-check-double"></i> সব সিলেক্ট
+                </button>
+                <button type="button" class="btn" style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255,255,255,0.15); color: #e2e8f0; font-size: 11.5px; padding: 6px 10px;" onclick="toggleSelectAllMuteChats(false)">
+                    <i class="fas fa-times"></i> সব ক্লিয়ার
+                </button>
             </div>
-            <div id="chat-selector-list-container" style="max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px; background: rgba(10, 14, 23, 0.6);">
+
+            <!-- Direct Number Input inside Modal -->
+            <div style="display: flex; gap: 6px; margin-bottom: 12px;">
+                <input type="text" id="modal-direct-mute-phone" class="form-control" style="font-size: 12px;" placeholder="সরাসরি নতুন নম্বর লিখুন (যেমন: 01816504097)" onkeydown="if(event.key==='Enter'){event.preventDefault(); handleModalDirectAddMute();}">
+                <button type="button" class="btn" style="background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5; font-size: 12px; white-space: nowrap; padding: 6px 14px;" onclick="handleModalDirectAddMute()">
+                    <i class="fas fa-plus"></i> যোগ
+                </button>
+            </div>
+
+            <!-- Search Filter Input -->
+            <div class="form-group" style="margin-bottom: 8px;">
+                <input type="text" id="chat-selector-search-input" class="form-control" style="font-size: 12.5px;" placeholder="🔍 নাম বা মোবাইল নম্বর দিয়ে লিস্ট ফিল্টার করুন..." oninput="filterMuteChatSelectorList()">
+            </div>
+
+            <!-- Conversations List -->
+            <div id="chat-selector-list-container" style="max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px; background: rgba(10, 14, 23, 0.6);">
                 <!-- Populated dynamically -->
             </div>
-            <div class="modal-footer-actions">
+
+            <div class="modal-footer-actions" style="margin-top: 14px;">
                 <button type="button" class="btn btn-secondary" onclick="closeModal('modal-select-chats-to-mute')">বাতিল</button>
-                <button type="button" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669);" onclick="confirmChatSelectorMute()">
-                    <i class="fas fa-check"></i> সিলেক্ট করা নম্বরগুলো মিউট করুন
+                <button type="button" class="btn btn-primary" style="background: linear-gradient(135deg, #ef4444, #b91c1c); box-shadow: 0 0 12px rgba(239,68,68,0.3); border: none; font-weight: 600;" onclick="confirmChatSelectorMute()">
+                    <i class="fas fa-ban"></i> 🚫 সিলেক্ট করা নম্বরে এআই বন্ধ (ব্লক) করুন
                 </button>
             </div>
         </div>
