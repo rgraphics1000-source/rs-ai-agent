@@ -293,6 +293,33 @@ class MessageDebouncer:
             self._batches.pop(key, None)
             print(f"[BATCH_CANCELLED_ADMIN_TAKEOVER] key={key} batch_id={batch.batch_id} reason=admin_takeover_or_manual_cancel")
 
+    def cancel_all_batches(self):
+        """Immediately cancels all pending AI response batches across all channels and workspaces."""
+        keys = list(self._batches.keys())
+        for key in keys:
+            batch = self._batches.get(key)
+            if batch:
+                batch.is_cancelled = True
+                batch.status = "CANCELLED"
+                if batch.timer_task and not batch.timer_task.done():
+                    batch.timer_task.cancel()
+        self._batches.clear()
+        print(f"[ALL_BATCHES_CANCELLED_AI_PAUSED] Cancelled {len(keys)} in-flight pending batches.")
+
+    def cancel_workspace_batches(self, workspace_id: int):
+        """Immediately cancels all pending AI response batches for a specific workspace."""
+        ws_str = f":{workspace_id}:"
+        keys_to_cancel = [k for k in self._batches.keys() if ws_str in k]
+        for key in keys_to_cancel:
+            batch = self._batches.get(key)
+            if batch:
+                batch.is_cancelled = True
+                batch.status = "CANCELLED"
+                if batch.timer_task and not batch.timer_task.done():
+                    batch.timer_task.cancel()
+                self._batches.pop(key, None)
+        print(f"[WORKSPACE_BATCHES_CANCELLED] workspace_id={workspace_id} count={len(keys_to_cancel)}")
+
 
 # Global debouncer instance
 message_debouncer = MessageDebouncer(debounce_seconds=3.0)

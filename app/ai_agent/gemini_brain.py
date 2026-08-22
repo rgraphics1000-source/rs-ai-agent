@@ -95,14 +95,31 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
     catalog = get_product_catalog_context(workspace_id=workspace_id)
     honorific = detect_customer_gender_title(customer_name)
 
-    # Load in-app custom training rules from database for THIS workspace
+    # Load in-app custom training rules from database for THIS workspace (Real-time dynamic training)
     training_rules = get_active_training_rules(workspace_id=workspace_id)
     training_text = ""
     if training_rules:
-        training_text = "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🧠 অ্যাডমিন কর্তৃক নির্ধারিত স্পেশাল ট্রেইনিং রুলস (Custom Training Rules):\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        training_text = (
+            "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "🎯 অ্যাডমিন কর্তৃক সর্বশেষ লাইভ ট্রেনিং ও বিশেষ নির্দেশনা (Top-Priority Live Directives - ALWAYS OVERRIDES DEFAULT RULES):\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "⚠️ বিশেষ সতর্কতা ও তাৎক্ষণিক কার্যকারিতা: শপ ওনার / অ্যাডমিন ট্রেনিং সেক্টরে তোমাকে যা যা নতুন নিয়ম বা উত্তর শিখিয়েছেন, তা পূর্ববর্তী যেকোনো সাধারণ নিয়ম বা ক্যাটালগ তথ্যের চেয়ে ১০০% বেশি অগ্রাধিকার পাবে। কাস্টমারের কথার সাথে নিচের ট্রেনিং রুলের কোনো মিল থাকলে অবিলম্বে এই ট্রেনিং রুল অনুযায়ী উত্তর দেবে:\n\n"
+        )
+        # Group by category for crystal clarity
+        categories = {}
         for r in training_rules:
-            trigger = f" (যদি কাস্টমার বলে: '{r['question_or_trigger']}')" if r.get('question_or_trigger') else ""
-            training_text += f"• [{r.get('category', 'Rule')}] {r['title']}{trigger}: {r['response_or_rule']}\n"
+            cat = r.get("category", "General") or "General"
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append(r)
+
+        for cat_name, r_list in categories.items():
+            training_text += f"【ক্যাটেগরি: {cat_name}】\n"
+            for r in r_list:
+                trigger = f" ⮞ ট্রিগার/প্রশ্ন: \"{r['question_or_trigger']}\"" if r.get('question_or_trigger') else ""
+                r_type = f" [{r.get('rule_type', 'rule').upper()}]" if r.get('rule_type') else ""
+                training_text += f"  • {r['title']}{r_type}{trigger} ➔ করণীয়/উত্তর: {r['response_or_rule']}\n"
+            training_text += "\n"
 
     # Load FAQs for THIS workspace
     faqs = get_faqs(workspace_id=workspace_id)

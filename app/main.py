@@ -854,8 +854,12 @@ async def api_update_workspace_ai_config(workspace_id: int, request: Request):
     ws["delivery_inside_dhaka"] = data.get("delivery_inside_dhaka", ws.get("delivery_inside_dhaka", 70.0))
     ws["delivery_outside_dhaka"] = data.get("delivery_outside_dhaka", ws.get("delivery_outside_dhaka", 130.0))
     ws["ai_system_prompt"] = data.get("ai_system_prompt", ws.get("ai_system_prompt", ""))
-    ws["ai_enabled"] = int(data.get("ai_enabled", ws.get("ai_enabled", 1)))
+    ai_en = int(data.get("ai_enabled", ws.get("ai_enabled", 1)))
+    ws["ai_enabled"] = ai_en
     save_workspace(ws)
+    if ai_en == 0:
+        from app.channels.debouncer import message_debouncer
+        message_debouncer.cancel_workspace_batches(workspace_id)
     return {"success": True, "message": "Workspace AI settings updated successfully"}
 
 # ==========================================
@@ -1022,6 +1026,16 @@ async def api_save_settings(request: Request):
     for k, v in data.items():
         set_setting(k, str(v))
     
+    # Immediately cancel any pending in-flight batches if global AI Master switch was turned OFF
+    if "ai_enabled" in data:
+        val = str(data["ai_enabled"]).lower()
+        if val == "false":
+            from app.channels.debouncer import message_debouncer
+            message_debouncer.cancel_all_batches()
+            print("[MASTER_SWITCH_AI_DISABLED] Global AI Master Switch turned OFF. All in-flight debouncer batches cancelled.")
+        else:
+            print("[MASTER_SWITCH_AI_ENABLED] Global AI Master Switch turned ON.")
+
     # Sync WhatsApp accounts if credentials updated
     if any(k in data for k in ["whatsapp_access_token", "meta_system_user_access_token", "whatsapp_phone_number_id", "whatsapp_waba_id"]):
         clear_token_validation_cache()

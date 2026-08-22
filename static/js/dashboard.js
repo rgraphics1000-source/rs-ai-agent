@@ -1916,29 +1916,33 @@ function updateAIMasterButtonUI(active) {
 
     if (btn) {
         if (active) {
-            btn.style.background = "rgba(16, 185, 129, 0.15)";
+            btn.style.background = "linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.3))";
             btn.style.borderColor = "#10b981";
             btn.style.color = "#34d399";
-            btn.innerHTML = `<i class="fas fa-circle" style="font-size: 9px; color: #34d399;"></i> <span id="ai-master-status-text">AI Agent: Active (Auto-Reply)</span>`;
+            btn.style.boxShadow = "0 0 12px rgba(16, 185, 129, 0.25)";
+            btn.title = "১-ক্লিকে এআই এজেন্টের সকল রিপ্লাই বন্ধ করুন";
+            btn.innerHTML = `<i class="fas fa-power-off" style="font-size: 11px; color: #34d399;"></i> <span id="ai-master-status-text">AI Agent: চালু (Active)</span>`;
         } else {
-            btn.style.background = "rgba(239, 68, 68, 0.15)";
+            btn.style.background = "linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(185, 28, 28, 0.3))";
             btn.style.borderColor = "#ef4444";
             btn.style.color = "#f87171";
-            btn.innerHTML = `<i class="fas fa-pause-circle" style="font-size: 11px; color: #f87171;"></i> <span id="ai-master-status-text">AI Agent: Paused (Manual Mode)</span>`;
+            btn.style.boxShadow = "0 0 12px rgba(239, 68, 68, 0.25)";
+            btn.title = "১-ক্লিকে এআই এজেন্ট পুনরায় চালু করুন";
+            btn.innerHTML = `<i class="fas fa-pause-circle" style="font-size: 12px; color: #f87171;"></i> <span id="ai-master-status-text">AI Agent: সম্পূর্ণ বন্ধ (OFF)</span>`;
         }
     }
 
     if (mobileBtn) {
         if (active) {
-            mobileBtn.style.background = "rgba(16, 185, 129, 0.15)";
+            mobileBtn.style.background = "rgba(16, 185, 129, 0.2)";
             mobileBtn.style.borderColor = "#10b981";
             mobileBtn.style.color = "#34d399";
-            mobileBtn.innerHTML = `<i class="fas fa-circle" style="font-size: 7px;"></i> <span id="mobile-ai-master-text">Active</span>`;
+            mobileBtn.innerHTML = `<i class="fas fa-circle" style="font-size: 7px; color: #34d399;"></i> <span id="mobile-ai-master-text">চালু</span>`;
         } else {
-            mobileBtn.style.background = "rgba(239, 68, 68, 0.15)";
+            mobileBtn.style.background = "rgba(239, 68, 68, 0.2)";
             mobileBtn.style.borderColor = "#ef4444";
             mobileBtn.style.color = "#f87171";
-            mobileBtn.innerHTML = `<i class="fas fa-pause-circle" style="font-size: 8px;"></i> <span id="mobile-ai-master-text">Paused</span>`;
+            mobileBtn.innerHTML = `<i class="fas fa-pause-circle" style="font-size: 8px; color: #f87171;"></i> <span id="mobile-ai-master-text">বন্ধ</span>`;
         }
     }
 }
@@ -1956,9 +1960,9 @@ async function toggleAIMasterSwitch() {
         const data = await res.json();
         if (data.success) {
             if (isAIMasterActive) {
-                showToast("🟢 এআই এজেন্ট চালু করা হয়েছে (২৪ ঘণ্টা অটো-রিপ্লাই মোড)", "success");
+                showToast("🟢 এআই এজেন্ট চালু করা হয়েছে (স্বয়ংক্রিয় রিপ্লাই সক্রিয়)", "success");
             } else {
-                showToast("⏸️ এআই এজেন্ট বন্ধ করা হয়েছে (ম্যানুয়াল মোড)", "danger");
+                showToast("🛑 এআই এজেন্ট সম্পূর্ণ বন্ধ করা হয়েছে (কোনো অটো-রিপ্লাই যাবে না)", "danger");
             }
         }
     } catch (e) {
@@ -2269,52 +2273,6 @@ function switchContentSubtab(tabName, btn) {
     if (tabName === "faqs") loadFaqs();
 }
 
-async function loadTrainingRules() {
-    const container = document.getElementById("training-rules-list-container");
-    if (!container) return;
-
-    try {
-        const res = await fetch(`/api/training/rules?workspace_id=${currentWorkspaceId}`);
-        const data = await res.json();
-        const rules = data.rules || [];
-
-        if (rules.length === 0) {
-            container.innerHTML = `
-                <div style="text-align: center; color: var(--text-dim); padding: 30px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px;">
-                    <i class="fas fa-brain" style="font-size: 28px; color: var(--primary-light); margin-bottom: 10px; display: block;"></i>
-                    এখনো কোনো স্পেশাল এআই রুলস যোগ করা হয়নি।<br>
-                    উপরে আপনার শপের পলিসি বা কাস্টমার হ্যান্ডলিংয়ের কথা বাংলায় লিখে <strong>'🧠 অটো-সিন্থেসাইজ ও এআই ট্রেইন করুন'</strong> বাটনে চাপুন।
-                </div>
-            `;
-            return;
-        }
-
-        container.innerHTML = rules.map(r => `
-            <div style="background: rgba(13, 17, 28, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;">
-                <div style="flex: 1;">
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                        <span class="badge" style="background: rgba(37,99,235,0.25); color: #60a5fa; font-size: 11px;">${r.category || 'General'}</span>
-                        <strong style="font-size: 14px; color: #fff;">${r.title}</strong>
-                        ${r.is_active ? '<span style="color: #34d399; font-size: 11px;"><i class="fas fa-check-circle"></i> Active</span>' : '<span style="color: #ef4444; font-size: 11px;"><i class="fas fa-pause-circle"></i> Paused</span>'}
-                    </div>
-                    ${r.question_or_trigger ? `<div style="font-size: 12px; color: #fbbf24; margin-bottom: 4px;"><strong>ট্রিগার:</strong> ${r.question_or_trigger}</div>` : ''}
-                    <p style="font-size: 13px; color: var(--text-muted); line-height: 1.5; margin: 0;">${r.response_or_rule}</p>
-                </div>
-                <div style="display: flex; gap: 8px;">
-                    <button class="btn btn-sm" style="background: ${r.is_active ? 'rgba(239,68,68,0.15); color: #f87171;' : 'rgba(16,185,129,0.15); color: #34d399;'}" onclick="toggleTrainingRuleActive(${r.id})">
-                        ${r.is_active ? '<i class="fas fa-pause"></i> Pause' : '<i class="fas fa-play"></i> Activate'}
-                    </button>
-                    <button class="btn btn-sm" style="background: rgba(239,68,68,0.2); color: #f87171;" onclick="deleteTrainingRuleById(${r.id})">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </div>
-        `).join('');
-    } catch (e) {
-        console.error("loadTrainingRules error:", e);
-    }
-}
-
 async function handleAutoSynthesizeTraining() {
     const textarea = document.getElementById("auto-synthesize-input");
     const btn = document.getElementById("btn-auto-synthesize");
@@ -2400,6 +2358,12 @@ async function loadAllSettings() {
         const data = await res.json();
         const settings = data.settings || {};
 
+        // Sync Global Master Switch state
+        if (settings["ai_enabled"] !== undefined) {
+            isAIMasterActive = String(settings["ai_enabled"]).toLowerCase() !== "false";
+            updateAIMasterButtonUI(isAIMasterActive);
+        }
+
         const setVal = (id, key, def) => {
             const el = document.getElementById(id);
             if (el && settings[key] !== undefined && settings[key] !== null) el.value = settings[key];
@@ -2411,7 +2375,7 @@ async function loadAllSettings() {
 
         setVal("setting-shop-name", "shop_name", shopName);
         setVal("setting-shop-phone", "shop_phone", shopPhone);
-        setVal("setting-delivery-inside", "delivery_inside_dhaka", 70);
+        setVal("setting-delivery-inside", "delivery_inside_dhaka", 80);
         setVal("setting-delivery-outside", "delivery_outside_dhaka", 130);
         setVal("setting-blacklisted-numbers", "blacklisted_ai_numbers", "");
 

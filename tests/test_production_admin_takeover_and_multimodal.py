@@ -669,6 +669,70 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
         self.assertIn("৫ থেকে ৬ দিন", instructions)
         self.assertIn("২৪ থেকে ৪৮ ঘণ্টা", instructions)
 
+    async def test_17_master_switch_1_click_instant_ai_off_and_resume(self):
+        """
+        Validates that 1-click master toggle off:
+        1. Sets ai_enabled = false in DB.
+        2. Causes is_conversation_ai_active to return False.
+        3. Instantly cancels all in-flight debouncer batches.
+        4. When resumed (ai_enabled = true), returns True.
+        """
+        from app.database import set_setting, is_conversation_ai_active
+        from app.channels.debouncer import message_debouncer, PendingBatch
+
+        fresh_sender = f"88017{uuid.uuid4().hex[:8]}"
+
+        # Turn master switch OFF
+        set_setting("ai_enabled", "false")
+        message_debouncer.cancel_all_batches()
+
+        # Enqueue a dummy batch to verify cancellation
+        dummy_batch = PendingBatch("whatsapp", 1, fresh_sender, "Test Customer", 1)
+        message_debouncer._batches[f"whatsapp:1:{fresh_sender}"] = dummy_batch
+        message_debouncer.cancel_all_batches()
+        self.assertEqual(len(message_debouncer._batches), 0)
+
+        # Assert AI is inactive
+        self.assertFalse(is_conversation_ai_active(sender_id=fresh_sender, workspace_id=1))
+
+        # Turn master switch back ON
+        set_setting("ai_enabled", "true")
+        self.assertTrue(is_conversation_ai_active(sender_id=fresh_sender, workspace_id=1))
+
+    def test_18_realtime_training_rules_immediate_ingestion_and_override(self):
+        """
+        Validates that any newly taught training rule in the Training Sector
+        is immediately injected into Gemini Brain system prompt with category grouping
+        and override authority with zero delay.
+        """
+        from app.database import create_training_rule, delete_training_rule
+        
+        # Add a unique new training rule
+        unique_token = uuid.uuid4().hex[:6]
+        rule_title = f"স্পেশাল ইমার্জেন্সি অফার {unique_token}"
+        rule_content = f"আজকের জন্য সকল পিভিসি কার্ডে ৫০% ছাড় কোড {unique_token}"
+        rule_id = create_training_rule(
+            title=rule_title,
+            response_or_rule=rule_content,
+            rule_type="qa",
+            question_or_trigger=f"অফার কি {unique_token}",
+            category="Special Offer",
+            is_active=1,
+            workspace_id=1
+        )
+
+        try:
+            # Rebuild system instruction immediately
+            prompt = build_system_instruction(workspace_id=1)
+            self.assertIn(rule_title, prompt)
+            self.assertIn(rule_content, prompt)
+            self.assertIn(f"অফার কি {unique_token}", prompt)
+            self.assertIn("【ক্যাটেগরি: Special Offer】", prompt)
+            self.assertIn("ALWAYS OVERRIDES DEFAULT RULES", prompt)
+        finally:
+            # Clean up rule
+            delete_training_rule(rule_id)
+
 
 if __name__ == "__main__":
     unittest.main()
