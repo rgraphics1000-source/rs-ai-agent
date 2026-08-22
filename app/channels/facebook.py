@@ -456,41 +456,45 @@ def classify_facebook_comment_intent(comment_text: str) -> str:
     if not comment_text or not comment_text.strip():
         return "gratitude"
     
-    text = comment_text.strip().lower()
+    text = comment_text.strip().lower().replace("য়", "য").replace("য়", "য")
 
-    # Inquiry keywords / question markers (take precedence if user is asking something)
+    # 1. Inquiry keywords / question markers (take precedence if user is asking something)
     inquiry_indicators = [
         "কত", "দাম", "টাকা", "রেট", "অর্ডার", "rate", "price", "cost", "how much",
-        "details", "inbox", "চাই", "নেব", "নেবো", "পাবো", "পাওয়া যাবে", "পাওয়া যাবে",
+        "details", "inbox", "চাই", "নেব", "নেবো", "পাবো", "পাওয়া", "পাওয়া",
         "কবে", "কোথায়", "কোথায়", "কীভাবে", "কিভাবে", "পিস", "সাইজ", "size", "sample",
         "স্যাম্পল", "ডেলিভারি", "delivery", "কার্ড", "ফিতা", "কভার", "বানাতে", "বানাবো",
         "বানাব", "হবে কি", "হবে নাকি", "available", "আছে কি", "আছে নাকি", "প্যাকেজ",
-        "কালার", "color", "colour", "?", "？"
+        "কালার", "color", "colour", "নিতে চাই", "লাগে", "লাগবে", "?", "？"
     ]
 
     for ind in inquiry_indicators:
-        if ind in text:
+        if ind.replace("য়", "য").replace("য়", "য") in text:
             return "inquiry"
 
-    # Gratitude / appreciation / compliment keywords
+    # 2. Gratitude / appreciation / compliment keywords
     gratitude_indicators = [
-        "ধন্যবাদ", "শুক্রিয়া", "শুকরিয়া", "শুকরিয়া", "মাশাল্লাহ", "মাশাআল্লাহ", "মাশা আল্লাহ",
-        "মাসাআল্লাহ", "জাজাকাল্লাহ", "জাযাকাল্লাহ", "আলহামদুলিল্লাহ", "আলহামদুলিল্লাহ্‌",
+        "ধন্যবাদ", "শুক্রিয়া", "শুকরিয়া", "শুক্রিয়া", "শুকরিয়া", "মাশাল্লাহ", "মাশাআল্লাহ",
+        "মাশা আল্লাহ", "মাসাআল্লাহ", "জাজাকাল্লাহ", "জাযাকাল্লাহ", "আলহামদুলিল্লাহ",
         "সুন্দর", "অনেক সুন্দর", "খুব সুন্দর", "চমৎকার", "দারুণ", "দারুন", "ভালো", "অনেক ভালো",
         "অসাধারণ", "শুভকামনা", "স্বাগতম", "লাইক", "অভিনন্দন", "ভালোবাসা", "ভালো লাগলো",
         "সেরা", "অপূর্ব", "nice", "very nice", "good", "great", "awesome", "beautiful",
         "wow", "love", "love it", "super", "sundor", "onk sundor", "valobasa", "darun",
         "best of luck", "congrats", "thanks", "thank you", "thx", "mashallah", "mashaallah",
-        "subhanallah", "jazakallah", "alhamdulillah"
+        "subhanallah", "jazakallah", "alhamdulillah", "subhan allah", "jazak allah"
     ]
 
     for gr in gratitude_indicators:
-        if gr in text:
+        if gr.replace("য়", "য").replace("য়", "য") in text:
             return "gratitude"
 
-    # If text is very short (under 4 alphanumeric chars) or only emojis/symbols, treat as gratitude/appreciation
-    clean_chars = [c for c in text if c.isalnum()]
-    if len(clean_chars) <= 3:
+    # 3. Check for emoji-only or very short messages without question marks
+    text_no_emojis = "".join(c for c in comment_text if c.isalnum() or c.isspace()).strip()
+    if not text_no_emojis or len(text_no_emojis) <= 4:
+        return "gratitude"
+
+    # 4. If length is short and has no question mark / inquiry words, default to gratitude
+    if len(comment_text.strip()) <= 20 and "?" not in comment_text and "？" not in comment_text:
         return "gratitude"
 
     return "inquiry"
