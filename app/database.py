@@ -1422,37 +1422,50 @@ def save_connected_page(data: dict) -> int:
     page_token = str(data.get("page_access_token", "")).strip()
     workspace_id = data.get("workspace_id")
     
-    if not page_id or not page_token:
-        raise ValueError("page_id and page_access_token are required")
+    if not page_id:
+        raise ValueError("page_id is required")
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    cursor.execute("SELECT * FROM connected_pages WHERE page_id = ?", (page_id,))
+    existing = cursor.fetchone()
+
+    # If existing and no new token passed, preserve existing token
+    if existing and not page_token:
+        page_token = existing["page_access_token"]
+    elif not page_token:
+        page_token = get_setting("fb_page_access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN", "")
+
+    if not page_token:
+        conn.close()
+        raise ValueError("page_access_token is required for connecting a page")
+
     # If no workspace_id provided, look up or create workspace for this page
     if not workspace_id:
-        cursor.execute("SELECT id FROM workspaces WHERE name = ? OR shop_name = ?", (page_name, page_name))
-        ws_row = cursor.fetchone()
-        if ws_row:
-            workspace_id = ws_row["id"]
+        if existing and existing["workspace_id"]:
+            workspace_id = existing["workspace_id"]
         else:
-            # Create a dedicated workspace for this new Page
-            cursor.execute("""
-                INSERT INTO workspaces (name, slug, status, shop_name, shop_phone, shop_address, delivery_inside_dhaka, delivery_outside_dhaka, ai_system_prompt, ai_enabled)
-                VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                page_name, page_name.lower().replace(" ", "-"),
-                data.get("shop_name", page_name),
-                data.get("shop_phone", ""),
-                data.get("shop_address", "ঢাকা, বাংলাদেশ"),
-                float(data.get("delivery_inside_dhaka", 70.0) or 70.0),
-                float(data.get("delivery_outside_dhaka", 130.0) or 130.0),
-                data.get("ai_system_prompt", ""),
-                int(data.get("ai_enabled", 1))
-            ))
-            workspace_id = cursor.lastrowid
-    
-    cursor.execute("SELECT id FROM connected_pages WHERE page_id = ?", (page_id,))
-    existing = cursor.fetchone()
+            cursor.execute("SELECT id FROM workspaces WHERE name = ? OR shop_name = ?", (page_name, page_name))
+            ws_row = cursor.fetchone()
+            if ws_row:
+                workspace_id = ws_row["id"]
+            else:
+                # Create a dedicated workspace for this new Page
+                cursor.execute("""
+                    INSERT INTO workspaces (name, slug, status, shop_name, shop_phone, shop_address, delivery_inside_dhaka, delivery_outside_dhaka, ai_system_prompt, ai_enabled)
+                    VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    page_name, page_name.lower().replace(" ", "-"),
+                    data.get("shop_name", page_name),
+                    data.get("shop_phone", ""),
+                    data.get("shop_address", "ঢাকা, বাংলাদেশ"),
+                    float(data.get("delivery_inside_dhaka", 70.0) or 70.0),
+                    float(data.get("delivery_outside_dhaka", 130.0) or 130.0),
+                    data.get("ai_system_prompt", ""),
+                    int(data.get("ai_enabled", 1))
+                ))
+                workspace_id = cursor.lastrowid
     
     if existing:
         page_pk = existing["id"]

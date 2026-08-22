@@ -875,10 +875,25 @@ async def api_connect_page(request: Request):
 @app.post("/api/pages/{page_id}/edit")
 async def api_edit_page(page_id: str, request: Request):
     """Updates page-level AI settings, shop name, delivery fees, and prompt."""
-    data = await request.json()
-    data["page_id"] = page_id
-    page_pk = save_connected_page(data)
-    return {"success": True, "message": "Page settings updated successfully", "id": page_pk}
+    try:
+        data = await request.json()
+        data["page_id"] = str(page_id).strip()
+        page_token = str(data.get("page_access_token") or "").strip()
+        page_pk = save_connected_page(data)
+
+        # If a new token was passed, sync settings and auto-subscribe webhooks
+        if page_token:
+            set_setting("fb_page_access_token", page_token)
+            set_setting("fb_page_id", str(page_id).strip())
+            try:
+                subscribe_facebook_page_webhooks(page_id, page_token)
+            except Exception as e:
+                print(f"[Auto-Subscribe on Page Edit Exception]: {e}")
+
+        return {"success": True, "message": "Page settings updated successfully", "id": page_pk}
+    except Exception as e:
+        print(f"[api_edit_page Error]: {e}")
+        return {"success": False, "error": str(e), "message": f"Update failed: {e}"}
 
 @app.delete("/api/pages/{page_id}")
 async def api_disconnect_page(page_id: str):

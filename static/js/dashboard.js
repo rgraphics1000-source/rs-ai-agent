@@ -3129,9 +3129,13 @@ function openManagePageModal(pageId) {
     document.getElementById("edit-page-delivery-inside").value = p.delivery_inside_dhaka || 70;
     document.getElementById("edit-page-delivery-outside").value = p.delivery_outside_dhaka || 130;
     document.getElementById("edit-page-prompt").value = p.ai_system_prompt || '';
-    document.getElementById("edit-page-token").value = '';
+    const tokenInput = document.getElementById("edit-page-token");
+    if (tokenInput) tokenInput.value = '';
 
     openModal("modal-manage-page");
+    setTimeout(() => {
+        if (tokenInput) tokenInput.value = '';
+    }, 100);
 }
 
 async function handleManagePageSubmit(e) {

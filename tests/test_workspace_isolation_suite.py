@@ -268,6 +268,8 @@ class TestWorkspaceIsolationSuite(unittest.TestCase):
                 "is_active": 1
             })
 
+            mid_1 = f"mid.111_{uuid.uuid4().hex[:6]}"
+            mid_2 = f"mid.222_{uuid.uuid4().hex[:6]}"
             # Test A: Known Page 1 routes to Workspace 1
             payload_p1 = {
                 "object": "page",
@@ -276,7 +278,7 @@ class TestWorkspaceIsolationSuite(unittest.TestCase):
                     "messaging": [{
                         "sender": {"id": "fb_cust_11"},
                         "recipient": {"id": p1_id},
-                        "message": {"mid": "mid.111", "text": "Hello Page 1"}
+                        "message": {"mid": mid_1, "text": "Hello Page 1"}
                     }]
                 }]
             }
@@ -296,7 +298,7 @@ class TestWorkspaceIsolationSuite(unittest.TestCase):
                     "messaging": [{
                         "sender": {"id": "fb_cust_22"},
                         "recipient": {"id": p2_id},
-                        "message": {"mid": "mid.222", "text": "Hello Page 2"}
+                        "message": {"mid": mid_2, "text": "Hello Page 2"}
                     }]
                 }]
             }
