@@ -1,5 +1,6 @@
 import unittest
 import asyncio
+import uuid
 from unittest.mock import patch, MagicMock
 
 from app.database import (
@@ -192,6 +193,45 @@ class TestFacebookCommentAutoReply(unittest.TestCase):
 
         asyncio.run(handle_facebook_webhook_event(payload))
         self.assertFalse(mock_reply.called)
+
+    @patch("app.channels.facebook.send_fb_private_reply_to_comment")
+    @patch("app.channels.facebook.reply_to_fb_comment")
+    @patch("app.channels.facebook.process_customer_message")
+    def test_06_gratitude_comment_public_reply_only_no_inbox(self, mock_ai, mock_public_reply, mock_private_reply):
+        """Gratitude/compliment comments (e.g. মাশাল্লাহ, অনেক সুন্দর, ধন্যবাদ) trigger public thank-you reply but NO private inbox message."""
+        mock_ai.return_value = {"reply_text": "অসংখ্য ধন্যবাদ আপনাকে স্যার! আপনার সুন্দর মন্তব্যের জন্য আন্তরিক কৃতজ্ঞতা রইল 🥰"}
+        mock_public_reply.return_value = True
+        mock_private_reply.return_value = True
+
+        for gratitude_text in ["মাশাল্লাহ অনেক সুন্দর", "শুক্রিয়া ভাইয়া", "ধন্যবাদ", "Very nice work ❤️"]:
+            mock_public_reply.reset_mock()
+            mock_private_reply.reset_mock()
+            
+            c_id = f"105116472071659_gratitude_{uuid.uuid4().hex[:6]}"
+            payload = {
+                "object": "page",
+                "entry": [{
+                    "id": self.page_id,
+                    "changes": [{
+                        "field": "feed",
+                        "value": {
+                            "item": "comment",
+                            "verb": "add",
+                            "comment_id": c_id,
+                            "post_id": "105116472071659_112233",
+                            "from": {
+                                "id": "5197770284",
+                                "name": "Kawsar Ahmed"
+                            },
+                            "message": gratitude_text
+                        }
+                    }]
+                }]
+            }
+
+            asyncio.run(handle_facebook_webhook_event(payload))
+            self.assertTrue(mock_public_reply.called, f"Public reply should be called for '{gratitude_text}'")
+            self.assertFalse(mock_private_reply.called, f"Private inbox reply should NOT be called for '{gratitude_text}'")
 
 if __name__ == "__main__":
     unittest.main()
