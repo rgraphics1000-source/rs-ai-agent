@@ -196,6 +196,31 @@ class MainActivity : ComponentActivity() {
 
         // Load Production RS AI Platform
         webView.loadUrl("https://rs-ai-agent.onrender.com")
+
+        // Handle shared intent if launched via Share sheet
+        handleIncomingIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        if (intent == null) return
+        if (Intent.ACTION_SEND == intent.action && intent.type == "text/plain") {
+            val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
+            if (sharedText.isNotEmpty()) {
+                val clean = sharedText.replace("'", "\\'").trim()
+                webView.postDelayed({
+                    webView.evaluateJavascript(
+                        "window.onNativeContactPicked && window.onNativeContactPicked('', '$clean');",
+                        null
+                    )
+                }, 1500)
+            }
+        }
     }
 
     private val contactPermissionLauncher = registerForActivityResult(
