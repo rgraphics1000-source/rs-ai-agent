@@ -46,7 +46,8 @@ from app.channels.facebook import (
     handle_facebook_webhook_event,
     subscribe_facebook_page_webhooks,
     get_fb_page_details,
-    reply_to_fb_comment
+    reply_to_fb_comment,
+    reply_to_fb_comment_detailed
 )
 from app.channels.whatsapp import (
     send_whatsapp_message,
@@ -1020,8 +1021,8 @@ async def api_facebook_subscribe():
     return res
 
 @app.post("/api/facebook/test-comment-reply")
-async def api_facebook_test_comment_reply(request: Request):
-    """Allows testing comment reply against a specific comment_id live."""
+async def api_test_comment_reply(request: Request):
+    """Sends a public reply to a specific comment ID for testing."""
     data = await request.json()
     comment_id = data.get("comment_id", "").strip()
     message = data.get("message", "").strip() or "ধন্যবাদ! এটি RS AI Agent-এর একটি স্বয়ংক্রিয় টেস্ট কমেন্ট রিপ্লাই।"
@@ -1031,11 +1032,12 @@ async def api_facebook_test_comment_reply(request: Request):
     if not comment_id:
         raise HTTPException(status_code=400, detail="comment_id is required")
 
-    success = reply_to_fb_comment(comment_id, message, page_token=page_token, page_id=page_id)
+    success, response_data = reply_to_fb_comment_detailed(comment_id, message, page_token=page_token, page_id=page_id)
     return {
         "success": success,
         "comment_id": comment_id,
-        "message": "Comment reply successfully sent to Facebook Graph API!" if success else "Failed to send comment reply to Facebook Graph API. Check server logs or token permissions."
+        "message": "Comment reply successfully sent to Facebook Graph API!" if success else "Failed to send comment reply to Facebook Graph API.",
+        "details": response_data
     }
 
 @app.delete("/api/comment-logs/clear-sample")

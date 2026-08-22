@@ -385,8 +385,8 @@ def send_fb_video_message(recipient_id: str, video_url: str, page_token: str = N
     """Sends a video attachment via Facebook Messenger with idempotency."""
     return send_fb_media_message(recipient_id, "video", video_url, page_token=page_token, page_id=page_id, workspace_id=workspace_id, batch_id=batch_id)
 
-def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, page_id: str = None) -> bool:
-    """Replies publicly to a Facebook post comment."""
+def reply_to_fb_comment_detailed(comment_id: str, message: str, page_token: str = None, page_id: str = None) -> Tuple[bool, Dict[str, Any]]:
+    """Replies publicly to a Facebook post comment and returns detailed Meta Graph API result."""
     token = page_token or get_fb_token(page_id)
     if not token or str(token).startswith("EAA_TEST"):
         token = get_setting("fb_page_access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN") or settings.FB_PAGE_ACCESS_TOKEN or get_fb_token(page_id)
@@ -397,29 +397,55 @@ def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, p
 
     if not clean_token or not comment_id:
         print(f"[Facebook Comment Reply Error]: Missing token or comment_id (comment_id={comment_id})")
-        return False
+        return False, {"error": "Missing token or comment_id"}
 
     graph_version = getattr(settings, "META_GRAPH_VERSION", "v23.0") or "v23.0"
-    url = f"https://graph.facebook.com/{graph_version}/{comment_id}/comments"
-    params = {"access_token": clean_token}
-    payload = {"message": message}
-    headers = {"Content-Type": "application/json; charset=utf-8"}
-    try:
-        r = requests.post(url, params=params, json=payload, headers=headers, timeout=10)
-        if r.status_code == 200:
-            print(f"[Facebook Comment Reply SUCCESS]: Replied to comment {comment_id}")
-            return True
-        # Fallback to form-data (standard Meta Graph API)
-        r2 = requests.post(url, params=params, data=payload, timeout=10)
-        if r2.status_code == 200:
-            print(f"[Facebook Comment Reply SUCCESS (form-data)]: Replied to comment {comment_id}")
-            return True
-        else:
-            print(f"[Facebook Comment Reply Error {r.status_code}/{r2.status_code}]: {r.text} | {r2.text}")
-            return False
-    except Exception as e:
-        print(f"[Facebook Comment Reply Exception]: {e}")
-        return False
+    
+    candidate_ids = [comment_id]
+    if "_" in comment_id:
+        parts = comment_id.split("_")
+        candidate_ids.append(parts[-1])
+        if len(parts) > 2:
+            candidate_ids.append(f"{parts[-2]}_{parts[-1]}")
+
+    last_error = {}
+    for cid in candidate_ids:
+        url = f"https://graph.facebook.com/{graph_version}/{cid}/comments"
+        try:
+            # 1. Try standard Meta form-encoded POST
+            r = requests.post(url, data={"message": message, "access_token": clean_token}, timeout=12)
+            try:
+                resp_json = r.json()
+            except Exception:
+                resp_json = {"raw": r.text}
+
+            if r.status_code == 200 and resp_json.get("id"):
+                print(f"[Facebook Comment Reply SUCCESS]: Replied to comment {cid} -> New Comment ID: {resp_json.get('id')}")
+                return True, resp_json
+            
+            # 2. Try JSON payload
+            r_json = requests.post(url, params={"access_token": clean_token}, json={"message": message}, timeout=12)
+            if r_json.status_code == 200 and r_json.json().get("id"):
+                print(f"[Facebook Comment Reply SUCCESS (json)]: Replied to comment {cid}")
+                return True, r_json.json()
+
+            last_error = {
+                "cid": cid,
+                "status_code": r.status_code,
+                "response": resp_json,
+                "error": resp_json.get("error", {}).get("message", r.text)
+            }
+            print(f"[Facebook Comment Reply Meta Error for cid={cid} {r.status_code}]: {r.text}")
+        except Exception as e:
+            last_error = {"cid": cid, "exception": str(e)}
+            print(f"[Facebook Comment Reply Exception for cid={cid}]: {e}")
+
+    return False, last_error
+
+def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, page_id: str = None) -> bool:
+    """Replies publicly to a Facebook post comment."""
+    ok, _ = reply_to_fb_comment_detailed(comment_id, message, page_token=page_token, page_id=page_id)
+    return ok
 
 def send_fb_private_reply_to_comment(comment_id: str, message: str, page_token: str = None, page_id: str = None) -> bool:
     """Sends a private message to the user who commented on a post."""
