@@ -46,17 +46,36 @@ class TestMutedContacts(unittest.TestCase):
         self.assertIn(self.test_phone, phone_list)
         print("✓ Test 2 Passed: Muted contacts list returned successfully.")
 
-    def test_03_api_remove_muted_contact(self):
-        """Tests POST /api/muted-contacts/remove."""
-        add_muted_number(self.test_phone)
-        resp = self.client.post("/api/muted-contacts/remove", json={"phone": self.test_phone})
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertTrue(data.get("success"))
-        
-        # Verify AI is active again
-        self.assertTrue(is_conversation_ai_active("01576656763"))
-        print("✓ Test 3 Passed: Number successfully unmuted and AI active again.")
+    def test_04_api_add_and_remove_facebook_messenger_customer(self):
+        """Tests muting and unmuting Facebook Messenger customers (PSID / username)."""
+        fb_cust = "fb_cust_messenger_9901"
+        try:
+            # 1. Add Facebook Customer to mute list
+            resp = self.client.post("/api/muted-contacts/add", json={"phone": fb_cust})
+            self.assertEqual(resp.status_code, 200)
+            data = resp.json()
+            self.assertTrue(data.get("success"))
+            
+            # Verify AI is paused for this Facebook Messenger customer
+            self.assertFalse(is_conversation_ai_active(sender_id=fb_cust, workspace_id=1))
+            
+            # 2. Check presence in GET /api/muted-contacts
+            resp_get = self.client.get("/api/muted-contacts")
+            self.assertEqual(resp_get.status_code, 200)
+            phones = [c["phone"] for c in resp_get.json().get("contacts", [])]
+            self.assertIn(fb_cust, phones)
+
+            # 3. Unmute Facebook Customer
+            resp_del = self.client.post("/api/muted-contacts/remove", json={"phone": fb_cust})
+            self.assertEqual(resp_del.status_code, 200)
+            self.assertTrue(resp_del.json().get("success"))
+
+            # Verify AI is active again for this Facebook Messenger customer
+            self.assertTrue(is_conversation_ai_active(sender_id=fb_cust, workspace_id=1))
+            print("✓ Test 4 Passed: Facebook Messenger customer successfully muted and unmuted.")
+        finally:
+            remove_muted_number(fb_cust)
+
 
 if __name__ == "__main__":
     unittest.main()
