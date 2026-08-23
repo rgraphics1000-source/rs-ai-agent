@@ -292,15 +292,37 @@ def get_category_batch_images(category_or_code: str, requested_count: int = None
     """
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT code, name, image_url, gallery_images FROM products WHERE workspace_id = ? AND is_active = 1", (int(workspace_id or 1),))
+    cursor.execute("SELECT code, name, category, image_url, gallery_images FROM products WHERE workspace_id = ? AND is_active = 1", (int(workspace_id or 1),))
     products = cursor.fetchall()
     conn.close()
 
     images = []
+    cat_lower = (category_or_code or "").strip().lower()
+
     for p in products:
-        p_code = p["code"]
-        p_name = p["name"]
-        if category_or_code and (category_or_code.lower() in p_code.lower() or category_or_code.lower() in p_name.lower()):
+        p_code = (p["code"] or "").lower()
+        p_name = (p["name"] or "").lower()
+        p_cat = (p["category"] or "").lower()
+
+        match = False
+        if not cat_lower:
+            match = True
+        elif cat_lower in ["pkg", "package", "combo", "pkg-combo", "প্যাকেজ", "পেকেজ", "কম্বো"]:
+            match = "pkg" in p_code or "প্যাকেজ" in p_cat or "প্যাকেজ" in p_name or "combo" in p_code
+        elif cat_lower in ["fita", "lanyard", "ribbon", "fita-02", "lan-15", "lan-20", "ফিতা", "রিবন", "ল্যানিয়ার্ড"]:
+            match = "fita" in p_code or "lan" in p_code or "ফিতা" in p_cat or "ফিতা" in p_name or "ল্যানিয়ার্ড" in p_cat
+        elif cat_lower in ["cov", "cover", "holder", "cov-01", "cov-03", "কভার", "হোল্ডার"]:
+            match = "cov" in p_code or "কভার" in p_cat or "কভার" in p_name or "হোল্ডার" in p_name
+        elif cat_lower in ["idc", "card", "id card", "idc-01", "আইডি", "কার্ড", "পিভিসি"]:
+            match = "idc" in p_code or "কার্ড" in p_cat or "কার্ড" in p_name or "আইডি" in p_name
+        else:
+            match = cat_lower in p_code or cat_lower in p_name or cat_lower in p_cat
+
+        if match:
+            # First append main image_url
+            if p["image_url"] and p["image_url"] not in images:
+                images.append(p["image_url"])
+            # Then append gallery images
             try:
                 g_imgs = json.loads(p["gallery_images"] or "[]")
                 for gu in g_imgs:
@@ -309,28 +331,6 @@ def get_category_batch_images(category_or_code: str, requested_count: int = None
                         images.append(img_url)
             except Exception:
                 pass
-            if p["image_url"] and p["image_url"] not in images:
-                images.append(p["image_url"])
-
-    if requested_count and requested_count > 0:
-        return images[:requested_count]
-    return images
-
-    images = []
-    for p in products:
-        p_code = p["code"]
-        p_name = p["name"]
-        if category_or_code and (category_or_code.lower() in p_code.lower() or category_or_code.lower() in p_name.lower()):
-            try:
-                g_imgs = json.loads(p["gallery_images"] or "[]")
-                for gu in g_imgs:
-                    img_url = gu.get("url") if isinstance(gu, dict) else gu
-                    if img_url and img_url not in images:
-                        images.append(img_url)
-            except Exception:
-                pass
-            if p["image_url"] and p["image_url"] not in images:
-                images.append(p["image_url"])
 
     if requested_count and requested_count > 0:
         return images[:requested_count]
@@ -369,6 +369,7 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     """
     Robust detection for sending category sample photos with full category support.
     Extracts all requested photos across products in the specified workspace.
+    When a customer asks for package or product photos, sends ALL matching photos unless a specific count was asked.
     """
     msg = (user_msg or "").strip().lower()
     reply = (bot_reply or "").strip().lower()
@@ -390,6 +391,7 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
         "ছবি দেখতে চাই", "ছবি দেখান", "ছবি পাঠান", "ছবি পাঠাও", "ছবি দেখাও", "ছবি দেন", "ছবি দিন",
         "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দেন", "স্যাম্পল দিন", "স্যাম্পল দেখতে চাই",
         "পিক দেখান", "পিক দেন", "পিক পাঠান", "পিকচার দেখান", "পিকচার পাঠান", "ফটো দেখান", "ফটো পাঠান", "ফটো দেন",
+        "সব ছবি", "সবগুলো ছবি", "সব প্যাকেজ", "সবগুলো প্যাকেজ", "প্যাকেজের ছবি",
         "show photo", "send photo", "show sample", "send sample", "show pic", "send pic", "show image", "send image"
     ]) or (any(k in msg for k in ["ছবি", "স্যাম্পল", "ফটো", "পিক", "পিকচার", "sample", "photo", "image"]) and any(a in msg for a in ["দেখান", "পাঠান", "দিন", "দেন", "চাই", "দেখবো", "show", "send", "give"]))
 
@@ -430,7 +432,7 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
             for bm in recent_bot_msgs
         )
 
-    is_asking_more = any(k in msg for k in ["আরও", "আরো", "অন্য", "নতুন", "more", "other", "different", "আবার"])
+    is_asking_more = any(k in msg for k in ["আরও", "আরো", "অন্য", "নতুন", "more", "other", "different", "আবার", "সব", "সবগুলো"])
 
     # If photos were already sent recently and customer did not ask for more/new photos, do not blast photos again!
     if already_sent_recently and not is_asking_more and not is_explicit_photo_req:
@@ -443,51 +445,48 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     # Only respect count if customer EXPLICITLY specified count in user message (Never from bot prompt or bot reply)
     req_count = parse_requested_image_count(msg)
 
-    # Search across user message first, then bot reply, then history
-    target_scope = f"{msg} {reply}"
-    
     selected_images = []
 
-    is_pkg = any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ"]) or (any(k in reply for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ"]) and not any(k in msg for k in ["ফিতা", "কভার", "কার্ড"]))
+    is_pkg = any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ", "সব প্যাকেজ", "সবগুলো প্যাকেজ"]) or (any(k in reply for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ"]) and not any(k in msg for k in ["ফিতা", "কভার", "কার্ড"]))
     is_fita = any(k in msg for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"])
     is_cover = any(k in msg for k in ["কভার", "হোল্ডার", "holder", "cover"])
     is_id = any(k in msg for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"])
 
     # If specific category found:
     if is_pkg:
-        for u in get_category_batch_images("PKG-COMBO", workspace_id=workspace_id):
+        for u in get_category_batch_images("pkg", workspace_id=workspace_id):
             if u not in selected_images:
                 selected_images.append(u)
     elif is_fita:
-        for u in get_category_batch_images("FITA-02", workspace_id=workspace_id):
+        for u in get_category_batch_images("fita", workspace_id=workspace_id):
             if u not in selected_images:
                 selected_images.append(u)
     elif is_cover:
-        for u in get_category_batch_images("COV-03", workspace_id=workspace_id):
+        for u in get_category_batch_images("cover", workspace_id=workspace_id):
             if u not in selected_images:
                 selected_images.append(u)
     elif is_id:
-        for u in get_category_batch_images("IDC-01", workspace_id=workspace_id):
+        for u in get_category_batch_images("idc", workspace_id=workspace_id):
             if u not in selected_images:
                 selected_images.append(u)
 
     # Fallback to history if still empty
     if not selected_images:
         if any(k in hist_text for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ"]):
-            selected_images = get_category_batch_images("PKG-COMBO", workspace_id=workspace_id)
+            selected_images = get_category_batch_images("pkg", workspace_id=workspace_id)
         elif any(k in hist_text for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]):
-            selected_images = get_category_batch_images("FITA-02", workspace_id=workspace_id)
+            selected_images = get_category_batch_images("fita", workspace_id=workspace_id)
         elif any(k in hist_text for k in ["কভার", "হোল্ডার", "holder", "cover"]):
-            selected_images = get_category_batch_images("COV-03", workspace_id=workspace_id)
+            selected_images = get_category_batch_images("cover", workspace_id=workspace_id)
         elif any(k in hist_text for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"]):
-            selected_images = get_category_batch_images("IDC-01", workspace_id=workspace_id)
+            selected_images = get_category_batch_images("idc", workspace_id=workspace_id)
         else:
-            # Grab general active product images for this workspace
+            # Grab all active product images for this workspace
             selected_images = get_category_batch_images("", workspace_id=workspace_id)
 
     if req_count and req_count > 0:
         return selected_images[:req_count]
-    return selected_images[:3]
+    return selected_images
 
 def detect_saved_media_to_send(user_msg: str, bot_reply: str = "", workspace_id: int = 1) -> dict:
     """Detects if customer requested a specific demo video or pre-recorded voice note within a workspace."""

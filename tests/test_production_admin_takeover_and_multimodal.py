@@ -750,6 +750,33 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
             # Clean up rule
             delete_training_rule(rule_id)
 
+    def test_19_full_category_and_package_images_dispatching(self):
+        """
+        Validates that:
+        1. Asking for package photos returns ALL 7 package images (PKG-01 to PKG-07), not 3.
+        2. Asking for explicit count (e.g. 2 photos) returns exactly 2 images.
+        3. Asking for ID card / fita / cover returns all matching category images.
+        """
+        from app.ai_agent.gemini_brain import detect_sample_photos_to_send
+
+        # 1. Package images request -> all 7 packages
+        pkg_imgs = detect_sample_photos_to_send("প্যাকেজের ছবি দেখতে চাই", workspace_id=1)
+        self.assertGreaterEqual(len(pkg_imgs), 7, "Should return all 7 package images, not just 3")
+        self.assertIn("/static/uploads/pakage/IMG-20260113-WA0002.jpg", pkg_imgs)
+        self.assertIn("/static/uploads/pakage/IMG-20260114-WA0057.jpg", pkg_imgs)
+
+        # 2. Explicit count request -> exact count
+        two_imgs = detect_sample_photos_to_send("প্যাকেজের ২টা ছবি দেন", workspace_id=1)
+        self.assertEqual(len(two_imgs), 2, "Should return exactly 2 images when requested")
+
+        # 3. Fita images request
+        fita_imgs = detect_sample_photos_to_send("ফিতার স্যাম্পল ছবি পাঠান", workspace_id=1)
+        self.assertGreaterEqual(len(fita_imgs), 1)
+
+        # 4. ID Card images request
+        id_imgs = detect_sample_photos_to_send("আইডি কার্ডের ছবি দেখান", workspace_id=1)
+        self.assertGreaterEqual(len(id_imgs), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

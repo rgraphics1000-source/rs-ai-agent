@@ -812,62 +812,123 @@ def init_db():
         for f in (settings.UPLOADS_DIR / 'cover').glob('*.jpg')
     ] if (settings.UPLOADS_DIR / 'cover').exists() else []
 
-    cursor.execute("SELECT COUNT(*) FROM products WHERE code = 'PKG-COMBO'")
-    if cursor.fetchone()[0] == 0:
-        real_products = [
-            (
-                'আইডি কার্ড (জাপানি মেশিনের UV PRINT)',
-                'IDC-01',
-                'জাপানি মেশিনের অরজিনাল হাই-কোয়ালিটি UV কালার প্রিন্ট, ১০০% ওয়াটারপ্রুফ এবং প্রিমিয়াম ফ্লেক্সিবল PVC ফিনিশিং। রেগুলার ৩৫ টাকা, অফার মূল্য ৩০ টাকা।',
-                35.0, 30.0, 1000, 'আইডি কার্ড',
-                id_card_imgs[0]["url"] if id_card_imgs else '',
-                json.dumps(id_card_imgs),
-                'id card, uv print, pvc card'
-            ),
-            (
-                'ডিজিটাল সাবলিমেশন ফিতা (Lanyards / Ribbons)',
-                'FITA-02',
-                'ডিজিটাল মাল্টিকালর সাবলিমেশন প্রিন্ট, প্রিমিয়াম সাটিন ফেব্রিক ও হেভি ডিউটি হুক। ১.৫ সেমি ২০৳, ২ সেমি ৩০৳।',
-                25.0, 20.0, 1000, 'ফিতা ও লেইনিয়ার্ড',
-                fita_imgs[0]["url"] if fita_imgs else '',
-                json.dumps(fita_imgs),
-                'fita, lanyard, ribbon'
-            ),
-            (
-                'আইডি কার্ড হোল্ডার ও কভার (Card Holders)',
-                'COV-03',
-                'স্বচ্ছ প্লাস্টিক কভার (১০৳), কালারফুল বর্ডার (১২৳) ও প্রিমিয়াম হার্ড প্লাস্টিক ডাবল সাইডেড হোল্ডার (১৫৳)।',
-                15.0, 12.0, 1000, 'কভার ও হোল্ডার',
-                cover_imgs[0]["url"] if cover_imgs else '',
-                json.dumps(cover_imgs),
-                'holder, cover, card holder'
-            ),
-            (
-                'আইডি কার্ড সম্পূর্ণ কম্বো প্যাকেজ (কার্ড + ফিতা + কভার)',
-                'PKG-COMBO',
-                'জাপানি UV প্রিন্ট কার্ড + ডিজিটাল প্রিন্ট ফিতা + কভার। প্যাকেজ ০১ (৭০৳), প্যাকেজ ০২ (৭০৳), প্যাকেজ ০৩ (৮৩৳), প্যাকেজ ০৭ (৯১৳), প্যাকেজ ০৪ (৭৫৳), প্যাকেজ ০৫ (৮০৳), প্যাকেজ ০৬ (৮৫৳)। (১০০+ অর্ডারে স্পেশাল রেট)',
-                85.0, 70.0, 1000, 'প্যাকেজ সমূহ',
-                pkg_variations[0]["url"],
-                json.dumps(pkg_variations),
-                'package, combo, full set'
-            )
-        ]
-        cursor.executemany("""
-            INSERT INTO products (name, code, description, price, discount_price, stock, category, image_url, gallery_images, tags, is_active, workspace_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
-        """, real_products)
-    else:
-        # Update existing PKG-COMBO with exact structured variation prices
-        cursor.execute("UPDATE products SET gallery_images = ?, description = ?, workspace_id = 1 WHERE code = 'PKG-COMBO'", (
-            json.dumps(pkg_variations),
-            'জাপানি UV প্রিন্ট কার্ড + ডিজিটাল প্রিন্ট ফিতা + কভার। প্যাকেজ ০১ (৭০৳), প্যাকেজ ০২ (৭০৳), প্যাকেজ ০৩ (৮৩৳), প্যাকেজ ০৭ (৯১৳), প্যাকেজ ০৪ (৭৫৳), প্যাকেজ ০৫ (৮০৳), প্যাকেজ ০৬ (৮৫৳)। (১০০+ অর্ডারে স্পেশাল রেট)'
-        ))
-        if id_card_imgs:
-            cursor.execute("UPDATE products SET gallery_images = ?, workspace_id = 1 WHERE code = 'IDC-01'", (json.dumps(id_card_imgs),))
-        if fita_imgs:
-            cursor.execute("UPDATE products SET gallery_images = ?, workspace_id = 1 WHERE code = 'FITA-02'", (json.dumps(fita_imgs),))
-        if cover_imgs:
-            cursor.execute("UPDATE products SET gallery_images = ?, workspace_id = 1 WHERE code = 'COV-03'", (json.dumps(cover_imgs),))
+    standalone_catalog = [
+        (
+            'প্যাকেজ ০১ (UV কার্ড + ১.৫ সেমি ফিতা + স্বচ্ছ কভার)',
+            'PKG-01',
+            'জাপানি মেশিনের অরজিনাল UV কালার প্রিন্ট পিভিসি আইডি কার্ড + ১.৫ সেমি ডিজিটাল সাবলিমেশন ফিতা + স্বচ্ছ প্লাস্টিক কভার।',
+            70.0, 60.0, 1000, 'প্যাকেজ সমূহ',
+            '/static/uploads/pakage/IMG-20260113-WA0002.jpg',
+            json.dumps([{"url": "/static/uploads/pakage/IMG-20260113-WA0002.jpg", "title": "প্যাকেজ ০১", "price": 70}]),
+            'package, combo, pkg 1, package 01, uv card, fita, plastic cover'
+        ),
+        (
+            'প্যাকেজ ০২ (UV কার্ড + ১.৫ সেমি ফিতা + কালারফুল কভার)',
+            'PKG-02',
+            'জাপানি মেশিনের অরজিনাল UV কালার প্রিন্ট পিভিসি আইডি কার্ড + ১.৫ সেমি ডিজিটাল সাবলিমেশন ফিতা + কালারফুল বর্ডার কভার।',
+            70.0, 60.0, 1000, 'প্যাকেজ সমূহ',
+            '/static/uploads/pakage/IMG-20260113-WA0003.jpg',
+            json.dumps([{"url": "/static/uploads/pakage/IMG-20260113-WA0003.jpg", "title": "প্যাকেজ ০২", "price": 70}]),
+            'package, combo, pkg 2, package 02, colorful cover'
+        ),
+        (
+            'প্যাকেজ ০৩ (UV কার্ড + ২ সেমি ফিতা + হার্ড প্লাস্টিক কভার)',
+            'PKG-03',
+            'জাপানি মেশিনের অরজিনাল UV কালার প্রিন্ট পিভিসি আইডি কার্ড + ২ সেমি চওড়া ডিজিটাল সাবলিমেশন ফিতা + প্রিমিয়াম হার্ড প্লাস্টিক কভার।',
+            83.0, 73.0, 1000, 'প্যাকেজ সমূহ',
+            '/static/uploads/pakage/IMG-20260113-WA0006.jpg',
+            json.dumps([{"url": "/static/uploads/pakage/IMG-20260113-WA0006.jpg", "title": "প্যাকেজ ০৩", "price": 83}]),
+            'package, combo, pkg 3, package 03, hard cover, 2cm fita'
+        ),
+        (
+            'প্যাকেজ ০৪ (স্পেশাল ফিতা ও কভার কম্বো)',
+            'PKG-04',
+            'জাপানি UV প্রিন্ট আইডি কার্ড + প্রিমিয়াম ফিনিশিং স্পেশাল ফিতা ও প্রটেক্টিভ কভার কম্বো সেট।',
+            75.0, 65.0, 1000, 'প্যাকেজ সমূহ',
+            '/static/uploads/pakage/IMG-20260117-WA0023.jpg',
+            json.dumps([{"url": "/static/uploads/pakage/IMG-20260117-WA0023.jpg", "title": "প্যাকেজ ০৪", "price": 75}]),
+            'package, combo, pkg 4, package 04'
+        ),
+        (
+            'প্যাকেজ ০৫ (ডাবল সাইডেড কার্ড ও ফিতা সেট)',
+            'PKG-05',
+            'ডাবল সাইডেড জাপানি UV প্রিন্ট আইডি কার্ড + হাই-কোয়ালিটি ডিজিটাল প্রিন্ট ফিতা + কভার।',
+            80.0, 70.0, 1000, 'প্যাকেজ সমূহ',
+            '/static/uploads/pakage/IMG-20260118-WA0045.jpg',
+            json.dumps([{"url": "/static/uploads/pakage/IMG-20260118-WA0045.jpg", "title": "প্যাকেজ ০৫", "price": 80}]),
+            'package, combo, pkg 5, package 05, double sided'
+        ),
+        (
+            'প্যাকেজ ০৬ (ডিলাক্স মেটাল প্যাকেজ)',
+            'PKG-06',
+            'জাপানি UV প্রিন্ট আইডি কার্ড + প্রিমিয়াম ডিজিটাল ফিতা + ডিলাক্স মেটাল লক কভার সেট।',
+            85.0, 75.0, 1000, 'প্যাকেজ সমূহ',
+            '/static/uploads/pakage/IMG-20260121-WA0081.jpg',
+            json.dumps([{"url": "/static/uploads/pakage/IMG-20260121-WA0081.jpg", "title": "প্যাকেজ ০৬", "price": 85}]),
+            'package, combo, pkg 6, package 06, deluxe metal'
+        ),
+        (
+            'প্যাকেজ ০৭ (UV কার্ড + ২ সেমি ফিতা + মেটাল লক প্রিমিয়াম কভার সেট)',
+            'PKG-07',
+            'জাপানি UV প্রিন্ট পিভিসি কার্ড + ২ সেমি চওড়া প্রিমিয়াম ফিতা + মেটাল লক এক্সক্লুসিভ কভার সেট। ১০০+ অর্ডারে ২০৳ স্পেশাল ডিসকাউন্ট।',
+            91.0, 71.0, 1000, 'প্যাকেজ সমূহ',
+            '/static/uploads/pakage/IMG-20260114-WA0057.jpg',
+            json.dumps([{"url": "/static/uploads/pakage/IMG-20260114-WA0057.jpg", "title": "প্যাকেজ ০৭", "price": 91}]),
+            'package, combo, pkg 7, package 07, metal lock, 2cm fita, exclusive'
+        ),
+        (
+            'জাপানি UV প্রিন্ট PVC আইডি কার্ড (একক)',
+            'IDC-01',
+            'জাপানি মেশিনের অরজিনাল UV কালার প্রিন্ট পিভিসি আইডি কার্ড। ১০০% ওয়াটারপ্রুফ ও দীর্ঘস্থায়ী।',
+            35.0, 30.0, 5000, 'আইডি কার্ড',
+            '/static/uploads/id_card/IMG-20260112-WA0058.jpg',
+            json.dumps([
+                {"url": "/static/uploads/id_card/IMG-20260112-WA0058.jpg", "title": "UV কালার প্রিন্ট আইডি কার্ড", "price": 35},
+                {"url": "/static/uploads/id_card/IMG-20260112-WA0062.jpg", "title": "UV আইডি কার্ড স্যাম্পল", "price": 35}
+            ]),
+            'id card, pvc card, uv print, standalone card'
+        ),
+        (
+            'ডিজিটাল সাবলিমেশন ফিতা ১.৫ সেমি (Lanyard)',
+            'LAN-15',
+            '১.৫ সেমি চওড়া ডিজিটাল মাল্টিকালর সাবলিমেশন প্রিন্ট ফিতা।',
+            25.0, 20.0, 5000, 'ফিতা ও ল্যানিয়ার্ড',
+            '/static/uploads/fita/IMG-20260112-WA0005.jpg',
+            json.dumps([{"url": "/static/uploads/fita/IMG-20260112-WA0005.jpg", "title": "১.৫ সেমি ফিতা", "price": 25}]),
+            'fita, lanyard, ribbon, 1.5cm, sublimation'
+        ),
+        (
+            'ডিজিটাল সাবলিমেশন ফিতা ২.০ সেমি (Lanyard)',
+            'LAN-20',
+            '২ সেমি চওড়া ডিজিটাল মাল্টিকালর প্রিমিয়াম সাবলিমেশন প্রিন্ট ফিতা।',
+            28.0, 23.0, 5000, 'ফিতা ও ল্যানিয়ার্ড',
+            '/static/uploads/fita/IMG-20260112-WA0006.jpg',
+            json.dumps([{"url": "/static/uploads/fita/IMG-20260112-WA0006.jpg", "title": "২ সেমি ফিতা", "price": 28}]),
+            'fita, lanyard, ribbon, 2cm, 2.0cm, sublimation premium'
+        ),
+        (
+            'আইডি কার্ড কভার ও প্লাস্টিক হোল্ডার',
+            'COV-01',
+            'স্বচ্ছ প্লাস্টিক কভার, কালারফুল বর্ডার ও প্রিমিয়াম হার্ড প্লাস্টিক ডাবল সাইডেড হোল্ডার।',
+            15.0, 12.0, 5000, 'কভার ও হোল্ডার',
+            '/static/uploads/cover/6418185f-0faa-42a2-a2ae-ff420f1888f8.jpg',
+            json.dumps([
+                {"url": "/static/uploads/cover/6418185f-0faa-42a2-a2ae-ff420f1888f8.jpg", "title": "স্বচ্ছ প্লাস্টিক কভার", "price": 12},
+                {"url": "/static/uploads/cover/e00104ba-7095-4dce-b9a9-48d6e37561bd.jpg", "title": "কালারফুল কভার", "price": 12},
+                {"url": "/static/uploads/cover/e515a144-2414-4942-94f1-986d6fe7ab3f.jpg", "title": "হার্ড প্লাস্টিক হোল্ডার", "price": 15}
+            ]),
+            'cover, holder, card holder, plastic cover'
+        )
+    ]
+
+    for p_name, p_code, p_desc, p_price, p_disc, p_stock, p_cat, p_img, p_gallery, p_tags in standalone_catalog:
+        cursor.execute("SELECT id FROM products WHERE (code = ? OR name = ?) AND workspace_id = 1", (p_code, p_name))
+        existing_prod = cursor.fetchone()
+        if not existing_prod:
+            cursor.execute("""
+                INSERT INTO products (name, code, description, price, discount_price, stock, category, image_url, gallery_images, tags, is_active, workspace_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
+            """, (p_name, p_code, p_desc, p_price, p_disc, p_stock, p_cat, p_img, p_gallery, p_tags))
 
     # Ensure all primary products belong to Workspace 1
     cursor.execute("UPDATE products SET workspace_id = 1 WHERE workspace_id IS NULL OR workspace_id = 0")
@@ -888,6 +949,17 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+    # Safe automated local snapshot backup
+    try:
+        backup_dir = settings.BASE_DIR / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        live_db_path = settings.DB_PATH
+        if live_db_path.exists():
+            import shutil
+            shutil.copy2(live_db_path, backup_dir / "rs_ai_backup_live_snapshot.db")
+    except Exception as e:
+        print(f"[DB Auto-Snapshot Warning]: {e}")
 
 def get_setting(key: str, default: str = "") -> str:
     # 1. Check database settings first (Primary Source of Truth)
