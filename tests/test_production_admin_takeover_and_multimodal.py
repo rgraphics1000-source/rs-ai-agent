@@ -617,40 +617,57 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
         self.assertIn("মুহা. রাশেদুল ইসলাম", instructions)
         self.assertIn("রাশেদ", instructions)
 
-    def test_14_saved_media_persistence_and_defaults(self):
+    def test_14_saved_media_persistence_and_deletion(self):
         """
-        Validates that the 3 essential saved media items (2 videos + 1 voice note)
-        are permanently seeded in DB and never wiped on query/reload.
+        Validates that saved media items can be created, retrieved, and permanently deleted
+        without being unexpectedly resurrected on reload.
         """
-        from app.database import get_saved_media, ensure_default_saved_media
-        ensure_default_saved_media()
+        from app.database import get_saved_media, create_saved_media, delete_saved_media
+        m_id = create_saved_media(
+            title="Custom Guide Video",
+            media_type="video",
+            file_url="/static/uploads/media/custom_guide.mp4",
+            description="Custom video guide",
+            workspace_id=1
+        )
         media = get_saved_media(workspace_id=1)
-        titles = [m["title"] for m in media]
         urls = [m["file_url"] for m in media]
-        
-        self.assertIn("/static/uploads/media/google_form_submission_guide.mp4", urls)
-        self.assertIn("/static/uploads/media/google_form_edit_correction_guide.mp4", urls)
-        self.assertIn("/static/uploads/media/id_card_features_voice_note.mp3", urls)
+        self.assertIn("/static/uploads/media/custom_guide.mp4", urls)
+
+        # Test deletion
+        delete_saved_media(m_id)
+        media_after = get_saved_media(workspace_id=1)
+        urls_after = [m["file_url"] for m in media_after]
+        self.assertNotIn("/static/uploads/media/custom_guide.mp4", urls_after)
 
     def test_15_detect_saved_media_smart_routing(self):
         """
-        Validates that asking for Google form upload sends Video 1,
-        asking for correction sends Video 2,
-        and asking for features/quality sends Voice 1.
+        Validates that asking for specific keywords routes to matching saved media items in workspace.
         """
+        from app.database import create_saved_media, delete_saved_media
         from app.ai_agent.gemini_brain import detect_saved_media_to_send
 
-        # 1. Google form submission / upload guide video
-        res1 = detect_saved_media_to_send("গুগল ফর্মের মাধ্যমে তথ্য কিভাবে দিব এবং ছবি আপলোড করব?", workspace_id=1)
-        self.assertEqual(res1["video_url"], "/static/uploads/media/google_form_submission_guide.mp4")
+        # Create temporary media for testing routing
+        id1 = create_saved_media("গুগল ফর্মে তথ্য আপলোড", "video", "/static/uploads/media/upload_guide.mp4", "আপলোড ভিডিও", workspace_id=1)
+        id2 = create_saved_media("তথ্য সংশোধন করার নিয়ম", "video", "/static/uploads/media/edit_guide.mp4", "সংশোধন নির্দেশিকা", workspace_id=1)
+        id3 = create_saved_media("আইডি কার্ডের বৈশিষ্ট্য ও কোয়ালিটি", "voice", "/static/uploads/media/voice_sample.mp3", "কোয়ালিটি ও বৈশিষ্ট্য", workspace_id=1)
 
-        # 2. Google form correction guide video
-        res2 = detect_saved_media_to_send("তথ্য দেওয়ার পর কোনো ভুল হলে সংশোধন কিভাবে করব?", workspace_id=1)
-        self.assertEqual(res2["video_url"], "/static/uploads/media/google_form_edit_correction_guide.mp4")
+        try:
+            # 1. Google form submission / upload guide video
+            res1 = detect_saved_media_to_send("গুগল ফর্মের মাধ্যমে তথ্য কিভাবে দিব এবং ছবি আপলোড করব?", workspace_id=1)
+            self.assertEqual(res1["video_url"], "/static/uploads/media/upload_guide.mp4")
 
-        # 3. Features voice note
-        res3 = detect_saved_media_to_send("আপনাদের আইডি কার্ড ও ফিতার বৈশিষ্ট্য এবং কোয়ালিটি কেমন?", workspace_id=1)
-        self.assertEqual(res3["voice_url"], "/static/uploads/media/id_card_features_voice_note.mp3")
+            # 2. Google form correction guide video
+            res2 = detect_saved_media_to_send("তথ্য দেওয়ার পর কোনো ভুল হলে সংশোধন কিভাবে করব?", workspace_id=1)
+            self.assertEqual(res2["video_url"], "/static/uploads/media/edit_guide.mp4")
+
+            # 3. Features voice note
+            res3 = detect_saved_media_to_send("আপনাদের আইডি কার্ড ও ফিতার বৈশিষ্ট্য এবং কোয়ালিটি কেমন?", workspace_id=1)
+            self.assertEqual(res3["voice_url"], "/static/uploads/media/voice_sample.mp3")
+        finally:
+            delete_saved_media(id1)
+            delete_saved_media(id2)
+            delete_saved_media(id3)
 
     def test_16_moq_tier_pricing_and_delivery_rules(self):
         """

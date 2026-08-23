@@ -1101,13 +1101,21 @@ def delete_faq(faq_id: int) -> bool:
 # ============================================================
 
 def ensure_default_saved_media(conn=None):
-    """Ensures the 3 essential saved media items (2 videos + 1 voice note) are permanently populated for Workspace 1."""
+    """Initializes default saved media only once on first database setup and never resurrects deleted items."""
     should_close = False
     if conn is None:
         conn = get_db_connection()
         should_close = True
     try:
         cursor = conn.cursor()
+        cursor.execute("SELECT value FROM settings WHERE key = 'saved_media_initial_seeded'")
+        row = cursor.fetchone()
+        if row:
+            return  # Already seeded initially; respect user's deletions
+
+        # Mark as seeded so future calls never resurrect deleted items
+        cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('saved_media_initial_seeded', '1')")
+
         defaults = [
             (
                 "গুগল ফর্মে আইডি কার্ডের তথ্য ও ছবি আপলোড করার নিয়ম",
@@ -1149,7 +1157,6 @@ def ensure_default_saved_media(conn=None):
             conn.close()
 
 def get_saved_media(media_type: str = None, workspace_id: Optional[int] = None) -> list:
-    ensure_default_saved_media()
     conn = get_db_connection()
     cursor = conn.cursor()
     query = "SELECT * FROM saved_media WHERE 1=1"
