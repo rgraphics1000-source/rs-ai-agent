@@ -100,10 +100,14 @@ def startup_event():
     init_db()
     ensure_facebook_page_consistency()
     ensure_whatsapp_account_consistency()
-    try:
-        subscribe_facebook_page_webhooks()
-    except Exception as e:
-        print(f"[Facebook Auto-Subscribe on Startup Exception]: {e}")
+    # Run webhook subscription in background daemon thread to ensure instant port binding
+    import threading
+    def _bg_subscribe():
+        try:
+            subscribe_facebook_page_webhooks()
+        except Exception as e:
+            print(f"[Facebook Auto-Subscribe on Startup Exception]: {e}")
+    threading.Thread(target=_bg_subscribe, daemon=True).start()
     print(f"[{settings.PROJECT_NAME}] Database initialized successfully.")
 
 # Lightweight Health Check Endpoints
