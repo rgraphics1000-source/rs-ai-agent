@@ -75,5 +75,31 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
         self.assertIn("id_card_and_fita_quality.aac", res.get("voice_url"))
         self.assertIn("কোয়ালিটি ও বৈশিষ্ট্য", res.get("reply_text"))
 
+    def test_07_phone_numbers_never_trigger_sample_or_quantity_workflow(self):
+        # Sending a phone number must NEVER blast photos or be parsed as order quantity
+        res1 = evaluate_id_card_workflow("01929778281", workspace_id=1)
+        self.assertIsNone(res1)
+
+        res2 = evaluate_id_card_workflow("01816504097", workspace_id=1)
+        self.assertIsNone(res2)
+
+        res3 = evaluate_id_card_workflow("আপনি whatsapp নাম্বার দিতে বলেছিলেন তাই দিলাম এগুলো কেন দিচ্ছেন", workspace_id=1)
+        self.assertIsNone(res3)
+
+    def test_08_initial_id_card_inquiry_sends_greeting_with_zero_photos(self):
+        res = evaluate_id_card_workflow("আমি আইডি কার্ড করতে চাই", workspace_id=1)
+        self.assertIsNotNone(res)
+        self.assertIn("কত পিস প্রয়োজন", res.get("reply_text"))
+        self.assertEqual(len(res.get("matched_images", [])), 0)
+        self.assertEqual(len(res.get("media_sequence", [])), 0)
+
+    def test_09_quantity_answer_sends_packages_only_not_all_28_images(self):
+        res = evaluate_id_card_workflow("৫০ পিস বানাবো", workspace_id=1)
+        self.assertIsNotNone(res)
+        # Must only send package photos (7 photos), NOT all 28 photos of cards/ribbons/covers
+        self.assertEqual(len(res.get("matched_images", [])), 7)
+        for img in res.get("matched_images", []):
+            self.assertIn("package", img.lower())
+
 if __name__ == "__main__":
     unittest.main()

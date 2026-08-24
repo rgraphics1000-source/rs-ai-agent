@@ -46,7 +46,7 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
             workspace_id=1
         )
         self.assertIsNotNone(res)
-        self.assertIn("কত পিস বানাবেন", res["reply_text"])
+        self.assertIn("কত পিস", res["reply_text"])
         self.assertEqual(len(res["media_sequence"]), 0)
 
     def test_04_inquiry_with_under_30_quantity_triggers_moq(self):
@@ -61,14 +61,14 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(res["media_sequence"]), 0)
 
     def test_05_quantity_80_to_100_triggers_full_sequence_with_review_link_packages_and_voice(self):
-        """Quantity >= 80 (e.g. 80, 90, 100 pcs) sends: Cards -> Text 1 -> Fita -> Text 2 -> Covers -> Review Link -> Packages -> Voice Note."""
+        """Quantity >= 80 (e.g. 80, 90, 100 pcs) sends: Review Link -> 7 Packages -> Voice Note."""
         res = evaluate_id_card_workflow(
             message_text="১০০ পিস বানাবো",
             customer_name="Al-Amin",
             workspace_id=1
         )
         self.assertIsNotNone(res)
-        self.assertIn("স্যাম্পল", res["reply_text"])
+        self.assertIn("প্যাকেজগুলো পাঠানো হলো", res["reply_text"])
         seq = res["media_sequence"]
         
         # Verify sequence components
@@ -81,11 +81,7 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         text_contents = [s.get("text", "") for s in seq if s["type"] == "text"]
         self.assertTrue(any(REVIEW_FACEBOOK_POST_URL in t for t in text_contents))
         
-        # Verify cards text and fita text
-        self.assertTrue(any("আমাদের কার্ড" in t for t in text_contents))
-        self.assertTrue(any("প্রিন্ট করা ফিতা" in t for t in text_contents))
-        
-        # Verify package images in sequence
+        # Verify package images in sequence (only packages, not all other products)
         pkg_seq = [s for s in seq if s.get("category") == "package"]
         self.assertEqual(len(pkg_seq), 1)
         self.assertEqual(len(pkg_seq[0]["urls"]), 7)
@@ -113,7 +109,7 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         
         # Verify +10 TK rule explanation text
         text_contents = [s.get("text", "") for s in seq if s["type"] == "text"]
-        self.assertTrue(any("১০ টাকা করে বৃদ্ধি হবে" in t for t in text_contents))
+        self.assertTrue(any("১০ টাকা করে বেশি হবে" in t for t in text_contents))
         self.assertTrue(any(REVIEW_FACEBOOK_POST_URL in t for t in text_contents))
 
     def test_07_quantity_50_to_60_triggers_sequence_with_fixed_catalog_rate_and_no_voice(self):
