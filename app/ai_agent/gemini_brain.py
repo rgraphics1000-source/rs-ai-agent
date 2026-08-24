@@ -1025,20 +1025,31 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
                 break
 
     bot_offered_photos_last_turn = any(k in last_bot_msg for k in [
-        "ছবি দেখতে চান", "স্যাম্পল দেখতে চান", "ছবি পাঠাব", "স্যাম্পল পাঠাব", "ছবি দেব", "পিকচার দেখতে চান", "স্যাম্পল দেব", "ছবি পাঠাবো"
+        "ছবি দেখতে চান", "স্যাম্পল দেখতে চান", "ছবি পাঠাব", "স্যাম্পল পাঠাব", "ছবি দেব", "পিকচার দেখতে চান", "স্যাম্পল দেব", "ছবি পাঠাবো", "স্যাম্পল ছবিগুলো দিতে সুবিধা হতো", "স্যাম্পল ছবিগুলো দিতে"
     ])
 
     agreement_keywords = [
-        "হ্যাঁ", "পাঠান", "দেখান", "জি", "হুম", "পাঠাও", "দেখাও", "দিলে ভালো", "দিলে ভালো হয়",
+        "হ্যাঁ", "পাঠান", "দেখান", "জি", "হুম", "পাঠাও", "দেখাও", "দিলে ভালো", "দিলে ভালো হয়", "সবই লাগবে", "সব লাগবে", "সবকিছু লাগবে", "কম্বো", "প্যাকেজ",
         "yes", "sure", "ok", "okay", "send", "show", "ha", "ji", "achha", "yep", "yeah", "সেন্ড করুন"
     ]
     is_agreeing_to_photo = any(k == msg or msg.startswith(k + " ") or msg.endswith(" " + k) or f" {k} " in f" {msg} " for k in agreement_keywords) and bot_offered_photos_last_turn
 
-    if not (is_explicit_photo_req or is_agreeing_to_photo):
+    # Also check if bot_reply explicitly promises to send photos/samples below
+    b_reply_low = (bot_reply or "").lower()
+    is_bot_sending_photos = any(k in b_reply_low for k in [
+        "ছবিগুলো নিচে পাঠানো হলো", "ছবিগুলো নিচে দেওয়া হলো", "ছবিগুলো নিচে দেয়া হলো",
+        "স্যাম্পল ছবিগুলো নিচে", "প্যাকেজগুলো নিচে পাঠানো হলো", "প্যাকেজের ছবিগুলো নিচে",
+        "স্যাম্পল নিচে পাঠানো হলো", "ছবি নিচে পাঠানো হলো", "ছবি দেওয়া হলো", "ছবি পাঠানো হলো",
+        "স্যাম্পল দেওয়া হলো", "স্যাম্পল পাঠানো হলো", "স্যাম্পলগুলো নিচে পাঠানো হলো",
+        "প্যাকেজগুলো পাঠানো হলো", "স্যাম্পল ছবিগুলো নিচে পাঠানো হলো", "ছবিগুলো নিচে পাঠানো হল",
+        "স্যাম্পল পাঠানো হল", "স্যাম্পল ছবিগুলো নিচে পাঠানো হলো স্যার"
+    ])
+
+    if not (is_explicit_photo_req or is_agreeing_to_photo or is_bot_sending_photos):
         return []
 
     # Check if photos were already delivered recently in the thread
-    if conversation_history:
+    if conversation_history and not is_bot_sending_photos:
         recent_bot_msgs = [
             m.get("content", "") for m in conversation_history[-4:]
             if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant")
@@ -1055,13 +1066,14 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     req_count = parse_requested_image_count(msg)
     selected_images = []
 
-    is_pkg = any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ", "সব প্যাকেজ"])
-    is_fita = any(k in msg for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"])
-    is_cover = any(k in msg for k in ["কভার", "হোল্ডার", "holder", "cover"])
-    is_id = any(k in msg for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"])
+    combined_context = f"{msg} {b_reply_low}"
+    is_pkg = any(k in combined_context for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ", "সব প্যাকেজ"])
+    is_fita = any(k in combined_context for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]) and not is_pkg
+    is_cover = any(k in combined_context for k in ["কভার", "হোল্ডার", "holder", "cover"]) and not is_pkg
+    is_id = any(k in combined_context for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"]) and not (is_pkg or is_fita or is_cover)
 
-    if is_pkg:
-        selected_images = get_category_batch_images("pkg", workspace_id=workspace_id)
+    if is_pkg or int(workspace_id or 1) == 1:
+        selected_images = get_package_sample_images(workspace_id=workspace_id)
     elif is_fita:
         selected_images = get_category_batch_images("fita", workspace_id=workspace_id)
     elif is_cover:
@@ -1069,7 +1081,7 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     elif is_id:
         selected_images = get_category_batch_images("idc", workspace_id=workspace_id)
     else:
-        selected_images = get_category_batch_images("pkg", workspace_id=workspace_id)
+        selected_images = get_package_sample_images(workspace_id=workspace_id)
 
     if req_count and req_count > 0:
         return selected_images[:req_count]
