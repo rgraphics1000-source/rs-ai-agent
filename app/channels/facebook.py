@@ -614,49 +614,100 @@ async def process_facebook_batch(batch: PendingBatch):
             )
             print(f"[OUTBOUND] message_id={batch.batch_id} conversation_id={batch.conversation_id}")
 
-    # Send all matched product images as rich media attachments with media-level idempotency
-    matched_images = ai_result.get("matched_images", [])
     base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
-    fb_img_sent_count = 0
+    
+    # Handle phased media sequence if generated
+    media_sequence = ai_result.get("media_sequence")
+    if media_sequence and isinstance(media_sequence, list) and len(media_sequence) > 0:
+        for item in media_sequence:
+            item_type = item.get("type")
+            if item_type == "images":
+                for img_path in item.get("urls", []):
+                    if not img_path:
+                        continue
+                    full_img_url = img_path if img_path.startswith("http") else f"{base_server_url}{img_path}"
+                    send_fb_media_message(
+                        recipient_id=sender_id,
+                        media_type="image",
+                        media_url=img_path,
+                        page_token=page_token,
+                        page_id=page_id,
+                        workspace_id=workspace_id,
+                        batch_id=batch.batch_id
+                    )
+                    record_conversation_message(
+                        "facebook", sender_id, customer_name, "bot", "", full_img_url,
+                        page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
+                    )
+                    await asyncio.sleep(0.15)
+            elif item_type == "text":
+                text_content = item.get("text", "")
+                if text_content:
+                    send_fb_text_message(sender_id, text_content, page_token=page_token, page_id=page_id)
+                    record_conversation_message(
+                        "facebook", sender_id, customer_name, "bot", text_content,
+                        page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
+                    )
+                    await asyncio.sleep(0.2)
+            elif item_type == "voice":
+                v_url = item.get("url", "")
+                if v_url:
+                    send_fb_audio_message(
+                        recipient_id=sender_id,
+                        audio_url=v_url,
+                        page_token=page_token,
+                        page_id=page_id,
+                        workspace_id=workspace_id,
+                        batch_id=batch.batch_id
+                    )
+                    record_conversation_message(
+                        "facebook", sender_id, customer_name, "bot", "[Voice Note]", v_url,
+                        page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
+                    )
+                    await asyncio.sleep(0.2)
+    else:
+        # Fallback to standard matched images delivery
+        matched_images = ai_result.get("matched_images", [])
+        fb_img_sent_count = 0
 
-    for img_path in matched_images:
-        if not img_path:
-            continue
-        full_img_url = img_path if img_path.startswith("http") else f"{base_server_url}{img_path}"
-        img_sent = send_fb_media_message(
-            recipient_id=sender_id,
-            media_type="image",
-            media_url=img_path,
-            page_token=page_token,
-            page_id=page_id,
-            workspace_id=workspace_id,
-            batch_id=batch.batch_id
-        )
-        if img_sent:
-            fb_img_sent_count += 1
+        for img_path in matched_images:
+            if not img_path:
+                continue
+            full_img_url = img_path if img_path.startswith("http") else f"{base_server_url}{img_path}"
+            img_sent = send_fb_media_message(
+                recipient_id=sender_id,
+                media_type="image",
+                media_url=img_path,
+                page_token=page_token,
+                page_id=page_id,
+                workspace_id=workspace_id,
+                batch_id=batch.batch_id
+            )
+            if img_sent:
+                fb_img_sent_count += 1
+                record_conversation_message(
+                    "facebook", sender_id, customer_name, "bot", "", full_img_url,
+                    page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
+                )
+            await asyncio.sleep(0.2)
+
+        # Send concluding follow-up message after all photos are delivered
+        if fb_img_sent_count > 0 and sender_id:
+            honorific = detect_customer_gender_title(customer_name)
+            if any("pakage" in str(p).lower() or "pkg" in str(p).lower() for p in matched_images):
+                fb_followup = f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+            else:
+                fb_followup = f"আপনার কত পিস প্রয়োজন জানাবেন {honorific}।"
+
+            await asyncio.sleep(0.4)
+            send_fb_text_message(
+                sender_id, fb_followup,
+                page_token=page_token, page_id=page_id
+            )
             record_conversation_message(
-                "facebook", sender_id, customer_name, "bot", "", full_img_url,
+                "facebook", sender_id, customer_name, "bot", fb_followup,
                 page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
             )
-        await asyncio.sleep(0.2)
-
-    # Send concluding follow-up message after all photos are delivered
-    if fb_img_sent_count > 0 and sender_id:
-        honorific = detect_customer_gender_title(customer_name)
-        if any("pakage" in str(p).lower() or "pkg" in str(p).lower() for p in matched_images):
-            fb_followup = f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
-        else:
-            fb_followup = f"আপনার কত পিস প্রয়োজন জানাবেন {honorific}।"
-
-        await asyncio.sleep(0.4)
-        send_fb_text_message(
-            sender_id, fb_followup,
-            page_token=page_token, page_id=page_id
-        )
-        record_conversation_message(
-            "facebook", sender_id, customer_name, "bot", fb_followup,
-            page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
-        )
 
     # Send video demo if requested
     matched_video = ai_result.get("video_url", "")

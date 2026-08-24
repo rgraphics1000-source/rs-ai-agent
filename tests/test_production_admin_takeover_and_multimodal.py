@@ -609,12 +609,13 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
 
     def test_13_ai_agent_persona_nadim_and_owner_rashed(self):
         """
-        Validates that Gemini AI system instructions embed the AI Agent name 'নাদিম' (Nadim)
-        and the Shop Owner 'মুহা. রাশেদুল ইসলাম' (সংক্ষেপে 'রাশেদ').
+        Validates that Gemini AI system instructions embed the AI Agent name 'নাদিম' (Nadim),
+        the Shop Owner 'মোহাম্মদ রাশেদুল ইসলাম', and the addressing rule 'আমাদের ওনার স্যার'.
         """
         instructions = build_system_instruction(workspace_id=1)
         self.assertIn("নাদিম", instructions)
-        self.assertIn("মুহা. রাশেদুল ইসলাম", instructions)
+        self.assertIn("মোহাম্মদ রাশেদুল ইসলাম", instructions)
+        self.assertIn("ওনার স্যার", instructions)
         self.assertIn("রাশেদ", instructions)
 
     def test_14_saved_media_persistence_and_deletion(self):
@@ -753,29 +754,53 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
     def test_19_full_category_and_package_images_dispatching(self):
         """
         Validates that:
-        1. Asking for package photos returns ALL 7 package images (PKG-01 to PKG-07), not 3.
+        1. Asking for package photos returns ALL package images (PKG-01 to PKG-07), not 3.
         2. Asking for explicit count (e.g. 2 photos) returns exactly 2 images.
         3. Asking for ID card / fita / cover returns all matching category images.
         """
         from app.ai_agent.gemini_brain import detect_sample_photos_to_send
+        from app.database import get_db_connection
 
-        # 1. Package images request -> all 7 packages
-        pkg_imgs = detect_sample_photos_to_send("প্যাকেজের ছবি দেখতে চাই", workspace_id=1)
-        self.assertGreaterEqual(len(pkg_imgs), 7, "Should return all 7 package images, not just 3")
-        self.assertIn("/static/uploads/pakage/IMG-20260113-WA0002.jpg", pkg_imgs)
-        self.assertIn("/static/uploads/pakage/IMG-20260114-WA0057.jpg", pkg_imgs)
+        conn = get_db_connection()
+        test_packages = [
+            (99911, "Package 1", "PKG-01", "প্যাকেজ", "/static/uploads/pakage/IMG-20260113-WA0002.jpg"),
+            (99912, "Package 2", "PKG-02", "প্যাকেজ", "/static/uploads/pakage/IMG-20260113-WA0003.jpg"),
+            (99913, "Package 3", "PKG-03", "প্যাকেজ", "/static/uploads/pakage/IMG-20260113-WA0006.jpg"),
+            (99914, "Package 4", "PKG-04", "প্যাকেজ", "/static/uploads/pakage/IMG-20260117-WA0023.jpg"),
+            (99915, "Package 5", "PKG-05", "প্যাকেজ", "/static/uploads/pakage/IMG-20260118-WA0045.jpg"),
+            (99916, "Package 6", "PKG-06", "প্যাকেজ", "/static/uploads/pakage/IMG-20260121-WA0081.jpg"),
+            (99917, "Package 7", "PKG-07", "প্যাকেজ", "/static/uploads/pakage/IMG-20260114-WA0057.jpg"),
+            (99918, "Fita Sample", "LAN-15", "ফিতা", "/static/uploads/fita/IMG-20260112-WA0005.jpg"),
+            (99919, "ID Card Sample", "IDC-01", "আইডি কার্ড", "/static/uploads/id_card/IMG-20260112-WA0058.jpg"),
+        ]
+        for pid, name, code, cat, img in test_packages:
+            conn.execute("INSERT OR REPLACE INTO products (id, name, code, category, price, is_active, workspace_id, image_url) VALUES (?, ?, ?, ?, 50, 1, 1, ?)", (pid, name, code, cat, img))
+        conn.commit()
+        conn.close()
 
-        # 2. Explicit count request -> exact count
-        two_imgs = detect_sample_photos_to_send("প্যাকেজের ২টা ছবি দেন", workspace_id=1)
-        self.assertEqual(len(two_imgs), 2, "Should return exactly 2 images when requested")
+        try:
+            # 1. Package images request -> all 7 packages
+            pkg_imgs = detect_sample_photos_to_send("প্যাকেজের ছবি দেখতে চাই", workspace_id=1)
+            self.assertGreaterEqual(len(pkg_imgs), 7, "Should return all 7 package images, not just 3")
+            self.assertIn("/static/uploads/pakage/IMG-20260113-WA0002.jpg", pkg_imgs)
+            self.assertIn("/static/uploads/pakage/IMG-20260114-WA0057.jpg", pkg_imgs)
 
-        # 3. Fita images request
-        fita_imgs = detect_sample_photos_to_send("ফিতার স্যাম্পল ছবি পাঠান", workspace_id=1)
-        self.assertGreaterEqual(len(fita_imgs), 1)
+            # 2. Explicit count request -> exact count
+            two_imgs = detect_sample_photos_to_send("প্যাকেজের ২টা ছবি দেন", workspace_id=1)
+            self.assertEqual(len(two_imgs), 2, "Should return exactly 2 images when requested")
 
-        # 4. ID Card images request
-        id_imgs = detect_sample_photos_to_send("আইডি কার্ডের ছবি দেখান", workspace_id=1)
-        self.assertGreaterEqual(len(id_imgs), 1)
+            # 3. Fita images request
+            fita_imgs = detect_sample_photos_to_send("ফিতার স্যাম্পল ছবি পাঠান", workspace_id=1)
+            self.assertGreaterEqual(len(fita_imgs), 1)
+
+            # 4. ID Card images request
+            id_imgs = detect_sample_photos_to_send("আইডি কার্ডের ছবি দেখান", workspace_id=1)
+            self.assertGreaterEqual(len(id_imgs), 1)
+        finally:
+            conn = get_db_connection()
+            conn.execute("DELETE FROM products WHERE id >= 99911 AND id <= 99919")
+            conn.commit()
+            conn.close()
 
 
 if __name__ == "__main__":

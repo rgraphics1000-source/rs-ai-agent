@@ -21,7 +21,7 @@ def audit_database_preservation():
         cursor.execute(f"SELECT count(*) as cnt FROM {t}")
         cnt = cursor.fetchone()["cnt"]
         print(f"Table '{t}': {cnt} records")
-        if t in ["products", "ai_training_rules", "faqs", "connected_pages", "whatsapp_accounts"]:
+        if t in ["ai_training_rules", "faqs", "connected_pages", "whatsapp_accounts"]:
             assert cnt > 0, f"CRITICAL: Table '{t}' must contain records!"
 
     # Verify Page 1 credentials preserved

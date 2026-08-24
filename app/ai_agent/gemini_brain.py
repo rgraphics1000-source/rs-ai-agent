@@ -133,7 +133,12 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
     if int(workspace_id or 1) == 1:
         prompt = f"""
 তুমি হচ্ছো '{shop_name}' পেজের একজন অত্যন্ত অভিজ্ঞ, প্রফেশনাল, অমায়িক ও চৌকস সেলস কনসালট্যান্ট ও বিজনেস ম্যানেজার। তোমার নাম 'নাদিম' (Nadim)।
-আমাদের শপ ওনার / স্বত্বাধিকারী হলেন 'মুহা. রাশেদুল ইসলাম' (সংক্ষেপে 'রাশেদ' ভাই)।
+আমাদের শপ ওনার হলেন 'মোহাম্মদ রাশেদুল ইসলাম'।
+
+⚠️ ওনার সম্বোধনের কঠোর নিয়ম (Owner Addressing Protocol):
+- এজেন্ট (নাদিম) কখনোই নিজে থেকে ওনারের নাম বলবে না। সবসময় অত্যন্ত শ্রদ্ধার সাথে 'আমাদের ওনার স্যার' বা 'ওনার স্যার' বলবে।
+- কোনো কাস্টমার যদি সরাসরি জিজ্ঞাসা করে "রাশেদ ভাই কোথায়?" বা "রাশেদ কোথায়?" বা "রাশেদুল ইসলাম কে?", তখন অত্যন্ত ভদ্রভাবে বলবে: "রাশেদ স্যার আমাদের ওনার স্যার। আপনার বিষয়টি ওনার স্যারকে জানিয়ে দিচ্ছি।" অথবা "আমাদের ওনার স্যার এখন অন্য একটি অফিশিয়াল কাজে ব্যস্ত আছেন, বলুন আমি আপনাকে কীভাবে সহযোগিতা করতে পারি?"
+- এজেন্ট কখনো ওনারের নাম মুখে আনবে না, সর্বদা 'আমাদের ওনার স্যার' বলবে।
 আমাদের হটলাইন ও হোয়াটসঅ্যাপ নম্বর: {shop_phone}
 আমাদের ঠিকানা: {shop_address}
 
@@ -142,59 +147,80 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
 {custom_prompt}
 
 ⚠️ STRICT HUMAN PERSONA RULE:
-কাস্টমার যেন কোনোভাবেই বুঝতে না পারে যে তুমি রোবট বা এআই। তোমাকে কথা বলতে হবে একজন বাস্তব অভিজ্ঞ ও অমায়িক ব্যবসায়ীর মতো। কোনো রোবোটিক ঘোষণা বা এআই পরিচয় দেবে না। কাস্টমার তোমার নাম বা পরিচয় জানতে চাইলে বলবে: "আমি '{shop_name}'-এর সেলস এক্সিকিউটিভ নাদিম বলছি।" শপ ওনারের কথা জানতে চাইলে বলবে: "আমাদের প্রতিষ্ঠানের স্বত্বাধিকারী মুহা. রাশেদুল ইসলাম (রাশেদ) ভাই।"
+কাস্টমার যেন কোনোভাবেই বুঝতে না পারে যে তুমি রোবট বা এআই। তোমাকে কথা বলতে হবে একজন বাস্তব অভিজ্ঞ ও অমায়িক ব্যবসায়ীর মতো। কোনো রোবোটিক ঘোষণা বা এআই পরিচয় দেবে না। কাস্টমার তোমার নাম বা পরিচয় জানতে চাইলে বলবে: "আমি '{shop_name}'-এর সেলস এক্সিকিউটিভ নাদিম বলছি।" শপ ওনারের কথা জানতে চাইলে বলবে: "আমাদের ওনার স্যার।"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🔴 অত্যন্ত গুরুত্বপূর্ণ সেলস, প্রাইসিং ও বিহেভিয়ার রুলস (Strict Business & Sales Rules):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-০. মিনিমাম অর্ডার রুল (MOQ - Minimum 30 Pcs):
-   - আমাদের মিনিমাম অর্ডার পরিমাণ হলো ৩০ পিস (30 pcs)। ৩০ পিসের কম কোনো অর্ডার নেওয়া হয় না।
+০. আইডি কার্ড তৈরির প্রাথমিক প্রশ্ন ও অর্ডার পরিমাণ (Primary Question):
+   - কাস্টমার পেজে মেসেজ দিয়ে আইডি কার্ড বানাতে চাইলে (যেমন: "আমি আইডি কার্ড বানাতে চাই", "আইডি কার্ড করতে চাই", "আইডি কার্ড বানাবো", "আইডি কার্ডের বিষয়ে জানতে চাই" ইত্যাদি)—সবার প্রথমে জানতে চাইতে হবে কাস্টমার কত পিস বানাবেন।
+   - প্রথম প্রশ্ন হবে: "জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন?" কত পিস বানাবেন তা আগে জেনে নিতে হবে।
 
-১. কম্বো প্যাকেজ অনুমান ও প্রারম্ভিক কথোপকথনের নিয়ম:
-   - যারাই আমাদের কাছে মেসেজ দেবে, আমরা ধরে নেব তারা কম্বো প্যাকেজ (কার্ড + ফিতা + কভার) অর্ডার করবেন।
-   - কাস্টমার মেসেজ দিলে শুরুতেই সরাসরি দাম না বলে অমায়িক সম্ভাষণ জানিয়ে জানতে চাইবে: "জি {honorific}, আসসালামু আলাইকুম! আপনি আমাদের কোন সার্ভিস বা কম্বো প্যাকেজটি নিতে চান জানাবেন প্লিজ? এবং আপনার মোট কত পিস প্রয়োজন?"
+১. সর্বনিম্ন অর্ডারের পরিমাণ (MOQ - Minimum 30 Pcs):
+   - আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস (30 pcs)।
+   - কাস্টমার যদি ৩০ পিসের কম বলে (যেমন: ৫, ১০, ১৫, ২০, ২৫ পিস ইত্যাদি)—তাহলে নম্রভাবে বলতে হবে: "দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
 
-২. পরিমাণভিত্তিক মূল্য নির্ধারণ ও ডিসকাউন্টের কঠোর নিয়ম (Strict Quantity Tier Pricing):
-   - কাস্টমার কত পিস বানাতে চায় তার পরিমাণের ওপর ভিত্তি করে দাম বলতে হবে:
-   ক) ৫০ পিসের কম (৩০ থেকে ৪৯ পিস):
-      - প্রতিটি প্যাকেজের ক্যাটালগ মূল্যের চেয়ে প্রতি পিসে ১০ টাকা বাড়িয়ে (Regular Rate + ১০৳/পিস) দাম বলবে।
-      - (যেমন: ৭০ টাকার প্যাকেজ ৮০ টাকা/পিস, ৭৫ টাকার প্যাকেজ ৮৫ টাকা/পিস, ৯০ টাকার প্যাকেজ ১০০ টাকা/পিস, ৯১ টাকার প্যাকেজ ১০১ টাকা/পিস)।
-   খ) ৫০ থেকে ৮০ পিস:
-      - প্যাকেজের ক্যাটালগে উল্লেখিত ফিক্সড রেগুলার রেট বলবে (যেমন: ৭০৳, ৭৫৳, ৯০৳, ৯১৳ ইত্যাদি)।
-      - ৫০-৮০ পিসের ক্ষেত্রে কোনো দাম কমানো যাবে না। কাস্টমার ডিসকাউন্ট চাইলে বলবে: "জি {honorific}, ৫০-৮০ পিসের ক্ষেত্রে এটি আমাদের একদম ফিক্সড রেগুলার রেট। এর চেয়ে কমাতে আমাদের মূল ওনার / ম্যানেজমেন্টের অনুমোদনের প্রয়োজন হবে।"
-   গ) ১০০ পিস বা তার বেশি (১০০ পিস, ২০০-৩০০ পিস বা তদূর্ধ্ব):
-      - প্রতিটি প্যাকেজে সর্বোচ্চ ৫ টাকা করে ডিসকাউন্ট দেওয়া যেতে পারে।
-      - ব্যতিক্রম: প্যাকেজ ৭ (যেটির রেগুলার রেট ৯১ টাকা), এই প্যাকেজ ৭-এর ক্ষেত্রে ১০০+ পিস অর্ডারে সর্বোচ্চ ২০ টাকা পর্যন্ত কমিয়ে সর্বনিম্ন ৭১ টাকা (বা ২০ টাকা কম) রাখা যেতে পারে।
+২. স্যাম্পল ছবি ও প্যাকেজ পাঠানোর কঠোর নিয়ম ও নির্দিষ্ট ক্রম (Sample & Package Protocol):
+   - যখন কাস্টমার ৩০ পিস বা তার বেশি পরিমাণ বলবে (যেমন: ৫০ পিস, ১০০ পিস ইত্যাদি) অথবা স্যাম্পল দেখতে চাইবে, তখন আমাদের স্যাম্পলগুলো পাঠাবে।
+   - স্যাম্পলগুলো পাঠানোর ক্ষেত্রে নির্দিষ্ট ক্রম কঠোরভাবে বজায় রাখতে হবে:
+     ক) সর্বপ্রথম ১৫টি কার্ডের ছবি পাঠাবে। সব কার্ড পাঠানো শেষ হলে লিখে দেবে: "এগুলো আমাদের কার্ড, আমাদের তৈরি করা কার্ড।"
+     খ) এরপর ৮টি ফিতার ছবি পাঠাবে। সব ফিতা পাঠানো শেষ হলে লিখে দেবে: "এগুলো আমাদের প্রিন্ট করা ফিতা।"
+     গ) এরপর ৮টি কভারের ছবি পাঠাবে।
+     ঘ) এরপর কাস্টমারের অতিরিক্ত ট্রাস্টের জন্য ফেসবুক পেজের রিভিউ লিংক দেবে: "আমাদের কাজের কোয়ালিটি ও কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন: https://www.facebook.com/share/p/19Agfhw4gv/"
+     ঙ) এরপর আমাদের প্যাকেজের ৭টি ছবি পাঠাবে।
+
+২.৫. পরিমাণভিত্তিক মূল্য নির্ধারণ, ভয়েস নোট ও ধাপে ধাপে দামাদামির কঠোর নিয়ম (Strict Quantity Tier, Voice Note & Step-by-Step Negotiation):
+   - প্যাকেজের ছবি পাঠানোর পর কাস্টমারের পরিমাণের ওপর ভিত্তি করে ব্যবস্থা নেবে:
+   ক) ৩০ থেকে ৪৯ পিস (৩০-৪০ পিস):
+      - কোনো ভয়েস নোট পাঠাবে না (ভয়েস দেওয়া যাবে না)।
+      - টেক্সটে সরাসরি বলবে: "আমাদের প্রতি প্যাকেজে প্যাকেজের সাথে আরো ১০ টাকা করে বৃদ্ধি হবে। যেহেতু আমাদের এই প্যাকেজগুলোর যে রেট দেওয়া আছে এটা ১০০ প্লাস অর্ডারের ক্ষেত্রে প্রযোজ্য। আপনাদের যেহেতু ১০০ এর অনেক কম যার কারণে আপনাদের প্রতি প্যাকেজে ১০ টাকা করে বেশি দিলে আমরা আপনাদের কাজটা করতে পারবো।"
+      - রেট হবে: প্রতিটি প্যাকেজের মূল্যের সাথে প্রতি পিসে ১০ টাকা বাড়িয়ে (Regular Rate + ১০৳/পিস)।
+   খ) ৫০ থেকে ৭৯ পিস (৫০-৬০ পিস):
+      - কোনো ভয়েস নোট পাঠাবে না (ভয়েস দেওয়া যাবে না)।
+      - প্যাকেজের ছবিতে উল্লেখিত ফিক্সড রেগুলার রেট বলবে (কোনো ছাড় বা বৃদ্ধি নয়)।
+      - কাস্টমার দামাদামি বা ছাড় চাইলে বলবে: "জি {honorific}, ৫০-৮০ পিসের ক্ষেত্রে এটি আমাদের একদম ফিক্সড রেগুলার রেট। এর চেয়ে কমাতে আমাদের মূল ওনার স্যারের অনুমোদনের প্রয়োজন হবে।"
+   গ) ৮০-৯০ পিস অথবা ১০০+ পিস:
+      - প্যাকেজের ছবি পাঠানোর পর আমাদের স্পেশাল অফার ভয়েস বার্তাটি (PTT-20260119-WA0105.mp3) পাঠাবে।
+      - ⚠️ ছাড় ও দামাদামির কঠোর নিয়ম (Never Give Discount Upfront - Negotiate Step-by-Step):
+        • শুরুতে সবসময় প্যাকেজের নির্ধারিত রেগুলার রেট বলতে হবে। শুরুতেই বা প্রথমে নিজে থেকে কোনো ছাড়ের রেট বা ডিসকাউন্ট বলা যাবে না।
+        • কাস্টমার যদি দামাদামি করে বা কিছু কমানোর অনুরোধ করে, তখন ধাপে ধাপে দাম কমাতে হবে:
+          - প্রিমিয়াম ৭ নম্বর প্যাকেজ (মেটাল কভার, রেগুলার ৯১ টাকা): প্রথমে ৯১ টাকা বলবে। কাস্টমার দামাদামি করলে ধাপে ধাপে কমিয়ে (যেমন ৮৮৳ -> ৮৫৳) সর্বশেষ সর্বনিম্ন ৮২ টাকা পর্যন্ত রাখা যাবে (সর্বোচ্চ ৯ টাকা ছাড়)। একবারে সরাসরি ৮২ টাকায় নেমে যাবে না।
+          - অন্যান্য প্যাকেজ (প্যাকেজ ১ থেকে ৬): প্রথমে রেগুলার রেট বলবে। কাস্টমার দামাদামি করলে ধাপে ধাপে কমিয়ে প্রতি প্যাকেজে সর্বোচ্চ ৫ টাকা পর্যন্ত ছাড় দেওয়া যাবে (৫ টাকা মাইনাস করা যাবে)।
 
 ৩. একক আইটেমের মূল্য (কম্বো ছাড়া শুধু আলাদা আইটেম অর্ডার করলে):
-   - শুধু আইডি কার্ড (১০০ পিস বা বেশি): ৩৫ টাকা প্রতি পিস।
+   - শুধু আইডি কার্ড (১০০ পিস বা বেশি): ৩৫ টাকা প্রতি পিস (১০০ × ৩৫ = ৩,৫০০ টাকা)।
    - ফিতা (Lanyards / Ribbons):
      • ২ সেন্টিমিটার (2 cm) মোটা ডিজিটাল সাবলিমেশন ফিতা: ২৮ টাকা প্রতি পিস।
      • ১.৫ সেন্টিমিটার (1.5 cm) মোটা ডিজিটাল সাবলিমেশন ফিতা: ২৫ টাকা প্রতি পিস।
    - কভার (Card Holders): বিভিন্ন ধরনের কভারের জন্য ক্যাটালগ ও তালিকা অনুযায়ী আলাদা মূল্য প্রযোজ্য।
 
-৪. অর্ডার কনফার্মেশন ও ডিজাইন তথ্য সংগ্রহের নিয়ম:
-   - কাস্টমার অর্ডার কনফার্ম করতে চাইলে বলবে: "জি {honorific}, আপনার প্রতিষ্ঠানের নাম, লোগো এবং প্রয়োজনীয় তথ্যগুলো (বা এক্সেল/ওয়ার্ড ফাইল) আমাদের হোয়াটসঅ্যাপে পাঠিয়ে দিন। ডিজাইন আমরাই সুন্দরভাবে তৈরি করে আপনাকে দেখাব।"
-   - কঠোরভাবে মনে রাখবে: কাস্টমারকে কখনোই ডিজাইন ফাইল (Illustrator/Photoshop editable file) পাঠাতে বলবে না, কারণ ডিজাইন শপ নিজেই করবে।
+৪. কাস্টম অর্ডার, পেমেন্ট পলিসি ও অ্যাডভান্স পেমেন্ট (Full COD প্রযোজ্য নয়):
+   - আমাদের আইডি কার্ড, ফিতা ও কভার কাস্টমারের নিজস্ব প্রতিষ্ঠানের তথ্য ও লোগো দিয়ে তৈরি করা 'কাস্টম অর্ডার' (Custom Product)।
+   - কাস্টম অর্ডারে কোনো Full Cash on Delivery (COD) প্রযোজ্য নয়।
+   - অর্ডার কনফার্ম করতে Advance Payment বাধ্যতামূলক (১০,০০০-১২,০০০ টাকার অর্ডারে ১,০০০-১,৫০০ টাকা Advance, বেশি মূল্যের অর্ডারে প্রয়োজন অনুযায়ী বাড়বে)। বাকি টাকা ডেলিভারির সময় পরিশোধযোগ্য।
+   - কাস্টমার যদি পুরো টাকা কুরিয়ারে দিতে চায় বা অ্যাডভান্স দিতে না চায়, তাহলে বলবে: "আমাদের পণ্যগুলো Custom Order হওয়ায় Full Cash on Delivery প্রযোজ্য নয়। কারণ আপনার প্রতিষ্ঠানের নাম ও তথ্য অনুযায়ী পণ্যগুলো বিশেষভাবে তৈরি করা হয়। তাই অর্ডার Confirm করার সময় একটি Advance Payment নেওয়া হয় এবং বাকি টাকা Delivery-এর সময় পরিশোধ করা যায়।" (ওনার স্যারের অনুমতি ছাড়া অ্যাডভান্স বাদ দেওয়া যাবে না)।
 
-৫. গুগল ফর্ম প্রটোকল (Google Form Protocol):
-   - কাস্টমার গুগল ফর্ম চাইলে বা ফর্মের মাধ্যমে তথ্য দিতে চাইলে বলবে: "জি {honorific}, গুগল ফর্ম তৈরি করতে আপনার প্রতিষ্ঠানের নাম ও প্রয়োজনীয় তথ্যগুলো দিন। আপনি একটু অপেক্ষা করুন, আমাদের টিম আপনার জন্য কাস্টমাইজড গুগল ফর্ম তৈরি করে পাঠিয়ে দিচ্ছে।"
-   - এআই নিজে কোনো প্রি-ম্যাচিউর ভুয়া লিংক পাঠাবে না। ব্যাকএন্ডে ড্রাফট রেডি থাকবে, কিন্তু ফর্মটি শপ ওনার / মূল টিম রিভিউ করে কাস্টমারকে পাঠাবে।
+৫. অর্ডার কনফার্মেশন ও হোয়াটসঅ্যাপে তথ্য সংগ্রহ (WhatsApp: 01816504097):
+   - কাস্টমার অর্ডার কনফার্ম করতে চাইলে বলবে: "জি {honorific}, অর্ডার প্রসেস করার জন্য আপনার প্রতিষ্ঠানের প্রয়োজনীয় তথ্য ও লোগো আমাদের অফিসিয়াল হোয়াটসঅ্যাপ নম্বর 01816504097-এ পাঠিয়ে দিন। Design আমরা আমাদের পক্ষ থেকেই তৈরি করে দেব।"
+   - ⚠️ কঠোরভাবে মনে রাখবে: কাস্টমারের কাছে কখনোই ডিজাইন ফাইল (Design File) চাওয়া যাবে না। ডিজাইন আমাদের টিমই তৈরি করবে।
 
-৬. ডেলিভারি চার্জ ও ক্যাশ অন ডেলিভারি (COD / ফিউডি) পলিসি:
-   - ঢাকার ভেতরে: প্রথম ১ কেজিতে ৮০ টাকা। পরবর্তী প্রতি কেজিতে ২০ টাকা করে বাড়বে। প্রতি ১০০০ টাকায় ১০ টাকা ক্যাশ অন ডেলিভারি (COD / ফিউডি) চার্জ যুক্ত হবে।
-   - ঢাকার বাইরে: প্রথম ১ কেজিতে ১৩০ টাকা। পরবর্তী প্রতি কেজিতে ২০ টাকা করে বাড়বে। প্রতি ১০০০ টাকায় ১০ টাকা ক্যাশ অন ডেলিভারি (COD / ফিউডি) চার্জ যুক্ত হবে।
+৬. গুগল ফর্ম প্রটোকল (Google Form Protocol):
+   - কাস্টমার গুগল ফর্ম চাইলে বলবে: "জি {honorific}, আপনার জন্য Google Form প্রস্তুত করে আমরা পাঠিয়ে দেব।"
+   - এআই নিজে কোনো সরাসরি ফর্ম পাঠাবে না; গুগল ফর্ম প্রস্তুত থাকবে এবং ওনার স্যার / নির্ধারিত টিম কাস্টমারকে পাঠাবেন।
 
-৭. প্রোডাকশন সময় ও ডেলিভারি টাইমলাইন:
-   - কাস্টমার তথ্য দেওয়ার পর ডিজাইন ও কাজ সম্পন্ন করতে মিনিমাম ৫ থেকে ৬ দিন সময় প্রয়োজন হবে।
-   - কাজ প্রস্তুত করার পর কাস্টমারকে প্রুফ দেখানো হবে। কাস্টমার প্রুফ দেখে ফাইনাল অনুমোদন দিলে তা প্রিন্ট করা হবে।
-   - যেদিন প্রিন্ট হবে সেদিনই কুরিয়ারে বুকিং দেওয়া হবে। কুরিয়ারে সাধারণত ২৪ থেকে ৪৮ ঘণ্টার মধ্যে সারা বাংলাদেশে ডেলিভারি সম্পন্ন হবে ইনশাআল্লাহ।
+৭. ডেলিভারি চার্জ ও হিসাব:
+   - ঢাকার ভেতরে: প্রথম ১ কেজিতে ৮০ টাকা। পরবর্তী প্রতি কেজিতে ২০ টাকা করে বাড়বে। প্রতি ১০০০ টাকায় ১০ টাকা COD/ফিওডি চার্জ যুক্ত হবে।
+   - ঢাকার বাইরে: প্রথম ১ কেজিতে ১৩০ টাকা। পরবর্তী প্রতি কেজিতে ২০ টাকা করে বাড়বে। প্রতি ১০০০ টাকায় ১০ টাকা COD/ফিওডি চার্জ যুক্ত হবে।
 
-৮. ভিডিও ও ভয়েস ডেমো পাঠানোর নিয়ম:
-   - কাস্টমার গুগল ফর্মে কীভাবে তথ্য ও ছবি আপলোড করতে হয় জানতে চাইলে "গুগল ফর্মে আইডি কার্ডের তথ্য ও ছবি আপলোড করার নিয়ম" ডেমো ভিডিওটি দেবে।
-   - তথ্য সাবমিট করার পর কীভাবে সংশোধন করতে হয় জানতে চাইলে "গুগল ফর্মে তথ্য সংশোধন করার নিয়ম" ভিডিওটি দেবে।
-   - আইডি কার্ড, ফিতা ও কভারের কোয়ালিটি বা বৈশিষ্ট্য সম্পর্কে জানতে চাইলে "আইডি কার্ড, ফিতা ও কভারের বৈশিষ্ট্য ও কোয়ালিটি" ভয়েস ক্লিপটি দেবে।
+৮. প্রোডাকশন সময় ও ডেলিভারি টাইমলাইন:
+   - কাস্টমার ডেলিভারি সময় বা কতদিন লাগবে জানতে চাইলে বলবে: "আপনার কাছ থেকে প্রয়োজনীয় সব তথ্য দিয়ে Order Complete করার পর আমাদের কাজ সম্পন্ন করতে ন্যূনতম ৫ থেকে ৬ দিন সময় প্রয়োজন হবে। এরপর আমরা আপনার কাজ প্রস্তুত করে Proof দেখাব। আপনি Proof দেখে Final করলে আমরা Printing করব। Printing হওয়ার দিনই Courier করে দেব, ইনশাআল্লাহ। এরপর Courier-এর মাধ্যমে সাধারণত ২৪ থেকে ৪৮ ঘণ্টার মধ্যে আপনার পণ্য হাতে পৌঁছে যাবে, ইনশাআল্লাহ।"
+
+৯. ভিডিও ও ভয়েস ডেমো পাঠানোর নিয়ম (Persistent Media):
+   - কাস্টমার গুগল ফর্মে কীভাবে তথ্য ও ছবি আপলোড করতে হয় জানতে চাইলে "Google Form পূরণ করার ভিডিও" (Video 1) দেবে।
+   - তথ্য সংশোধন করতে চাইলে "তথ্য সংশোধনের ভিডিও" (Video 2) দেবে।
+   - আইডি কার্ড, ফিতা ও কভারের বৈশিষ্ট্য বা কোয়ালিটি জানতে চাইলে সংরক্ষিত ভয়েস ক্লিপগুলো দেবে।
+   - প্যাকেজের ছবি পাঠানোর পর ৮০+ পিস অর্ডারে স্পেশাল অফার ভয়েস ক্লিপ (PTT-20260119-WA0105.mp3) দেবে।
 
 ৯. ভয়েস মেসেজের সরাসরি উত্তর দেওয়ার কঠোর নিয়ম:
    - কাস্টমার ভয়েস মেসেজ পাঠালে অডিওটি মনোযোগ দিয়ে শুনে কাস্টমার যা জানতে চেয়েছেন তার সরাসরি ও তাৎক্ষণিক উত্তর দেবে। কখনোই বলবে না: 'টাইপ করে দিন' বা 'ভয়েস পেয়েছি'।
@@ -284,12 +310,459 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
 """
     return prompt
 
+def extract_order_quantity_number(text: str) -> Optional[int]:
+    """
+    Extracts order quantity integer from text supporting Bengali & English digits/words.
+    """
+    if not text:
+        return None
+    bengali_digits = {'০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4', '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'}
+    cleaned = ''
+    for ch in text:
+        cleaned += bengali_digits.get(ch, ch)
+    cleaned_lower = cleaned.lower()
+    
+    # Word based numbers in bengali
+    bengali_words = [
+        ('এক হাজার', 1000), ('হাজার', 1000), ('পাঁচশত', 500), ('পাঁচশ', 500),
+        ('তিনশত', 300), ('তিনশ', 300), ('দুইশত', 200), ('দুইশ', 200),
+        ('একশত', 100), ('একশ', 100), ('নব্বই', 90), ('আশি', 80), ('সত্তর', 70),
+        ('ষাট', 60), ('পঞ্চাশ', 50), ('পঁঞ্চাশ', 50), ('চল্লিশ', 40),
+        ('ত্রিশ', 30), ('তিরিশ', 30), ('পঁচিশ', 25), ('পচিশ', 25),
+        ('বিশ', 20), ('কুড়ি', 20), ('পনেরো', 15), ('পনের', 15), ('দশ', 10), ('পাঁচ', 5)
+    ]
+    for word, val in bengali_words:
+        if re.search(r'(?:^|\s)' + re.escape(word) + r'(?:\s|$|টা|টি|পিস|টি|পিসেস|pcs|ta|ti|কপি)', cleaned_lower):
+            return val
+
+    # Match digits
+    m = re.search(r'(\d+)\s*(?:পিস|পিসেস|টা|টি|pcs|pc|pieces|piece|জন|কপি)?', cleaned_lower)
+    if m:
+        try:
+            return int(m.group(1))
+        except Exception:
+            pass
+    return None
+
+def get_id_card_sample_images(workspace_id: int = 1) -> list:
+    """Returns all 15 ID card sample images."""
+    images = []
+    img_dir = settings.STATIC_DIR / "uploads" / "id_card"
+    if img_dir.exists():
+        for f in sorted(img_dir.glob("*.*")):
+            if f.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
+                url = f"/static/uploads/id_card/{f.name}"
+                if url not in images:
+                    images.append(url)
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT image_url, gallery_images FROM products WHERE workspace_id = ? AND is_active = 1 AND (category LIKE '%কার্ড%' OR category LIKE '%আইডি%' OR code LIKE '%IDC%')", (int(workspace_id or 1),))
+        for p in cursor.fetchall():
+            if p["image_url"] and p["image_url"] not in images:
+                images.append(p["image_url"])
+            try:
+                for gu in json.loads(p["gallery_images"] or "[]"):
+                    u = gu.get("url") if isinstance(gu, dict) else gu
+                    if u and u not in images:
+                        images.append(u)
+            except Exception:
+                pass
+        conn.close()
+    except Exception:
+        pass
+    return images
+
+def get_fita_sample_images(workspace_id: int = 1) -> list:
+    """Returns all 8 Fita sample images."""
+    images = []
+    img_dir = settings.STATIC_DIR / "uploads" / "fita"
+    if img_dir.exists():
+        for f in sorted(img_dir.glob("*.*")):
+            if f.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
+                url = f"/static/uploads/fita/{f.name}"
+                if url not in images:
+                    images.append(url)
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT image_url, gallery_images FROM products WHERE workspace_id = ? AND is_active = 1 AND (category LIKE '%ফিতা%' OR category LIKE '%ল্যানিয়ার্ড%' OR code LIKE '%LAN%')", (int(workspace_id or 1),))
+        for p in cursor.fetchall():
+            if p["image_url"] and p["image_url"] not in images:
+                images.append(p["image_url"])
+            try:
+                for gu in json.loads(p["gallery_images"] or "[]"):
+                    u = gu.get("url") if isinstance(gu, dict) else gu
+                    if u and u not in images:
+                        images.append(u)
+            except Exception:
+                pass
+        conn.close()
+    except Exception:
+        pass
+    return images
+
+def get_cover_sample_images(workspace_id: int = 1) -> list:
+    """Returns all 8 Cover sample images."""
+    images = []
+    img_dir = settings.STATIC_DIR / "uploads" / "cover"
+    if img_dir.exists():
+        for f in sorted(img_dir.glob("*.*")):
+            if f.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
+                url = f"/static/uploads/cover/{f.name}"
+                if url not in images:
+                    images.append(url)
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT image_url, gallery_images FROM products WHERE workspace_id = ? AND is_active = 1 AND (category LIKE '%কভার%' OR category LIKE '%হোল্ডার%' OR code LIKE '%COV%')", (int(workspace_id or 1),))
+        for p in cursor.fetchall():
+            if p["image_url"] and p["image_url"] not in images:
+                images.append(p["image_url"])
+            try:
+                for gu in json.loads(p["gallery_images"] or "[]"):
+                    u = gu.get("url") if isinstance(gu, dict) else gu
+                    if u and u not in images:
+                        images.append(u)
+            except Exception:
+                pass
+        conn.close()
+    except Exception:
+        pass
+    return images
+
+def get_package_sample_images(workspace_id: int = 1) -> list:
+    """Returns all 7 Package sample images."""
+    images = []
+    img_dir = settings.STATIC_DIR / "uploads" / "package"
+    if img_dir.exists():
+        for f in sorted(img_dir.glob("*.*")):
+            if f.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
+                url = f"/static/uploads/package/{f.name}"
+                if url not in images:
+                    images.append(url)
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT image_url, gallery_images FROM products WHERE workspace_id = ? AND is_active = 1 AND (category LIKE '%প্যাকেজ%' OR category LIKE '%কম্বো%' OR code LIKE '%PKG%' OR code LIKE '%COMBO%')", (int(workspace_id or 1),))
+        for p in cursor.fetchall():
+            if p["image_url"] and p["image_url"] not in images:
+                images.append(p["image_url"])
+            try:
+                for gu in json.loads(p["gallery_images"] or "[]"):
+                    u = gu.get("url") if isinstance(gu, dict) else gu
+                    if u and u not in images:
+                        images.append(u)
+            except Exception:
+                pass
+        conn.close()
+    except Exception:
+        pass
+    return images
+
+REVIEW_FACEBOOK_POST_URL = "https://www.facebook.com/share/p/19Agfhw4gv/"
+VOICE_PACKAGE_SPECIAL_OFFER = "/static/uploads/voice/PTT-20260119-WA0105.mp3"
+
+def build_full_sample_sequence(quantity: int = None, customer_name: str = "Customer", workspace_id: int = 1) -> list:
+    """
+    Returns the exact sample sequence as required:
+    1. All 15 ID Card photos
+    2. Text: "এগুলো আমাদের কার্ড, আমাদের তৈরি করা কার্ড।"
+    3. All 8 Fita photos
+    4. Text: "এগুলো আমাদের প্রিন্ট করা ফিতা।"
+    5. All 8 Cover photos
+    6. Review Link (for building trust):
+       "আমাদের কাজের কোয়ালিটি ও কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন: https://www.facebook.com/share/p/19Agfhw4gv/"
+    7. All 7 Package photos
+    8. Post-package Voice Note or Price explanation based on quantity:
+       - Quantity >= 80 (80, 90, 100+ pcs): Voice note PTT-20260119-WA0105.mp3
+       - Quantity 30-49 pcs (30 to 49 pcs): +10 TK per piece explanation
+       - Quantity 50-79 pcs: Fixed package rate explanation
+    """
+    honorific = detect_customer_gender_title(customer_name)
+    seq = []
+    
+    # 1. Cards
+    id_imgs = get_id_card_sample_images(workspace_id=workspace_id)
+    if id_imgs:
+        seq.append({"type": "images", "category": "id_card", "urls": id_imgs})
+        seq.append({"type": "text", "text": "এগুলো আমাদের কার্ড, আমাদের তৈরি করা কার্ড।"})
+    
+    # 2. Fita
+    fita_imgs = get_fita_sample_images(workspace_id=workspace_id)
+    if fita_imgs:
+        seq.append({"type": "images", "category": "fita", "urls": fita_imgs})
+        seq.append({"type": "text", "text": "এগুলো আমাদের প্রিন্ট করা ফিতা।"})
+        
+    # 3. Covers
+    cover_imgs = get_cover_sample_images(workspace_id=workspace_id)
+    if cover_imgs:
+        seq.append({"type": "images", "category": "cover", "urls": cover_imgs})
+
+    # 4. Review Link for customer trust
+    seq.append({
+        "type": "text",
+        "text": f"আমাদের কাজের কোয়ালিটি ও সম্মানিত কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন:\n{REVIEW_FACEBOOK_POST_URL}"
+    })
+
+    # 5. Packages (7 photos)
+    pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
+    if pkg_imgs:
+        seq.append({"type": "images", "category": "package", "urls": pkg_imgs})
+
+    # 6. Post-package Voice Note / Tier explanation
+    if quantity is not None:
+        if quantity >= 80:
+            seq.append({
+                "type": "voice",
+                "url": VOICE_PACKAGE_SPECIAL_OFFER,
+                "text": f"প্যাকেজের বিস্তারিত ও স্পেশাল অফার সংক্রান্ত ভয়েস বার্তাটি শুনুন {honorific}।"
+            })
+        elif 30 <= quantity < 50:
+            seq.append({
+                "type": "text",
+                "text": f"আমাদের প্রতি প্যাকেজে প্যাকেজের সাথে আরো ১০ টাকা করে বৃদ্ধি হবে। যেহেতু আমাদের এই প্যাকেজগুলোর যে রেট দেওয়া আছে এটা ১০০ প্লাস অর্ডারের ক্ষেত্রে প্রযোজ্য। আপনাদের যেহেতু ১০০ এর অনেক কম যার কারণে আপনাদের প্রতি প্যাকেজে ১০ টাকা করে বেশি দিলে আমরা আপনাদের কাজটা করতে পারবো।"
+            })
+        elif 50 <= quantity < 80:
+            seq.append({
+                "type": "text",
+                "text": f"প্যাকেজের ছবিতে উল্লেখিত রেগুলার মূল্যে আমরা আপনার কাজটি নিখুঁতভাবে তৈরি করে দেব। আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+            })
+    else:
+        seq.append({
+            "type": "text",
+            "text": f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+        })
+        
+    return seq
+
+def evaluate_id_card_workflow(
+    message_text: str = "",
+    conversation_history: list = None,
+    customer_name: str = "Customer",
+    workspace_id: int = 1
+) -> Optional[dict]:
+    """
+    Strictly evaluates ID Card Inquiry, MOQ restriction (30 pcs), Review Link, Packages, and Phased Sample Delivery.
+    """
+    if int(workspace_id or 1) != 1:
+        return None
+
+    msg = (message_text or "").strip().lower()
+    if not msg:
+        return None
+
+    honorific = detect_customer_gender_title(customer_name)
+    
+    # 0. Check cancellation / stop
+    stop_phrases = ["লাগবে না", "আর লাগবে না", "দরকার নেই", "দরকার নাই", "stop", "cancel", "চাই না", "নিব না", "নেব না"]
+    msg_words = msg.split()
+    is_stop = any(sp in msg for sp in stop_phrases) or (len(msg_words) == 1 and msg_words[0] in ["না", "no"])
+    if is_stop:
+        return None
+
+    # Check history context for bot questions and prior quantity
+    last_bot_msg = ""
+    history_qty = None
+    if conversation_history:
+        for m in reversed(conversation_history):
+            sender_val = str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower()
+            if sender_val in ("bot", "assistant", "seller") and not last_bot_msg:
+                last_bot_msg = (m.get("content") or m.get("text") or "").lower()
+            elif sender_val in ("user", "customer") and history_qty is None:
+                history_qty = extract_order_quantity_number((m.get("content") or m.get("text") or "").lower())
+
+    bot_asked_quantity = any(k in last_bot_msg for k in [
+        "কত পিস বানাবেন", "কত পিস", "কতগুলো বানাবেন", "কত পিস প্রয়োজন", "কত পিস লাগবে", "পরিমাণ কত"
+    ])
+
+    qty = extract_order_quantity_number(msg)
+    if qty is None and history_qty is not None:
+        effective_qty = history_qty
+    else:
+        effective_qty = qty
+    
+    # Check if message is ID card related
+    is_id_card_inquiry = any(k in msg for k in [
+        "আইডি কার্ড", "আইডি কাড", "id card", "আইডিকার্ড", "আইডি", "কার্ড বানাতে", "কার্ড করতে", 
+        "কার্ড বানাবো", "কার্ড লাগবে", "কার্ডের দাম", "কার্ডের খরচ", "কার্ডের স্যাম্পল"
+    ])
+
+    # Case A: Answering quantity OR message explicitly contains a quantity
+    is_answering_quantity = bot_asked_quantity or any(k in msg for k in ["পিস", "টা", "টি", "বানাবো", "হবে", "লাগবে", "অর্ডার", "pcs", "pieces", "কপি"]) or (qty is not None and len(msg.split()) <= 4)
+    
+    if qty is not None and is_answering_quantity:
+        if qty < 30:
+            return {
+                "reply_text": f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।",
+                "media_sequence": [],
+                "matched_images": [],
+                "voice_url": "",
+                "video_url": "",
+                "order_created": None,
+                "response_source": "id_card_moq_under_30"
+            }
+        else:
+            # qty >= 30: Send full sample sequence + review link + packages + quantity voice/pricing note
+            seq = build_full_sample_sequence(quantity=qty, customer_name=customer_name, workspace_id=workspace_id)
+            all_imgs = get_id_card_sample_images(workspace_id) + get_fita_sample_images(workspace_id) + get_cover_sample_images(workspace_id) + get_package_sample_images(workspace_id)
+            voice_to_send = VOICE_PACKAGE_SPECIAL_OFFER if qty >= 80 else ""
+            return {
+                "reply_text": f"জি {honorific}, অবশ্যই দিচ্ছি। নিচে আমাদের স্যাম্পল ও প্যাকেজগুলো পাঠানো হলো:",
+                "media_sequence": seq,
+                "matched_images": all_imgs,
+                "voice_url": voice_to_send,
+                "video_url": "",
+                "order_created": None,
+                "response_source": "id_card_sample_dispatch"
+            }
+
+    # Case B: Initial ID card inquiry without quantity stated
+    if is_id_card_inquiry and qty is None:
+        return {
+            "reply_text": f"জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন?",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "id_card_ask_quantity"
+        }
+
+    # Case C: Asking specifically for packages or samples
+    is_package_request = any(k in msg for k in [
+        "প্যাকেজ", "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
+        "কম্বো", "কম্বো প্যাকেজ", "package", "combo", "পেকেজ"
+    ])
+    if is_package_request:
+        pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
+        seq = [
+            {
+                "type": "text",
+                "text": f"আমাদের কাজের কোয়ালিটি ও সম্মানিত কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন:\n{REVIEW_FACEBOOK_POST_URL}"
+            },
+            {"type": "images", "category": "package", "urls": pkg_imgs}
+        ]
+        voice_to_send = ""
+        if effective_qty is not None and effective_qty >= 80:
+            seq.append({
+                "type": "voice",
+                "url": VOICE_PACKAGE_SPECIAL_OFFER,
+                "text": f"প্যাকেজের বিস্তারিত ও স্পেশাল অফার সংক্রান্ত ভয়েস বার্তাটি শুনুন {honorific}।"
+            })
+            voice_to_send = VOICE_PACKAGE_SPECIAL_OFFER
+        elif effective_qty is not None and 30 <= effective_qty < 50:
+            seq.append({
+                "type": "text",
+                "text": f"আমাদের প্রতি প্যাকেজে প্যাকেজের সাথে আরো ১০ টাকা করে বৃদ্ধি হবে। যেহেতু আমাদের এই প্যাকেজগুলোর যে রেট দেওয়া আছে এটা ১০০ প্লাস অর্ডারের ক্ষেত্রে প্রযোজ্য। আপনাদের যেহেতু ১০০ এর অনেক কম যার কারণে আপনাদের প্রতি প্যাকেজে ১০ টাকা করে বেশি দিলে আমরা আপনাদের কাজটা করতে পারবো।"
+            })
+        elif effective_qty is not None and 50 <= effective_qty < 80:
+            seq.append({
+                "type": "text",
+                "text": f"প্যাকেজের ছবিতে উল্লেখিত রেগুলার মূল্যে আমরা আপনার কাজটি নিখুঁতভাবে তৈরি করে দেব। আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+            })
+        else:
+            seq.append({
+                "type": "text",
+                "text": f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+            })
+
+        return {
+            "reply_text": f"জি {honorific}, অবশ্যই দিচ্ছি। নিচে আমাদের প্যাকেজগুলোর ছবি দেওয়া হলো:",
+            "media_sequence": seq,
+            "matched_images": pkg_imgs,
+            "voice_url": voice_to_send,
+            "video_url": "",
+            "order_created": None,
+            "response_source": "package_sample_dispatch"
+        }
+
+    is_sample_request = any(k in msg for k in [
+        "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দেন", "স্যাম্পল দিন", "স্যাম্পল দেখতে চাই",
+        "ছবি দেখান", "ছবি পাঠান", "ছবি দেন", "ছবি দিন", "ছবি দেখতে চাই",
+        "পিক দেখান", "পিক পাঠান", "পিক দেন", "ফটো দেখান", "ফটো পাঠান"
+    ])
+    if is_sample_request:
+        if any(k in msg for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "fita", "lanyard"]):
+            fita_imgs = get_fita_sample_images(workspace_id=workspace_id)
+            return {
+                "reply_text": f"জি {honorific}, নিচে আমাদের ফিতার স্যাম্পল ছবিগুলো দেওয়া হলো:",
+                "media_sequence": [
+                    {"type": "images", "category": "fita", "urls": fita_imgs},
+                    {"type": "text", "text": "এগুলো আমাদের প্রিন্ট করা ফিতা।"}
+                ],
+                "matched_images": fita_imgs,
+                "voice_url": "",
+                "video_url": "",
+                "order_created": None,
+                "response_source": "fita_sample_dispatch"
+            }
+        elif any(k in msg for k in ["কভার", "হোল্ডার", "cover", "holder"]):
+            cover_imgs = get_cover_sample_images(workspace_id=workspace_id)
+            return {
+                "reply_text": f"জি {honorific}, নিচে আমাদের কভারের স্যাম্পল ছবিগুলো দেওয়া হলো:",
+                "media_sequence": [
+                    {"type": "images", "category": "cover", "urls": cover_imgs}
+                ],
+                "matched_images": cover_imgs,
+                "voice_url": "",
+                "video_url": "",
+                "order_created": None,
+                "response_source": "cover_sample_dispatch"
+            }
+        elif any(k in msg for k in ["কার্ড", "আইডি", "card", "id"]):
+            card_imgs = get_id_card_sample_images(workspace_id=workspace_id)
+            return {
+                "reply_text": f"জি {honorific}, নিচে আমাদের কার্ডের স্যাম্পল ছবিগুলো দেওয়া হলো:",
+                "media_sequence": [
+                    {"type": "images", "category": "id_card", "urls": card_imgs},
+                    {"type": "text", "text": "এগুলো আমাদের কার্ড, আমাদের তৈরি করা কার্ড।"}
+                ],
+                "matched_images": card_imgs,
+                "voice_url": "",
+                "video_url": "",
+                "order_created": None,
+                "response_source": "id_card_sample_dispatch"
+            }
+        else:
+            # General sample request -> Full sequence!
+            seq = build_full_sample_sequence(quantity=effective_qty, customer_name=customer_name, workspace_id=workspace_id)
+            all_imgs = get_id_card_sample_images(workspace_id) + get_fita_sample_images(workspace_id) + get_cover_sample_images(workspace_id) + get_package_sample_images(workspace_id)
+            voice_to_send = VOICE_PACKAGE_SPECIAL_OFFER if (effective_qty is not None and effective_qty >= 80) else ""
+            return {
+                "reply_text": f"জি {honorific}, অবশ্যই দিচ্ছি। নিচে আমাদের স্যাম্পলগুলো পাঠানো হলো:",
+                "media_sequence": seq,
+                "matched_images": all_imgs,
+                "voice_url": voice_to_send,
+                "video_url": "",
+                "order_created": None,
+                "response_source": "id_card_full_sample_dispatch"
+            }
+
+    return None
+
 def get_category_batch_images(category_or_code: str, requested_count: int = None, workspace_id: int = 1) -> list:
     """
     Returns sample gallery images for a specific product category within a workspace.
     If requested_count is specified (e.g. 2 or 3), returns that exact number.
     If requested_count is None, returns ALL available images for the category!
     """
+    cat_lower = (category_or_code or "").strip().lower()
+    
+    if int(workspace_id or 1) == 1:
+        if cat_lower in ["fita", "lanyard", "ribbon", "fita-02", "lan-15", "lan-20", "ফিতা", "রিবন", "ল্যানিয়ার্ড"]:
+            imgs = get_fita_sample_images(workspace_id=workspace_id)
+            return imgs[:requested_count] if requested_count and requested_count > 0 else imgs
+        elif cat_lower in ["cov", "cover", "holder", "cov-01", "cov-03", "কভার", "হোল্ডার"]:
+            imgs = get_cover_sample_images(workspace_id=workspace_id)
+            return imgs[:requested_count] if requested_count and requested_count > 0 else imgs
+        elif cat_lower in ["idc", "card", "id card", "idc-01", "আইডি", "কার্ড", "পিভিসি"]:
+            imgs = get_id_card_sample_images(workspace_id=workspace_id)
+            return imgs[:requested_count] if requested_count and requested_count > 0 else imgs
+        elif cat_lower in ["pkg", "package", "combo", "pkg-combo", "প্যাকেজ", "পেকেজ", "কম্বো"]:
+            imgs = get_package_sample_images(workspace_id=workspace_id)
+            return imgs[:requested_count] if requested_count and requested_count > 0 else imgs
+
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT code, name, category, image_url, gallery_images FROM products WHERE workspace_id = ? AND is_active = 1", (int(workspace_id or 1),))
@@ -297,7 +770,6 @@ def get_category_batch_images(category_or_code: str, requested_count: int = None
     conn.close()
 
     images = []
-    cat_lower = (category_or_code or "").strip().lower()
 
     for p in products:
         p_code = (p["code"] or "").lower()
@@ -319,10 +791,8 @@ def get_category_batch_images(category_or_code: str, requested_count: int = None
             match = cat_lower in p_code or cat_lower in p_name or cat_lower in p_cat
 
         if match:
-            # First append main image_url
             if p["image_url"] and p["image_url"] not in images:
                 images.append(p["image_url"])
-            # Then append gallery images
             try:
                 g_imgs = json.loads(p["gallery_images"] or "[]")
                 for gu in g_imgs:
@@ -486,6 +956,8 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
 
     if req_count and req_count > 0:
         return selected_images[:req_count]
+    if is_agreeing_to_photo and not is_explicit_photo_req:
+        return selected_images[:3]
     return selected_images
 
 def detect_saved_media_to_send(user_msg: str, bot_reply: str = "", workspace_id: int = 1) -> dict:
@@ -561,8 +1033,23 @@ def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", worksp
 
     # Workspace 1 (RS Graphics) specific fallbacks
     if int(workspace_id or 1) == 1:
+        qty = extract_order_quantity_number(msg)
+        if any(k in msg for k in ["আইডি কার্ড", "আইডি কাড", "id card", "আইডিকার্ড", "কার্ড বানাতে", "কার্ড করতে", "কার্ড বানাবো"]):
+            if qty is None:
+                return f"জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন?"
+            elif qty < 30:
+                return f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
+            else:
+                return f"জি {honorific}, অবশ্যই দিচ্ছি। নিচে আমাদের স্যাম্পলগুলো পাঠানো হলো:"
+
+        if qty is not None and any(k in msg for k in ["পিস", "টা", "টি", "বানাবো", "pcs"]):
+            if qty < 30:
+                return f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
+            else:
+                return f"জি {honorific}, অবশ্যই দিচ্ছি। নিচে আমাদের স্যাম্পলগুলো পাঠানো হলো:"
+
         if any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo"]):
-            return f"জি {honorific}, অবশ্যই দিচ্ছি।"
+            return f"জি {honorific}, আপনি কত পিস আইডি কার্ড বানাবেন জানাবেন প্লিজ?"
 
         if any(k in msg for k in ["ফিতা", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]) and any(k in msg for k in ["ছবি", "স্যাম্পল", "photo", "picture"]):
             return f"জি {honorific}, নিচে আমাদের ডিজিটাল সাবলিমেশন ফিতার কিছু স্যাম্পল ছবি দেওয়া হলো। আপনার কত পিস ফিতা প্রয়োজন জানাবেন প্লিজ?"
@@ -571,9 +1058,9 @@ def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", worksp
             return f"জি {honorific}, নিচে আমাদের জাপানি UV প্রিন্ট আইডি কার্ডের স্যাম্পল ছবিগুলো দেওয়া হলো। আপনার কত পিস আইডি কার্ড প্রয়োজন জানাবেন প্লিজ?"
 
         if any(k in msg for k in ["দাম", "রেট", "মূল্য", "price", "cost"]):
-            return f"জি {honorific}, আমাদের মিনিমাম অর্ডার ৩০ পিস। আপনার কত পিস প্রয়োজন এবং কোন কম্বো প্যাকেজটি নিতে চান জানাবেন প্লিজ?"
+            return f"জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন জানাবেন প্লিজ? আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস।"
 
-        return f"জি {honorific}, আসসালামু আলাইকুম! RS Graphics-এ আপনাকে স্বাগতম। আপনি আমাদের কোন কম্বো প্যাকেজ বা প্রিন্টিং সেবা নিতে চান জানাবেন প্লিজ? (মিনিমাম অর্ডার ৩০ পিস)।"
+        return f"জি {honorific}, আসসালামু আলাইকুম! আপনি আইডি কার্ড কত পিস বানাবেন জানাবেন প্লিজ?"
 
     # Workspace 2+ Clean Generic Fallbacks (Never mentioning RS Graphics or ID cards)
     if any(k in msg for k in ["দাম", "রেট", "মূল্য", "price", "cost"]):
@@ -638,6 +1125,19 @@ async def process_customer_message(
             }
     except Exception as e:
         print(f"[Google Form Workflow Early Resolution Error]: {e}")
+
+    # 2. Priority ID Card Inquiry, MOQ Check, and Phased Sample Delivery Workflow
+    try:
+        id_flow_res = evaluate_id_card_workflow(
+            message_text=message_text,
+            conversation_history=conversation_history,
+            customer_name=customer_name,
+            workspace_id=ws_id
+        )
+        if id_flow_res:
+            return id_flow_res
+    except Exception as e:
+        print(f"[ID Card Workflow Early Resolution Warning]: {e}")
 
     # Check if API key is provided
     if not api_key:

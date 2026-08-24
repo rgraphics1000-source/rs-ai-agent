@@ -181,7 +181,7 @@ function initNavigation() {
             const url = new URL(window.location.href);
             url.searchParams.set("tab", target);
             window.history.replaceState({}, "", url.toString());
-        } catch (e) {}
+        } catch (e) { }
 
         navItems.forEach(n => {
             if (n.getAttribute("data-tab") === target) n.classList.add("active");
@@ -375,7 +375,7 @@ function filterOrdersByStatus(status, btnElement) {
     currentOrderStatusFilter = status;
     document.querySelectorAll(".order-filter-btn").forEach(b => b.classList.remove("active", "btn-primary"));
     document.querySelectorAll(".order-filter-btn").forEach(b => b.classList.add("btn-secondary"));
-    
+
     if (btnElement) {
         btnElement.classList.remove("btn-secondary");
         btnElement.classList.add("active", "btn-primary");
@@ -675,30 +675,10 @@ async function loadProducts() {
         const data = await res.json();
         let products = data.products || [];
 
-        if (currentWorkspaceId === 1) {
-            if (products.length > 0) {
-                localStorage.setItem("rs_cached_products", JSON.stringify(products));
-            } else {
-                // Check if we have backup in localStorage to auto-restore for Workspace 1
-                const savedLocal = localStorage.getItem("rs_cached_products");
-                if (savedLocal) {
-                    try {
-                        const parsed = JSON.parse(savedLocal);
-                        if (Array.isArray(parsed) && parsed.length > 0) {
-                            await fetch("/api/products/batch-restore", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ products: parsed })
-                            });
-                            const refreshRes = await fetch(`/api/products?workspace_id=${currentWorkspaceId}`);
-                            const refreshData = await refreshRes.json();
-                            products = refreshData.products || parsed;
-                        }
-                    } catch (e) {
-                        console.error("Auto-restore products error:", e);
-                    }
-                }
-            }
+        if (products.length > 0) {
+            localStorage.setItem("rs_cached_products", JSON.stringify(products));
+        } else {
+            localStorage.removeItem("rs_cached_products");
         }
 
         cachedProductsList = products;
@@ -714,12 +694,12 @@ async function loadProducts() {
             const gallery = (p.gallery_images && p.gallery_images.length > 0) ? p.gallery_images : (p.image_url ? [p.image_url] : ["/static/uploads/sample_panjabi.jpg"]);
             const rawCover = gallery[0];
             const coverImg = (typeof rawCover === 'object' && rawCover !== null) ? (rawCover.url || rawCover.link || '/static/uploads/sample_panjabi.jpg') : (rawCover || '/static/uploads/sample_panjabi.jpg');
-            const priceHtml = p.discount_price 
-                ? `<span>৳${p.discount_price}</span> <span class="product-old-price">৳${p.price}</span>` 
+            const priceHtml = p.discount_price
+                ? `<span>৳${p.discount_price}</span> <span class="product-old-price">৳${p.price}</span>`
                 : `<span>৳${p.price}</span>`;
 
-            const photoBadge = gallery.length > 1 
-                ? `<span style="position:absolute; top: 10px; right: 10px; background: rgba(10,13,20,0.85); color: #fff; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid rgba(255,255,255,0.2);" onclick="openProductGallery(${p.id})"><i class="fas fa-images"></i> ${gallery.length} Photos</span>` 
+            const photoBadge = gallery.length > 1
+                ? `<span style="position:absolute; top: 10px; right: 10px; background: rgba(10,13,20,0.85); color: #fff; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid rgba(255,255,255,0.2);" onclick="openProductGallery(${p.id})"><i class="fas fa-images"></i> ${gallery.length} Photos</span>`
                 : '';
 
             card.innerHTML = `
@@ -739,9 +719,9 @@ async function loadProducts() {
                     ${gallery.length > 1 ? `
                     <div style="display:flex; gap: 4px; margin: 8px 0; overflow-x: auto;">
                         ${gallery.slice(0, 4).map(u => {
-                            const uSrc = (typeof u === 'object' && u !== null) ? (u.url || u.link || '') : u;
-                            return `<img src="${uSrc}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-glass);" onclick="openProductGallery(${p.id})">`;
-                        }).join('')}
+                const uSrc = (typeof u === 'object' && u !== null) ? (u.url || u.link || '') : u;
+                return `<img src="${uSrc}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-glass);" onclick="openProductGallery(${p.id})">`;
+            }).join('')}
                         ${gallery.length > 4 ? `<span style="font-size: 10px; align-self: center; color: var(--text-muted);">+${gallery.length - 4}</span>` : ''}
                     </div>` : ''}
 
@@ -872,7 +852,7 @@ function openProductGallery(productId) {
     if (!p) return;
 
     const rawGallery = (p.gallery_images && p.gallery_images.length > 0) ? p.gallery_images : (p.image_url ? [p.image_url] : ["/static/uploads/id_card/IMG-20241009-WA0005.jpg"]);
-    
+
     // Normalize gallery items into objects
     const gallery = rawGallery.map((item, idx) => {
         if (typeof item === 'object' && item !== null) {
@@ -1117,7 +1097,7 @@ async function loadTrainingRules() {
             const card = document.createElement("div");
             card.className = "glass-card";
             card.style.cssText = "padding: 14px 18px; margin: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border: 1px solid rgba(255,255,255,0.08);";
-            
+
             const isActive = r.is_active === 1;
             const categoryBadge = `<span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; font-size: 11px;">${r.category || 'General'}</span>`;
             const typeBadge = `<span class="badge" style="background: rgba(236, 72, 153, 0.15); color: #f472b6; font-size: 10px; text-transform: uppercase;">${r.rule_type || 'Rule'}</span>`;
@@ -1323,7 +1303,7 @@ async function openQuickMediaModal(type) {
     activeQuickMediaType = type;
     const titleElem = document.getElementById("quick-media-modal-title");
     if (titleElem) {
-        titleElem.innerHTML = type === 'voice' 
+        titleElem.innerHTML = type === 'voice'
             ? '<i class="fas fa-microphone-lines" style="color:#ec4899;"></i> Send Saved Voice Note'
             : '<i class="fas fa-video" style="color:#3b82f6;"></i> Send Saved Product Demo Video';
     }
@@ -1355,7 +1335,7 @@ async function openQuickMediaModal(type) {
             const row = document.createElement("div");
             row.style.cssText = "padding: 10px 14px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; gap: 12px;";
 
-            const preview = type === 'voice' 
+            const preview = type === 'voice'
                 ? `<audio controls style="height: 32px; width: 180px;"><source src="${m.file_url}"></audio>`
                 : `<video style="height: 40px; width: 60px; object-fit: cover; border-radius: 4px;" src="${m.file_url}"></video>`;
 
@@ -1452,12 +1432,12 @@ async function loadOmnichatConversations() {
                 ? `<span class="badge" style="background: rgba(37, 211, 102, 0.2); color: #25d366; font-size: 10px; font-weight: 600;"><i class="fab fa-whatsapp"></i> WhatsApp</span>`
                 : `<span class="badge" style="background: rgba(24, 119, 242, 0.2); color: #60a5fa; font-size: 10px; font-weight: 600;"><i class="fab fa-facebook-messenger"></i> Messenger</span>`;
 
-            const pageBadge = c.page_name 
+            const pageBadge = c.page_name
                 ? `<span class="badge" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; font-size: 9.5px; padding: 2px 6px; margin-left: 4px;">${c.page_name}</span>`
                 : '';
 
-            const aiStatusIcon = c.human_takeover === 1 
-                ? `<span title="AI Paused for this customer" style="color: #f59e0b; font-size: 10px; margin-left: 6px;"><i class="fas fa-pause-circle"></i> Owner Mode</span>` 
+            const aiStatusIcon = c.human_takeover === 1
+                ? `<span title="AI Paused for this customer" style="color: #f59e0b; font-size: 10px; margin-left: 6px;"><i class="fas fa-pause-circle"></i> Owner Mode</span>`
                 : `<span title="AI Auto-Reply Active" style="color: #10b981; font-size: 10px; margin-left: 6px;"><i class="fas fa-robot"></i> AI Active</span>`;
 
             item.innerHTML = `
@@ -1556,7 +1536,7 @@ async function loadOmnichatMessages(cid) {
         data.messages.forEach(m => {
             const div = document.createElement("div");
             div.className = `message-bubble ${m.sender_type === 'user' ? 'message-user' : 'message-bot'}`;
-            
+
             let html = "";
             if (m.content) {
                 let formatted = m.content;
@@ -1654,8 +1634,8 @@ async function loadSettings() {
 
         // Display WhatsApp connection details
         const isWaConnected = (
-            s.whatsapp_connection_status === "connected" 
-            && s.whatsapp_phone_number_id 
+            s.whatsapp_connection_status === "connected"
+            && s.whatsapp_phone_number_id
             && s.whatsapp_phone_number_id !== "1265595526643418"
         );
 
@@ -1747,7 +1727,7 @@ window.addEventListener('message', (event) => {
             if (phoneId) console.log('[WA DEBUG] Phone Number ID received:', phoneId);
             if (wabaId) console.log('[WA DEBUG] WABA ID received:', wabaId);
         }
-    } catch (e) {}
+    } catch (e) { }
 });
 
 async function initMetaSDK(targetAppId) {
@@ -1763,11 +1743,11 @@ async function initMetaSDK(targetAppId) {
             });
             metaSDKInitialized = true;
             return;
-        } catch (e) {}
+        } catch (e) { }
     }
 
     return new Promise((resolve) => {
-        window.fbAsyncInit = function() {
+        window.fbAsyncInit = function () {
             FB.init({
                 appId: appId,
                 cookie: true,
@@ -2107,7 +2087,22 @@ function initSmartphoneSimulator() {
             const data = await res.json();
             if (typingEl) typingEl.remove();
 
-            appendPhoneMessage("bot", data.reply_text, null, data.matched_images);
+            if (data.media_sequence && Array.isArray(data.media_sequence) && data.media_sequence.length > 0) {
+                if (data.reply_text) {
+                    appendPhoneMessage("bot", data.reply_text);
+                }
+                for (const seqItem of data.media_sequence) {
+                    if (seqItem.type === "images" && seqItem.urls && seqItem.urls.length > 0) {
+                        appendPhoneMessage("bot", "", null, seqItem.urls);
+                    } else if (seqItem.type === "text" && seqItem.text) {
+                        appendPhoneMessage("bot", seqItem.text);
+                    } else if (seqItem.type === "voice" || seqItem.type === "audio") {
+                        appendPhoneMessage("bot", seqItem.text || "ভয়েস বার্তা:", null, [], seqItem.url);
+                    }
+                }
+            } else {
+                appendPhoneMessage("bot", data.reply_text, null, data.matched_images, data.voice_url);
+            }
 
             if (data.order_created) {
                 renderPhoneDetectedOrder(data.order_created);
@@ -2139,7 +2134,7 @@ function sendPhoneQuickQuery(text) {
     }
 }
 
-function appendPhoneMessage(sender, text, imgUrl = null, matchedImages = []) {
+function appendPhoneMessage(sender, text, imgUrl = null, matchedImages = [], audioUrl = null) {
     const container = document.getElementById("phone-messages");
     if (!container) return;
 
@@ -2163,6 +2158,9 @@ function appendPhoneMessage(sender, text, imgUrl = null, matchedImages = []) {
             html += `<img src="${img}" style="width: 70px; height: 70px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border-color);">`;
         });
         html += `</div>`;
+    }
+    if (audioUrl) {
+        html += `<div style="margin-top:6px;"><audio controls style="width: 100%; max-width: 220px; height: 34px;"><source src="${audioUrl}" type="audio/mpeg"></audio></div>`;
     }
 
     div.innerHTML = html;
@@ -2231,7 +2229,7 @@ function showToast(message, type = "info") {
     const container = document.getElementById("toast-container") || createToastContainer();
     const toast = document.createElement("div");
     toast.className = `toast`;
-    
+
     let icon = "fa-info-circle";
     if (type === "success") icon = "fa-check-circle";
     if (type === "danger") icon = "fa-exclamation-circle";
@@ -2301,7 +2299,7 @@ async function handleAutoSynthesizeTraining() {
         if (data.success && data.count > 0) {
             textarea.value = "";
             showToast(`🎉 চমৎকার! ${data.count}টি সুনির্দিষ্ট সেলস রুল এআই ব্রেইনে যুক্ত হয়েছে!`, "success");
-            
+
             if (alertBox) {
                 alertBox.style.display = "block";
                 alertBox.style.background = "rgba(16, 185, 129, 0.15)";
@@ -2400,10 +2398,10 @@ async function loadAllSettings() {
         // Also sync AI Train Tab Inputs
         setVal("arena-shop-name", "shop_name", shopName);
         setVal("arena-system-prompt", "ai_system_prompt", "");
-        
+
         const phoneHeader = document.getElementById("phone-header-shop-name");
         if (phoneHeader) phoneHeader.innerText = shopName;
-        
+
         await loadMutedContacts();
     } catch (e) {
         console.error("loadAllSettings error:", e);
@@ -2456,8 +2454,8 @@ async function loadMutedContacts() {
                 const isFb = String(c.phone).startsWith("fb_") || !/^\d{8,15}$/.test(String(c.phone).replace(/\+/g, ""));
                 const channelIcon = isFb ? "fab fa-facebook-messenger" : "fab fa-whatsapp";
                 const channelColor = isFb ? "#60a5fa" : "#34d399";
-                const channelBadge = isFb 
-                    ? '<span class="badge" style="background: rgba(0,132,255,0.18); color: #60a5fa; font-size: 10px;"><i class="fab fa-facebook-messenger"></i> Messenger</span>' 
+                const channelBadge = isFb
+                    ? '<span class="badge" style="background: rgba(0,132,255,0.18); color: #60a5fa; font-size: 10px;"><i class="fab fa-facebook-messenger"></i> Messenger</span>'
                     : '<span class="badge" style="background: rgba(37,211,102,0.18); color: #34d399; font-size: 10px;"><i class="fab fa-whatsapp"></i> WhatsApp</span>';
 
                 return `
@@ -2608,7 +2606,7 @@ async function pickPhoneOrWhatsAppContact() {
 }
 
 // Callback invoked by Android Native App
-window.onNativeContactPicked = async function(name, phone) {
+window.onNativeContactPicked = async function (name, phone) {
     if (!phone) return;
     const clean = phone.replace(/\s+/g, "").replace(/-/g, "");
     try {
@@ -2722,8 +2720,8 @@ function renderMuteChatSelectorList(convs) {
         const isFb = c.channel === "facebook";
         const channelIcon = isFb ? "fab fa-facebook-messenger" : "fab fa-whatsapp";
         const channelColor = isFb ? "#0084ff" : "#25d366";
-        const channelBadge = isFb 
-            ? '<span class="badge" style="background: rgba(0,132,255,0.18); color: #60a5fa; font-size: 10px;"><i class="fab fa-facebook-messenger"></i> Messenger</span>' 
+        const channelBadge = isFb
+            ? '<span class="badge" style="background: rgba(0,132,255,0.18); color: #60a5fa; font-size: 10px;"><i class="fab fa-facebook-messenger"></i> Messenger</span>'
             : '<span class="badge" style="background: rgba(37,211,102,0.18); color: #34d399; font-size: 10px;"><i class="fab fa-whatsapp"></i> WhatsApp</span>';
 
         return `
@@ -2788,7 +2786,7 @@ function filterMuteChatSelectorList() {
     }
 
     if (search) {
-        filtered = filtered.filter(c => 
+        filtered = filtered.filter(c =>
             (c.customer_name && c.customer_name.toLowerCase().includes(search)) ||
             (c.sender_id && c.sender_id.toLowerCase().includes(search))
         );
@@ -3331,7 +3329,7 @@ async function loadGoogleAccountStatus() {
     try {
         const res = await fetch(`/api/google/status?workspace_id=${currentWorkspaceId}`);
         const data = await res.json();
-        
+
         const connBadge = document.getElementById("gforms-conn-badge");
         const connMsg = document.getElementById("gforms-conn-msg");
         const emailEl = document.getElementById("gforms-conn-email");
@@ -3564,11 +3562,11 @@ async function disconnectGoogleAccount() {
 async function openSelectMasterFormModal() {
     const selectEl = document.getElementById("select-drive-master-form");
     const manualInput = document.getElementById("manual-master-form-id");
-    
+
     if (selectEl) {
         selectEl.innerHTML = `<option value="">-- গুগল ড্রাইভ থেকে ফর্ম খোঁজা হচ্ছে... --</option>`;
     }
-    
+
     openModal("modal-select-master-form");
 
     try {
@@ -3653,7 +3651,7 @@ async function handleCreateMasterTemplateSubmit(e) {
             showToast(`Master Form '${title}' সফলভাবে তৈরি হয়েছে!`, "success");
             closeModal("modal-create-master-form");
             loadGoogleAccountStatus();
-            
+
             if (data.edit_url) {
                 // Open edit URL so user can see and configure file upload question in forms UI
                 window.open(data.edit_url, "_blank");
@@ -3735,10 +3733,10 @@ async function loadFormFieldsList() {
 
         tbody.innerHTML = data.fields.map(f => {
             const isFile = f.field_type === "file_upload";
-            const reqBadge = f.required 
-                ? `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 11px;">Yes</span>` 
+            const reqBadge = f.required
+                ? `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 11px;">Yes</span>`
                 : `<span class="badge" style="background: rgba(255,255,255,0.06); color: var(--text-dim); font-size: 11px;">No</span>`;
-            
+
             return `
                 <tr>
                     <td><strong style="color: #fff;">${f.field_label}</strong> <span style="font-size: 11px; color: var(--text-dim);">(${f.field_key})</span></td>
@@ -3832,7 +3830,7 @@ function renderGeneratedFormsRows(forms) {
         const formUrl = f.responder_uri || f.form_url;
         const sheetUrl = f.response_sheet_url || (f.response_destination_id ? `https://docs.google.com/spreadsheets/d/${f.response_destination_id}/edit` : "");
         const mobile = f.institution_mobile || f.institution_phone || "";
-        
+
         return `
             <tr>
                 <td>
@@ -3909,7 +3907,7 @@ async function loadGeneratedFormsList() {
         const res = await fetch(`/api/google/forms?workspace_id=${currentWorkspaceId}`);
         const data = await res.json();
         allGeneratedFormsCache = data.forms || [];
-        
+
         const searchInput = document.getElementById("gforms-search-mobile");
         if (searchInput && searchInput.value.trim()) {
             filterFormsByMobile(searchInput.value);
@@ -4261,11 +4259,11 @@ async function executeWizardFormGeneration() {
         const data = await res.json();
         if (res.ok && data.success) {
             wizardCreatedForm = data;
-            
+
             // Populate Success Screen
             document.getElementById("wiz-succ-name").innerText = data.institution_name || instName;
             document.getElementById("wiz-succ-phone").innerText = data.institution_mobile || phone;
-            
+
             const formLink = document.getElementById("wiz-succ-form-url");
             const sheetLink = document.getElementById("wiz-succ-sheet-url");
 
@@ -4309,7 +4307,7 @@ function openSendFormWhatsAppModal(formId, instName, formUrl) {
     document.getElementById("wa-send-form-id").value = formId;
     document.getElementById("wa-send-inst-name").value = instName;
     document.getElementById("wa-send-phone").value = "";
-    
+
     const defaultMsg = `আসসালামু আলাইকুম।\n\n*${instName}* এর আইডি কার্ড (ID Card) তথ্য ও ছবি সংগ্রহের জন্য গুগল ফর্ম প্রস্তুত করা হয়েছে।\n\n📝 ফর্ম লিংক:\n${formUrl}\n\nঅনুগ্রহ করে শিক্ষার্থীদের সঠিক তথ্য ও ছবি আপলোড করুন।`;
     document.getElementById("wa-send-message").value = defaultMsg;
 
@@ -4372,7 +4370,7 @@ async function viewFormSubmissions(formId, instName) {
 
     const tbody = document.getElementById("subs-modal-tbody");
     if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 20px;"><i class="fas fa-spinner fa-spin"></i> ডাটা লোড হচ্ছে...</td></tr>`;
-    
+
     openModal("modal-view-submissions");
 
     try {

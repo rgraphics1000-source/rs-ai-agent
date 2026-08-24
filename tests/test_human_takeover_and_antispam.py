@@ -18,9 +18,17 @@ class TestHumanTakeoverAndAntiSpam(unittest.TestCase):
     def setUp(self):
         self.test_sender = "fb_cust_test_takeover_999"
         remove_muted_number(self.test_sender)
+        conn = get_db_connection()
+        conn.execute("INSERT OR IGNORE INTO products (id, name, code, category, price, is_active, workspace_id, image_url) VALUES (99901, 'Test Card', 'IDC-TEST', 'আইডি কার্ড', 50, 1, 1, '/static/uploads/test_card.jpg')")
+        conn.commit()
+        conn.close()
 
     def tearDown(self):
         remove_muted_number(self.test_sender)
+        conn = get_db_connection()
+        conn.execute("DELETE FROM products WHERE id = 99901")
+        conn.commit()
+        conn.close()
 
     def test_01_casual_agreement_does_not_spam_photos(self):
         """Casual 'জি' or 'হুম' in conversation must NEVER blast photos."""
