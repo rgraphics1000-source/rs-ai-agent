@@ -602,24 +602,24 @@ def build_full_sample_sequence(quantity: int = None, customer_name: str = "Custo
     if cover_imgs:
         seq.append({"type": "images", "category": "cover", "urls": cover_imgs})
 
-    # 4. Voice Note (Special Offer)
+    # 4. Review Link for customer trust
+    seq.append({
+        "type": "text",
+        "text": f"আমাদের কাজের কোয়ালিটি ও সম্মানিত কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন:\n{REVIEW_FACEBOOK_POST_URL}"
+    })
+
+    # 5. Packages (7 photos)
+    pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
+    if pkg_imgs:
+        seq.append({"type": "images", "category": "package", "urls": pkg_imgs})
+
+    # 6. Voice Note (Special Offer immediately after the 7 packages)
     if quantity is None or quantity >= 80:
         seq.append({
             "type": "voice",
             "url": VOICE_PACKAGE_SPECIAL_OFFER,
             "text": f"প্যাকেজের বিস্তারিত ও স্পেশাল অফার সংক্রান্ত ভয়েস বার্তাটি শুনুন {honorific}।"
         })
-
-    # 5. Review Link for customer trust
-    seq.append({
-        "type": "text",
-        "text": f"আমাদের কাজের কোয়ালিটি ও সম্মানিত কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন:\n{REVIEW_FACEBOOK_POST_URL}"
-    })
-
-    # 6. Packages (7 photos)
-    pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
-    if pkg_imgs:
-        seq.append({"type": "images", "category": "package", "urls": pkg_imgs})
 
     # 7. Post-package Voice Note / Tier explanation
     if quantity is not None:
