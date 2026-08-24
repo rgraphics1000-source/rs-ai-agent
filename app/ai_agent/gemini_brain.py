@@ -616,8 +616,9 @@ def evaluate_id_card_workflow(
     if any(k in msg for k in ["নাম্বার", "নম্বর", "নাম্বার দিতে", "দিতে বলেছিলেন", "এগুলো কেন", "দিচ্ছেন কেন", "whatsapp", "হোয়াটসঅ্যাপ"]):
         return None
         
-    cleaned_digits = re.sub(r'\D', '', msg)
-    if len(cleaned_digits) >= 10:
+    msg_without_system_tags = re.sub(r'\[কাস্টমার পূর্ববর্তী.*?\]', '', msg)
+    cleaned_digits = re.sub(r'\D', '', msg_without_system_tags)
+    if len(cleaned_digits) >= 10 and (re.search(r'01[3-9]\d{8}', msg_without_system_tags) or re.search(r'8801[3-9]\d{8}', msg_without_system_tags) or len(msg_without_system_tags.strip().split()) <= 2):
         return None
 
     # 0.1 Check cancellation / refusal / not interested
@@ -639,9 +640,10 @@ def evaluate_id_card_workflow(
             "response_source": "customer_not_interested"
         }
 
-    # Check if customer is asking about a specific item's price, quoting a product photo, or following up on a specific product
-    is_specific_item_inquiry = any(k in msg for k in [
-        "রিপ্লাই দিয়েছেন", "এই ফিতা", "এই কভার", "এই কার্ড", "এই প্রোডাক্ট", "এইটার দাম", "এটার দাম",
+    # Check if customer is asking about an individual item's price (ribbon, card, cover)
+    is_package_photo_quoted = any(k in msg for k in ["package", "wa0002", "wa0003", "wa0006", "wa0057", "wa0023", "wa0045", "wa0081", "প্যাকেজ"])
+    is_specific_item_inquiry = not is_package_photo_quoted and any(k in msg for k in [
+        "এই ফিতা", "এই কভার", "এই কার্ড", "এই প্রোডাক্ট", "এইটার দাম", "এটার দাম",
         "কভার টা কত", "কভার কত", "ফিতা কত", "কার্ড কত", "কত করে", "ফিতার দাম", "কভারের দাম",
         "এই ফিতার দাম", "এই কভারের দাম", "এই কার্ডের দাম", "প্রোডাক্টটির দাম", "প্রোডাক্টের দাম",
         "ভাইয়া বলেন", "ভাইয়া বলেন", "বলেন", "???", "??"
@@ -777,7 +779,7 @@ def evaluate_id_card_workflow(
     is_package_request = any(k in msg for k in [
         "প্যাকেজ", "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
         "কম্বো", "কম্বো প্যাকেজ", "package", "combo", "পেকেজ"
-    ])
+    ]) and not any(k in msg for k in ["এটি", "এটা", "এইটা", "এই প্যাকেজ", "পছন্দ", "নির্বাচন"])
     if is_package_request:
         pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
         seq = [
@@ -819,6 +821,46 @@ def evaluate_id_card_workflow(
             "video_url": "",
             "order_created": None,
             "response_source": "package_sample_dispatch"
+        }
+
+    # Case D: Customer quotes / selects a package photo (e.g. replies with ".", ",", "এটি", "এইটা", "এই প্যাকেজটি", "প্যাকেজ ৩", etc.)
+    is_package_selection = (
+        any(k in msg for k in [
+            "[কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন:", "প্যাকেজের রিপ্লাই", "package", "wa0002", "wa0003",
+            "wa0006", "wa0057", "wa0023", "wa0045", "wa0081"
+        ]) or
+        (
+            any(k in last_bot_msg for k in ["কোন প্যাকেজ", "প্যাকেজটি পছন্দ", "প্যাকেজের ছবি", "প্যাকেজ পছন্দ", "প্যাকেজগুলো পাঠানো হলো", "পছন্দ হয় জানাবেন", "পছন্দ হয়েছে"]) and
+            any(k in msg for k in [
+                "এটি", "এটা", "এইটা", "এই প্যাকেজ", "এই প্যাকেজটি", "এই প্যাকেজটা", "প্যাকেজ", "পছন্দ",
+                "এটি পছন্দ", "এটা পছন্দ", "এইটা পছন্দ", "এটি ভালো", "এটা দেন", "এটি দেন", "এইটা দেন",
+                "প্যাকেজ ১", "প্যাকেজ ২", "প্যাকেজ ৩", "প্যাকেজ ৪", "প্যাকেজ ৫", "প্যাকেজ ৬", "প্যাকেজ ৭",
+                "১", "২", "৩", "৪", "৫", "৬", "৭", "1", "2", "3", "4", "5", "6", "7", ".", ","
+            ])
+        )
+    )
+
+    if is_package_selection and not is_refusing:
+        tier_note = ""
+        if effective_qty is not None and 30 <= effective_qty < 50:
+            tier_note = f"\n(যেহেতু আপনাদের পরিমাণ {effective_qty} পিস—১০০ এর কম, তাই প্যাকেজের রেগুলার মূল্যের সাথে প্রতি পিসে ১০ টাকা যোগ হবে।)\n"
+            
+        ack_text = (
+            f"জি {honorific}, চমৎকার পছন্দ! আপনি আমাদের এই আকর্ষণীয় প্যাকেজটি নির্বাচন করেছেন।{tier_note}\n\n"
+            f"আপনার অর্ডারটি চূড়ান্ত করতে অনুগ্রহ করে নিচের তথ্যগুলো দিন:\n"
+            f"১. প্রতিষ্ঠানের নাম:\n"
+            f"২. পূর্ণাঙ্গ ঠিকানা:\n"
+            f"৩. যোগাযোগের মোবাইল নম্বর:\n\n"
+            f"তথ্যগুলো দিলে আমরা সাথে সাথে ছবি ও তথ্য আপলোড করার জন্য একটি ডেডিকেটেড গুগল ফর্ম লিংক পাঠিয়ে দেব {honorific}।"
+        )
+        return {
+            "reply_text": ack_text,
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "id_card_package_selection_acknowledged"
         }
 
     is_sample_request = any(k in msg for k in [

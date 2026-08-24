@@ -1018,11 +1018,31 @@ def resolve_quoted_message_media(quoted_mid: str, workspace_id: int = 1) -> dict
             """, (str(quoted_mid), str(quoted_mid)))
             row = cursor.fetchone()
             
-        if not row:
+        media_url = ""
+        content = ""
+        row_id = None
+        if row:
+            row_id = row["id"]
+            media_url = row["media_url"] or ""
+            content = row["content"] or ""
+        else:
+            # Check media_deliveries fallback
+            try:
+                cursor.execute("""
+                    SELECT media_url, media_filename, delivery_key
+                    FROM media_deliveries
+                    WHERE meta_message_id = ? OR attachment_id = ?
+                    ORDER BY id DESC LIMIT 1
+                """, (str(quoted_mid), str(quoted_mid)))
+                md_row = cursor.fetchone()
+                if md_row:
+                    media_url = md_row["media_url"] or md_row["delivery_key"] or ""
+                    content = md_row["media_filename"] or ""
+            except Exception:
+                pass
+                
+        if not media_url and not content:
             return {}
-            
-        media_url = row["media_url"] or ""
-        content = row["content"] or ""
         local_path = None
         img_bytes = None
         img_mime = "image/jpeg"
