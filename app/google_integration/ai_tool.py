@@ -369,6 +369,33 @@ def resolve_google_form_workflow(
     phone_pattern = r'(?:\+?880|880|0)?1[3-9]\d{2}[-\s]?\d{6}'
     question_pattern = r'(?:\?|কীভাবে|কিভাবে|কত\s*টাকা|দাম\s*কত|দর\s*কত|চার্জ\s*কত|খরচ\s*কত|কেমন\s*দাম|তথ্য\s*(?:কিভাবে|কীভাবে)|(?:কিভাবে|কীভাবে)\s*(?:দিব|দেবো|নেওয়া|নেন|পাঠাব|পাঠাবো)|কবে\s*পাব|কোথায়|কোথায়|(?:^|\s)(?:দাম|চার্জ|খরচ|রেট|প্রাইস)(?:\s|[।\?!,:]|$))'
 
+    from app.ai_agent.gemini_brain import detect_customer_gender_title
+    honorific = detect_customer_gender_title(customer_name)
+
+    # Check if user is asking for demo, rules, video or expressing confusion about Google Form
+    is_form_demo_or_rule_inquiry = any(k in msg_lower for k in [
+        "নিয়ম কি", "নিয়ম কি", "নিয়ম কী", "নিয়ম কী", "ডেমো", "demo", "ভিডিও", "video",
+        "বুঝি না", "বুঝিনা", "কেমনে", "কীভাবে দেব", "কিভাবে দেব", "কীভাবে জমা", "কিভাবে জমা",
+        "কীভাবে পূরণ", "কিভাবে পূরণ", "কীভাবে করে", "কিভাবে করে", "কীভাবে কাজ করে", "কিভাবে কাজ করে",
+        "কোন ডেমো আছে", "ডেমো আছে কিনা", "ডেমো দেখতে চাই", "ডেমো দেন", "ডেমো দিন", "ডেমো দেখান",
+        "তথ্য দেওয়ার নিয়ম", "তথ্য দেয়ার নিয়ম", "ছবি দেওয়ার নিয়ম", "ছবি দেয়ার নিয়ম",
+        "গুগল ফর্মে তথ্য দেওয়ার নিয়ম", "গুগল ফরম বুঝিনা"
+    ])
+
+    if is_form_demo_or_rule_inquiry:
+        return {
+            "reply": (
+                f"জি {honorific}, আমাদের কাছে তথ্য দেওয়ার ২টি সহজ মাধ্যম রয়েছে:\n\n"
+                "১) WhatsApp: আমাদের অফিসিয়াল হোয়াটসঅ্যাপ নম্বর 01816504097-এ প্রতিষ্ঠানের নাম, লোগো এবং শিক্ষার্থীদের নাম/রোল/ছবি সরাসরি পাঠিয়ে দিতে পারেন।\n"
+                "২) Google Form: আপনার প্রতিষ্ঠানের জন্য আমরা একটি কাস্টমাইজড গুগল ফর্ম তৈরি করে দেব, যাতে অভিভাবক বা শিক্ষার্থীরা মোবাইল থেকেই নাম, শ্রেণি, রোল ও ছবি সুন্দরভাবে জমা দিতে পারবেন।\n\n"
+                "গুগল ফর্মে কীভাবে তথ্য ও ছবি আপলোড করতে হয়, তার পূর্ণাঙ্গ ডেমো ভিডিওটি নিচে দেওয়া হলো।\n\n"
+                f"আপনার প্রতিষ্ঠানের জন্য কি একটি গুগল ফর্ম তৈরি করে দেব {honorific}?"
+            ),
+            "video_url": "/static/uploads/media/google_form_submission_guide.mp4",
+            "action": "data_collection_demo_video",
+            "step": "offered_google_form_and_video"
+        }
+
     # 1. Parse structured conversation history
     flat_history = []
     if conversation_history:
@@ -426,11 +453,11 @@ def resolve_google_form_workflow(
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in data_collection_patterns) and not has_explicit_form_intent:
         return {
             "reply": (
-                "জি স্যার/ম্যাম, আইডি কার্ডের তথ্য ও ছবি সংগ্রহের জন্য আমাদের প্রধান এবং সবচেয়ে সহজ মাধ্যম হলো **গুগল ফর্ম (Google Form)**।\n\n"
+                f"জি {honorific}, আইডি কার্ডের তথ্য ও ছবি সংগ্রহের জন্য আমাদের প্রধান এবং সবচেয়ে সহজ মাধ্যম হলো **গুগল ফর্ম (Google Form)**।\n\n"
                 "আমরা আপনার প্রতিষ্ঠানের নামে একটি কাস্টমাইজড গুগল ফর্ম তৈরি করে দেব, "
                 "যেখানে শিক্ষার্থী বা স্টাফরা নিজেরাই নাম, পিতার নাম, শ্রেণি, রোল ও ছবি সুন্দরভাবে জমা দিতে পারবেন।\n\n"
                 "আর গুগল ফর্মে দেওয়া কারো কাছে কঠিন মনে হলে, আপনারা সরাসরি এই হোয়াটসঅ্যাপে বা এক্সেল/ওয়ার্ড ফাইলে তালিকা এবং ছবি পাঠিয়ে দিতে পারবেন।\n\n"
-                "আপনার প্রতিষ্ঠানের জন্য কি একটি গুগল ফর্ম বানিয়ে দেব স্যার/ম্যাম?"
+                f"আপনার প্রতিষ্ঠানের জন্য কি একটি গুগল ফর্ম বানিয়ে দেব {honorific}?"
             ),
             "action": "data_collection_offer",
             "step": "offered_google_form"
@@ -463,6 +490,22 @@ def resolve_google_form_workflow(
         if norm_cust and len(norm_cust) >= 10:
             inst_mobile = norm_cust
 
+    # Accurate institution candidate validation helper
+    def is_valid_inst_cand(c: str) -> bool:
+        if not c or len(c.strip()) < 2:
+            return False
+        c_low = c.strip().lower()
+        confusion_phrases = [
+            "বুঝি না", "বুঝিনা", "ডেমো", "demo", "ভিডিও", "video", "নিয়ম", "নিয়ম", "কিভাবে", "কীভাবে",
+            "বলতেছি", "বলছি", "চাই না", "লাগবে না", "দাম কত", "কত টাকা", "কেমন দাম", "কোথায়", "কোথায়",
+            "বানাবো", "বানাব", "বানাতে চাই", "অর্ডার করতে চাই"
+        ]
+        if any(p in c_low for p in confusion_phrases):
+            return False
+        if c_low in ["হ্যাঁ", "জি", "হাঁ", "না", "নাই", "নেই", "ধন্যবাদ", "হ্যালো", "ভাই", "স্যার", "ম্যাম", "আসেনি", "পাঠান", "দিন", "দেন", "অর্ডার", "প্যাকেজ", "কার্ড", "id card", "ফর্ম", "ফরম", "form"]:
+            return False
+        return True
+
     # 3. Extract Institution Name across thread
     inst_name = ""
     for m in full_thread:
@@ -470,7 +513,7 @@ def resolve_google_form_workflow(
             continue
         t = m["text"]
 
-        m_lbl = re.search(r'(?:প্রতিষ্ঠানের\s*নামটি|প্রতিষ্ঠানের\s*নাম|স্কুলের\s*নাম|মাদ্রাসার\s*নাম|মাদরাসার\s*নাম|কলেজের\s*নাম|ইনস্টিটিউটের\s*নাম)\s*[:=\s]\s*([^\n,।]+)', t, re.IGNORECASE)
+        m_lbl = re.search(r'(?:প্রতিষ্ঠানের\s*নামটি|প্রতিষ্ঠানের\s*নাম|স্কুলের\s*নাম|মadrasar\s*নাম|মাদ্রাসা[র]*\s*নাম|মাদরাসা[র]*\s*নাম|কলেজের\s*নাম|ইনস্টিটিউটের\s*নাম)\s*[:=\s]\s*([^\n,।]+)', t, re.IGNORECASE)
         if m_lbl:
             cand = m_lbl.group(1).strip()
             cand = re.sub(phone_pattern, '', cand).strip()
@@ -480,7 +523,7 @@ def resolve_google_form_workflow(
                     cand = cand[len(pfx):].strip()
             if cand in ["প্রতিষ্ঠান", "প্রতিষ্ঠানের", "স্কুল", "স্কুলের", "মাদ্রাসা", "মাদ্রাসার", "মাদরাসা", "মাদরাসার", "আমাদের প্রতিষ্ঠান", "আমার প্রতিষ্ঠান", "প্রতিষ্ঠানটি", "স্কুলটি", "মাদ্রাসাটি", "id card", "কার্ড"]:
                 cand = ""
-            if cand and not any(kw in cand.lower() for kw in ["দিন", "করুন", "বানাও", "ফর্ম", "ফরম", "id card"]):
+            if cand and is_valid_inst_cand(cand):
                 inst_name = cand
                 break
 
@@ -494,7 +537,7 @@ def resolve_google_form_workflow(
             cand_stem = re.sub(r'(?:ের|র|ে|টি|টির|গুলো)$', '', cand.strip()).strip()
             if cand_stem in ["প্রতিষ্ঠান", "স্কুল", "মাদ্রাসা", "মাদরাসা", "কলেজ", "আমাদের প্রতিষ্ঠান", "আমার প্রতিষ্ঠান", "id card", "কার্ড", ""]:
                 cand = ""
-            if len(cand) > 1 and not any(kw in cand.lower() for kw in ["আইডি", "কার্ড", "বানাতে", "তৈরি", "ফর্ম", "ফরম"]):
+            if len(cand) > 1 and is_valid_inst_cand(cand):
                 inst_name = cand
                 break
 
@@ -508,24 +551,21 @@ def resolve_google_form_workflow(
             cand_stem = re.sub(r'(?:ের|র|ে|টি|টির|গুলো)$', '', cand.strip()).strip()
             if cand_stem in ["প্রতিষ্ঠান", "স্কুল", "মাদ্রাসা", "মাদরাসা", "কলেজ", "আমাদের প্রতিষ্ঠান", "আমার প্রতিষ্ঠান", "id card", "কার্ড", ""]:
                 cand = ""
-            if len(cand) > 1 and not any(kw in cand.lower() for kw in ["ফর্ম", "ফরম", "বানাও", "বানাতে", "কার্ড"]):
+            if len(cand) > 1 and is_valid_inst_cand(cand):
                 inst_name = cand
                 break
 
     # Contextual reply extraction if user answered assistant's "প্রতিষ্ঠানের নাম" prompt
-    # Contextual reply extraction if user is answering assistant's "প্রতিষ্ঠানের নাম" prompt
     if not inst_name and is_awaiting_name:
         cand = msg_raw.split("\n")[0].split(",")[0].split("।")[0].strip()
         cand = re.sub(phone_pattern, '', cand).strip()
         for pfx in ["দয়া করে", "প্লিজ", "আমাদের প্রতিষ্ঠানের নাম", "প্রতিষ্ঠানের নাম", "নাম", "আমাদের", "আমার"]:
             if cand.startswith(pfx):
                 cand = cand[len(pfx):].lstrip(": ").strip()
-        if len(cand) >= 2 and not any(kw in cand.lower() for kw in ["ফর্ম", "ফরম", "আইডি কার্ড", "বানাতে", "কিভাবে", "কীভাবে", "দাম"]):
+        if len(cand) >= 2 and is_valid_inst_cand(cand) and len(cand.split()) <= 7:
             inst_name = cand
 
-
     # FALLBACK: Extract institution name from assistant's own previous messages
-    # Bot often says: "আপনার প্রতিষ্ঠানের নাম 'XYZ' নোট করে নিলাম"
     if not inst_name:
         for m in reversed(flat_history):
             if m["role"] == "assistant":
@@ -533,7 +573,7 @@ def resolve_google_form_workflow(
                 name_from_bot = re.search(r"প্রতিষ্ঠানের\s*নাম[টি]*\s*['\"\'\"\(]?\s*([^'\"\'\"।\n\(\)]+?)\s*['\"\'\"\)]?\s*(?:নোট|লিখে|রেকর্ড|সংগ্রহ)", bot_text)
                 if name_from_bot:
                     cand = name_from_bot.group(1).strip().strip("'\"")
-                    if len(cand) >= 2 and cand not in ["আমাদের", "আপনার", "প্রতিষ্ঠান"]:
+                    if len(cand) >= 2 and cand not in ["আমাদের", "আপনার", "প্রতিষ্ঠান"] and is_valid_inst_cand(cand):
                         inst_name = cand
                         break
 

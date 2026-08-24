@@ -1129,7 +1129,11 @@ def detect_saved_media_to_send(user_msg: str, bot_reply: str = "", workspace_id:
         "সংশোধন করার ভিডিও", "সংশোধনের ভিডিও", "ভুল হলে কিভাবে ঠিক করব ভিডিও", "এডিটের ভিডিও", "সংশোধন কিভাবে করব"
     ])
     is_asking_submission_video = any(k in msg for k in [
-        "ফর্ম পূরণের ভিডিও", "ফর্মের ভিডিও", "আপলোডের ভিডিও", "ভিডিও দেখতে চাই", "ভিডিও পাঠান", "ভিডিও দেন", "তথ্য কিভাবে দিব", "ছবি আপলোড করব"
+        "ফর্ম পূরণের ভিডিও", "ফর্মের ভিডিও", "আপলোডের ভিডিও", "ভিডিও দেখতে চাই", "ভিডিও পাঠান", "ভিডিও দেন",
+        "তথ্য কিভাবে দিব", "তথ্য কীভাবে দিব", "তথ্য কিভাবে দেব", "তথ্য কীভাবে দেব", "ছবি আপলোড করব",
+        "ডেমো", "demo", "ডেমো ভিডিও", "কোন ডেমো আছে", "ডেমো আছে কিনা", "ডেমো আছে", "ডেমো দেখান", "ডেমো দেন", "ডেমো দিন",
+        "গুগল ফর্মে তথ্য দেওয়ার নিয়ম", "গুগল ফরমের নিয়ম", "ফর্মের নিয়ম", "ফরমের নিয়ম", "তথ্য দেওয়ার নিয়ম", "তথ্য দেয়ার নিয়ম",
+        "গুগল ফর্ম বুঝি না", "গুগল ফরম বুঝিনা", "বুঝি না কোন ডেমো", "বুঝিনা কোন ডেমো"
     ])
 
     if is_asking_correction_video:
@@ -1307,8 +1311,8 @@ async def process_customer_message(
         if workflow_res and workflow_res.get("reply"):
             return {
                 "reply_text": workflow_res["reply"],
-                "voice_url": "",
-                "video_url": "",
+                "voice_url": workflow_res.get("voice_url", ""),
+                "video_url": workflow_res.get("video_url", ""),
                 "order_created": None,
                 "matched_images": [],
                 "response_source": "deterministic_google_form",

@@ -3,6 +3,7 @@ import asyncio
 import sys
 import os
 import time
+import uuid
 
 # Add project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -261,7 +262,7 @@ class TestProductionGoogleFormHardGuarantees(unittest.TestCase):
                         "contacts": [{"profile": {"name": "Maulana Mahmud"}, "wa_id": "8801929770001"}],
                         "messages": [{
                             "from": "8801929770001",
-                            "id": "wamid.HBgLODgwMTkyOTc3MDAwMRUCABEYEjA1OTgzOTAyOU",
+                            "id": f"wamid.test_134_{uuid.uuid4().hex[:10]}",
                             "timestamp": str(int(time.time())),
                             "type": "text",
                             "text": {
