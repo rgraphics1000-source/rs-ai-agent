@@ -101,5 +101,20 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
         for img in res.get("matched_images", []):
             self.assertIn("package", img.lower())
 
+    def test_10_quality_spelling_variations_send_voice_note(self):
+        variations = [
+            "আপনাদের কোয়ালিটি সম্পরকে জানতে চাই",
+            "কার্ড ও ফিতা এর কোয়ালিটি কেমন হবে",
+            "কার্ড ও ফিতা এর কোয়ালিটি কেমন হবে",
+            "কোয়ালিটি কেমন",
+            "কোয়ালিটি কেমন",
+            "কোয়ালিটি সম্পর্কে বলুন"
+        ]
+        for query in variations:
+            res = evaluate_id_card_workflow(query, workspace_id=1)
+            self.assertIsNotNone(res, f"Failed for query: {query}")
+            self.assertIn("id_card_and_fita_quality.aac", res.get("voice_url"), f"Voice URL missing for query: {query}")
+            self.assertEqual(len(res.get("matched_images", [])), 0, f"Must not blast images for query: {query}")
+
 if __name__ == "__main__":
     unittest.main()
