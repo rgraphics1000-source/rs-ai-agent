@@ -1039,11 +1039,17 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     # 2. Check if photos are requested explicitly in user message OR agreed to when bot specifically offered
     is_explicit_photo_req = any(k in msg for k in [
         "ছবি দেখতে চাই", "ছবি দেখান", "ছবি পাঠান", "ছবি পাঠাও", "ছবি দেখাও", "ছবি দেন", "ছবি দিন",
-        "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দেন", "স্যাম্পল দিন", "স্যাম্পল দেখতে চাই",
+        "ছবি দিয়েন", "ছবি দিয়েন", "ছবি পাঠিয়েন", "ছবি পাঠিয়েন", "ছবি দিবেন", "ছবি পাঠাবেন",
+        "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দেন", "স্যাম্পল দিন", "স্যাম্পল দিয়েন", "স্যাম্পল দিয়েন", "স্যাম্পল দেখতে চাই",
         "পিক দেখান", "পিক দেন", "পিক পাঠান", "পিকচার দেখান", "পিকচার পাঠান", "ফটো দেখান", "ফটো পাঠান", "ফটো দেন",
         "সব ছবি", "সবগুলো ছবি", "সব প্যাকেজ", "সবগুলো প্যাকেজ", "প্যাকেজের ছবি",
         "show photo", "send photo", "show sample", "send sample", "show pic", "send pic", "show image", "send image"
-    ]) or (any(k in msg for k in ["ছবি", "স্যাম্পল", "ফটো", "পিক", "পিকচার"]) and any(a in msg for a in ["দেখান", "পাঠান", "দিন", "দেন", "দেখবো", "show", "send"]))
+    ]) or (
+        any(k in msg for k in ["ছবি", "স্যাম্পল", "ফটো", "পিক", "পিকচার"]) and 
+        any(a in msg for a in ["দেখান", "পাঠান", "দিন", "দেন", "দিয়েন", "দিয়েন", "পাঠিয়েন", "পাঠিয়েন", "দিবেন", "পাঠাবেন", "দেখবো", "show", "send", "তো"])
+    ) or (
+        any(k in msg for k in ["কভারের ছবি", "ফিতার ছবি", "কার্ডের ছবি", "প্যাকেজের ছবি", "কভারের স্যাম্পল", "ফিতার স্যাম্পল", "কার্ডের স্যাম্পল"])
+    )
 
     last_bot_msg = ""
     if conversation_history:
@@ -1067,6 +1073,7 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     b_reply_low = (bot_reply or "").lower()
     is_bot_sending_photos = any(k in b_reply_low for k in [
         "ছবিগুলো নিচে পাঠানো হলো", "ছবিগুলো নিচে দেওয়া হলো", "ছবিগুলো নিচে দেয়া হলো",
+        "নিচে ছবিগুলো দেওয়া হলো", "নিচে ছবিগুলো দেয়া হলো", "নিচে ছবিগুলো পাঠানো হলো",
         "স্যাম্পল ছবিগুলো নিচে", "প্যাকেজগুলো নিচে পাঠানো হলো", "প্যাকেজের ছবিগুলো নিচে",
         "স্যাম্পল নিচে পাঠানো হলো", "ছবি নিচে পাঠানো হলো", "ছবি দেওয়া হলো", "ছবি পাঠানো হলো",
         "স্যাম্পল দেওয়া হলো", "স্যাম্পল পাঠানো হলো", "স্যাম্পলগুলো নিচে পাঠানো হলো",
@@ -1088,26 +1095,28 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
             any(kw in bm for kw in ["স্যাম্পল ছবি", "ছবি দেওয়া হলো", "ছবি পাঠানো হলো"])
             for bm in recent_bot_msgs
         )
-        is_asking_more = any(k in msg for k in ["আরও", "আরো", "অন্য", "নতুন", "more", "other", "different", "আবার", "সব"])
+        is_asking_more = any(k in msg for k in ["আরও", "আরো", "অন্য", "নতুন", "more", "other", "different", "আবার", "সব", "আরদুইটা", "আর"])
         if already_sent_recently and not is_asking_more:
             return []
 
     req_count = parse_requested_image_count(msg)
     selected_images = []
 
-    combined_context = f"{msg} {b_reply_low}"
-    is_pkg = any(k in combined_context for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ", "সব প্যাকেজ"])
-    is_fita = any(k in combined_context for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"]) and not is_pkg
-    is_cover = any(k in combined_context for k in ["কভার", "হোল্ডার", "holder", "cover"]) and not is_pkg
-    is_id = any(k in combined_context for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"]) and not (is_pkg or is_fita or is_cover)
+    user_has_cover = any(k in msg for k in ["কভার", "হোল্ডার", "holder", "cover"])
+    user_has_fita = any(k in msg for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"])
+    user_has_id = any(k in msg for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"])
+    user_has_pkg = any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ", "সব প্যাকেজ"])
 
-    if is_pkg or int(workspace_id or 1) == 1:
-        selected_images = get_package_sample_images(workspace_id=workspace_id)
-    elif is_fita:
-        selected_images = get_category_batch_images("fita", workspace_id=workspace_id)
-    elif is_cover:
+    bot_has_cover = any(k in b_reply_low for k in ["কভার", "হোল্ডার", "holder", "cover"])
+    bot_has_fita = any(k in b_reply_low for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"])
+    bot_has_id = any(k in b_reply_low for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"])
+    bot_has_pkg = any(k in b_reply_low for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ", "সব প্যাকেজ"])
+
+    if user_has_cover or (not (user_has_fita or user_has_id or user_has_pkg) and bot_has_cover):
         selected_images = get_category_batch_images("cover", workspace_id=workspace_id)
-    elif is_id:
+    elif user_has_fita or (not (user_has_cover or user_has_id or user_has_pkg) and bot_has_fita):
+        selected_images = get_category_batch_images("fita", workspace_id=workspace_id)
+    elif user_has_id or (not (user_has_cover or user_has_fita or user_has_pkg) and bot_has_id):
         selected_images = get_category_batch_images("idc", workspace_id=workspace_id)
     else:
         selected_images = get_package_sample_images(workspace_id=workspace_id)

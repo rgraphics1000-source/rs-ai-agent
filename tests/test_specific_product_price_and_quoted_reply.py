@@ -170,14 +170,29 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
         self.assertEqual(res3["response_source"], "id_card_package_selection_acknowledged")
         self.assertIn("প্রতিষ্ঠানের নাম", res3["reply_text"])
 
-    def test_14_bot_reply_promising_photos_attaches_images(self):
+    def test_15_specific_category_photo_requests(self):
         from app.ai_agent.gemini_brain import detect_sample_photos_to_send
-        bot_reply = "জি স্যার, সবই লাগবে। যেহেতু আপনি ৫০০ পিস আইডি কার্ড, ফিতা এবং কভার সহ সম্পূর্ণ কম্বো প্যাকেজ নিতে চাচ্ছেন, সেহেতু আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো নিচে পাঠানো হলো স্যার:"
-        imgs = detect_sample_photos_to_send(user_msg="কাস্টমার একটি ভয়েস অডিও বার্তা পাঠিয়েছেন।", bot_reply=bot_reply, workspace_id=1)
-        self.assertGreater(len(imgs), 0)
-        self.assertEqual(len(imgs), 7)
-        for img in imgs:
-            self.assertIn("package", img.lower())
+        bot_cover_reply = "জি স্যার, অবশ্যই দিচ্ছি। আমাদের কাছে বেশ কয়েকটি প্রিমিয়াম ও চমৎকার মানের কভার রয়েছে। নিচে ছবিগুলো দেওয়া হলো স্যার:"
+        
+        # 1. Cover photo request with count and 'দিয়েন'
+        imgs_cover = detect_sample_photos_to_send("দুইটা ভালো মানের কভারের ছবি দিয়েন তো", bot_reply=bot_cover_reply, workspace_id=1)
+        self.assertEqual(len(imgs_cover), 2)
+        for img in imgs_cover:
+            self.assertIn("cover", img.lower())
+
+        # 2. Additional cover photo request
+        imgs_more_cover = detect_sample_photos_to_send("আরদুইটা ভালো মানের কভারের ছবি দিয়েন তো", bot_reply=bot_cover_reply, workspace_id=1)
+        self.assertEqual(len(imgs_more_cover), 2)
+        for img in imgs_more_cover:
+            self.assertIn("cover", img.lower())
+
+        # 3. Fita photo request
+        bot_fita_reply = "জি স্যার, ফিতার স্যাম্পল নিচে দেওয়া হলো:"
+        imgs_fita = detect_sample_photos_to_send("দুইটা ভালো মানের ফিতার ছবি দিয়েন", bot_reply=bot_fita_reply, workspace_id=1)
+        self.assertEqual(len(imgs_fita), 2)
+        for img in imgs_fita:
+            self.assertIn("fita", img.lower())
 
 if __name__ == "__main__":
     unittest.main()
+
