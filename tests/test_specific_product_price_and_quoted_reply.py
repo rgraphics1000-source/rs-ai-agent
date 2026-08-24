@@ -116,5 +116,33 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
             self.assertIn("id_card_and_fita_quality.aac", res.get("voice_url"), f"Voice URL missing for query: {query}")
             self.assertEqual(len(res.get("matched_images", [])), 0, f"Must not blast images for query: {query}")
 
+    def test_11_salam_is_only_returned_if_customer_gave_salam(self):
+        # Without Salam
+        res1 = evaluate_id_card_workflow("আমি আইডি কার্ড করতে চাই", workspace_id=1)
+        self.assertIsNotNone(res1)
+        self.assertTrue(res1["reply_text"].startswith("জি স্যার,"))
+        self.assertNotIn("ওয়ালাইকুমুস সালাম", res1["reply_text"])
+
+        # With Salam
+        res2 = evaluate_id_card_workflow("আসসালামু আলাইকুম, আমি আইডি কার্ড করতে চাই", workspace_id=1)
+        self.assertIsNotNone(res2)
+        self.assertTrue(res2["reply_text"].startswith("ওয়ালাইকুমুস সালাম স্যার।"))
+
+    def test_12_customer_refusal_is_politely_acknowledged_without_sales_pitch(self):
+        refusal_msgs = [
+            "আমি তো আইডি কার্ড বানাতে চাচ্ছি না",
+            "লাগবে না তো আমার",
+            "দরকার নাই",
+            "বানাব না"
+        ]
+        for rm in refusal_msgs:
+            res = evaluate_id_card_workflow(rm, workspace_id=1)
+            self.assertIsNotNone(res, f"Failed for refusal: {rm}")
+            self.assertEqual(res["response_source"], "customer_not_interested")
+            self.assertIn("কোনো সমস্যা নেই", res["reply_text"])
+            self.assertNotIn("ওয়ালাইকুমুস সালাম", res["reply_text"])
+            self.assertNotIn("কত পিস", res["reply_text"])
+            self.assertEqual(len(res.get("matched_images", [])), 0)
+
 if __name__ == "__main__":
     unittest.main()

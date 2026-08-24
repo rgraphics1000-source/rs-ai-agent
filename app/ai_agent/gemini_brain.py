@@ -146,15 +146,21 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
 
 {custom_prompt}
 
-⚠️ STRICT HUMAN PERSONA RULE:
-কাস্টমার যেন কোনোভাবেই বুঝতে না পারে যে তুমি রোবট বা এআই। তোমাকে কথা বলতে হবে একজন বাস্তব অভিজ্ঞ ও অমায়িক ব্যবসায়ীর মতো। কোনো রোবোটিক ঘোষণা বা এআই পরিচয় দেবে না। কাস্টমার তোমার নাম বা পরিচয় জানতে চাইলে বলবে: "আমি '{shop_name}'-এর সেলস এক্সিকিউটিভ নাদিম বলছি।" শপ ওনারের কথা জানতে চাইলে বলবে: "আমাদের ওনার স্যার।"
+⚠️ STRICT HUMAN PERSONA & GREETING RULE:
+- কাস্টমার যেন কোনোভাবেই বুঝতে না পারে যে তুমি রোবট বা এআই। তোমাকে কথা বলতে হবে একজন বাস্তব অভিজ্ঞ ও অমায়িক ব্যবসায়ীর মতো। কোনো রোবোটিক ঘোষণা বা এআই পরিচয় দেবে না। কাস্টমার তোমার নাম বা পরিচয় জানতে চাইলে বলবে: "আমি '{shop_name}'-এর সেলস এক্সিকিউটিভ নাদিম বলছি।" শপ ওনারের কথা জানতে চাইলে বলবে: "আমাদের ওনার স্যার।"
+- ⚠️ সালামের সঠিক নিয়ম (Salam Protocol):
+  • কাস্টমার যদি সালাম দেয় (যেমন "আসসালামু আলাইকুম"), তবেই কেবল "ওয়ালাইকুমুস সালাম {honorific}" বলবে।
+  • কাস্টমার যদি সালাম না দেয় (যেমন "Hi", "Hello" বা সাধারণ কথা বলে), তবে কখনোই "ওয়ালাইকুমুস সালাম" বলবে না! শুধু "জি {honorific}," বা "আসসালামু আলাইকুম {honorific}," দিয়ে শুরু করবে।
+- ⚠️ অনিচ্ছা ও না-বোধক কথার শিষ্টাচার (Customer Refusal / Not Interested):
+  • কাস্টমার যদি বলে "আমি কার্ড বানাতে চাচ্ছি না", "লাগবে না", "দরকার নেই", "নেব না", তবে তাকে জোর করবে না এবং কোনো স্যাম্পল বা দামের প্রশ্ন করবে না।
+  • ভদ্রভাবে বলবে: "জি {honorific}, ঠিক আছে, কোনো সমস্যা নেই। পরবর্তীতে আপনার অন্য কোনো সেবা বা তথ্যের প্রয়োজন হলে অবশ্যই জানাবেন।"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🔴 অত্যন্ত গুরুত্বপূর্ণ সেলস, প্রাইসিং ও বিহেভিয়ার রুলস (Strict Business & Sales Rules):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ০. আইডি কার্ড তৈরির প্রাথমিক প্রশ্ন ও অর্ডার পরিমাণ (Primary Question):
-   - কাস্টমার পেজে মেসেজ দিয়ে আইডি কার্ড বানাতে চাইলে (যেমন: "আমি আইডি কার্ড বানাতে চাই", "আইডি কার্ড করতে চাই", "আইডি কার্ড বানাবো", "আইডি কার্ডের বিষয়ে জানতে চাই" ইত্যাদি)—সবার প্রথমে জানতে চাইতে হবে কাস্টমার কত পিস বানাবেন।
+   - কাস্টমার পেজে মেসেজ দিয়ে আইডি কার্ড বানাতে আগ্রহ প্রকাশ করলে (যেমন: "আমি আইডি কার্ড বানাতে চাই", "আইডি কার্ড করতে চাই", "আইডি কার্ড বানাবো", "আইডি কার্ডের বিষয়ে জানতে চাই" ইত্যাদি)—সবার প্রথমে জানতে চাইতে হবে কাস্টমার কত পিস বানাবেন।
    - প্রথম প্রশ্ন হবে: "জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন?" কত পিস বানাবেন তা আগে জেনে নিতে হবে।
 
 ১. সর্বনিম্ন অর্ডারের পরিমাণ (MOQ - Minimum 30 Pcs):
@@ -614,12 +620,24 @@ def evaluate_id_card_workflow(
     if len(cleaned_digits) >= 10:
         return None
 
-    # 0.1 Check cancellation / stop
-    stop_phrases = ["লাগবে না", "আর লাগবে না", "দরকার নেই", "দরকার নাই", "stop", "cancel", "চাই না", "নিব না", "নেব না"]
-    msg_words = msg.split()
-    is_stop = any(sp in msg for sp in stop_phrases) or (len(msg_words) == 1 and msg_words[0] in ["না", "no"])
-    if is_stop:
-        return None
+    # 0.1 Check cancellation / refusal / not interested
+    refusal_phrases = [
+        "চাচ্ছি না", "চাই না", "লাগবে না", "আর লাগবে না", "দরকার নেই", "দরকার নাই",
+        "বানাতে চাচ্ছি না", "বানাব না", "বানাবো না", "করব না", "করবো না",
+        "লাগবে না তো", "লাগবে না আমার", "নিব না", "নেব না", "দরকার নাই তো",
+        "stop", "cancel", "not interested"
+    ]
+    is_refusing = any(rp in msg for rp in refusal_phrases) or (len(msg.split()) == 1 and msg.strip() in ["না", "no"])
+    if is_refusing:
+        return {
+            "reply_text": f"জি {honorific}, ঠিক আছে, কোনো সমস্যা নেই। পরবর্তীতে আপনার অন্য কোনো সার্ভিস বা তথ্যের প্রয়োজন হলে অবশ্যই জানাবেন।",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "customer_not_interested"
+        }
 
     # Check if customer is asking about a specific item's price, quoting a product photo, or following up on a specific product
     is_specific_item_inquiry = any(k in msg for k in [
@@ -670,16 +688,18 @@ def evaluate_id_card_workflow(
     else:
         effective_qty = qty
     
-    # Check if message is ID card related
+    # Check if message is ID card related (and not negative)
     is_id_card_inquiry = any(k in msg for k in [
         "আইডি কার্ড", "আইডি কাড", "id card", "আইডিকার্ড", "আইডি", "কার্ড বানাতে", "কার্ড করতে", 
         "কার্ড বানাবো", "কার্ড লাগবে", "কার্ডের দাম", "কার্ডের খরচ", "কার্ডের স্যাম্পল"
-    ])
+    ]) and not any(k in msg for k in ["চাচ্ছি না", "চাই না", "বানাব না", "বানাবো না", "করব না", "করবো না", "লাগবে না", "নেব না", "নিব না", "দরকার নাই", "দরকার নেই"])
 
     # Case A: Initial ID card inquiry without quantity stated
     if is_id_card_inquiry and qty is None:
+        gave_salam = any(k in msg for k in ["সালাম", "salam", "আসসালামু", "assalamu", "slm"])
+        greeting = f"ওয়ালাইকুমুস সালাম {honorific}।" if gave_salam else f"জি {honorific},"
         return {
-            "reply_text": f"ওয়ালাইকুমুস সালাম {honorific}। অবশ্যই। আপনি আমাদের কাছ থেকে আইডি কার্ড, ফিতা এবং কভারের ফুল প্যাকেজ নিতে পারবেন। আপনার কত পিস প্রয়োজন জানাবেন প্লিজ?",
+            "reply_text": f"{greeting} অবশ্যই। আপনি আমাদের কাছ থেকে আইডি কার্ড, ফিতা এবং কভারের ফুল প্যাকেজ নিতে পারবেন। আপনার কত পিস প্রয়োজন জানাবেন প্লিজ?",
             "media_sequence": [],
             "matched_images": [],
             "voice_url": "",
