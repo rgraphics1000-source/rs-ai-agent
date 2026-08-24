@@ -201,13 +201,17 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
    - অর্ডার কনফার্ম করতে Advance Payment বাধ্যতামূলক (১০,০০০-১২,০০০ টাকার অর্ডারে ১,০০০-১,৫০০ টাকা Advance, বেশি মূল্যের অর্ডারে প্রয়োজন অনুযায়ী বাড়বে)। বাকি টাকা ডেলিভারির সময় পরিশোধযোগ্য।
    - কাস্টমার যদি পুরো টাকা কুরিয়ারে দিতে চায় বা অ্যাডভান্স দিতে না চায়, তাহলে বলবে: "আমাদের পণ্যগুলো Custom Order হওয়ায় Full Cash on Delivery প্রযোজ্য নয়। কারণ আপনার প্রতিষ্ঠানের নাম ও তথ্য অনুযায়ী পণ্যগুলো বিশেষভাবে তৈরি করা হয়। তাই অর্ডার Confirm করার সময় একটি Advance Payment নেওয়া হয় এবং বাকি টাকা Delivery-এর সময় পরিশোধ করা যায়।" (ওনার স্যারের অনুমতি ছাড়া অ্যাডভান্স বাদ দেওয়া যাবে না)।
 
-৫. অর্ডার কনফার্মেশন ও হোয়াটসঅ্যাপে তথ্য সংগ্রহ (WhatsApp: 01816504097):
-   - কাস্টমার অর্ডার কনফার্ম করতে চাইলে বলবে: "জি {honorific}, অর্ডার প্রসেস করার জন্য আপনার প্রতিষ্ঠানের প্রয়োজনীয় তথ্য ও লোগো আমাদের অফিসিয়াল হোয়াটসঅ্যাপ নম্বর 01816504097-এ পাঠিয়ে দিন। Design আমরা আমাদের পক্ষ থেকেই তৈরি করে দেব।"
+৫. তথ্য পাঠানোর দুই মাধ্যম ও অর্ডার কনফার্মেশন (WhatsApp + Google Form):
+   - কাস্টমার যদি তথ্য কীভাবে দেব বা কীভাবে পাঠাতে হবে জানতে চায়, তবে সরাসরি ২টি সহজ মাধ্যমের কথা বলবে:
+     "আমাদের তথ্য দেওয়ার ২টি সহজ মাধ্যম রয়েছে {honorific}:
+     ১) WhatsApp: আমাদের অফিসিয়াল হোয়াটসঅ্যাপ নম্বর 01816504097-এ প্রতিষ্ঠানের নাম, লোগো এবং প্রয়োজনীয় তথ্যগুলো (বা ওয়ার্ড/এক্সেল ফাইল) সরাসরি পাঠিয়ে দিতে পারেন।
+     ২) Google Form: আপনার প্রতিষ্ঠানের জন্য আমরা একটি কাস্টমাইজড গুগল ফর্ম তৈরি করে দিতে পারব, যাতে ঘরে বসেই ছাত্র-ছাত্রী বা স্টাফরা তথ্য ও ছবি সুন্দরভাবে জমা দিতে পারবেন।"
    - ⚠️ কঠোরভাবে মনে রাখবে: কাস্টমারের কাছে কখনোই ডিজাইন ফাইল (Design File) চাওয়া যাবে না। ডিজাইন আমাদের টিমই তৈরি করবে।
 
-৬. গুগল ফর্ম প্রটোকল (Google Form Protocol):
-   - কাস্টমার গুগল ফর্ম চাইলে বলবে: "জি {honorific}, আপনার জন্য Google Form প্রস্তুত করে আমরা পাঠিয়ে দেব।"
-   - এআই নিজে কোনো সরাসরি ফর্ম পাঠাবে না; গুগল ফর্ম প্রস্তুত থাকবে এবং ওনার স্যার / নির্ধারিত টিম কাস্টমারকে পাঠাবেন।
+৬. গুগল ফর্ম ও ভিডিও পাঠানোর নিয়ম (Google Form Video & Edit Correction Video):
+   - কাস্টমার গুগল ফর্ম চাইলে বলবে: "জি {honorific}, আপনার জন্য Google Form প্রস্তুত করে আমরা পাঠিয়ে দেব।" (এআই নিজে থেকে সরাসরি কোনো ফর্ম পাঠাবে না, ওনার/টিম পাঠাবেন)।
+   - কাস্টমার যদি গুগল ফর্মে কীভাবে তথ্য ও ছবি দিতে হয় তা জানতে চায় বা দেখতে চায়, তখন 'গুগল ফর্মে আইডি কার্ডের তথ্য ও ছবি আপলোড করার নিয়ম' ভিডিওটি (Video 1: /static/uploads/media/google_form_submission_guide.mp4) দেবে।
+   - আর কাস্টমার যদি তথ্য সাবমিট করার পর জানতে চায় যে 'তথ্য কীভাবে সংশোধন বা ঠিক করব?', তখন 'তথ্য ও ছবি সাবমিট করার পরে সংশোধনের নিয়ম' ভিডিওটি (Video 2: /static/uploads/media/google_form_edit_correction_guide.mp4) দেবে।
 
 ৭. ডেলিভারি চার্জ ও হিসাব:
    - ঢাকার ভেতরে: প্রথম ১ কেজিতে ৮০ টাকা। পরবর্তী প্রতি কেজিতে ২০ টাকা করে বাড়বে। প্রতি ১০০০ টাকায় ১০ টাকা COD/ফিওডি চার্জ যুক্ত হবে।
@@ -967,32 +971,36 @@ def detect_saved_media_to_send(user_msg: str, bot_reply: str = "", workspace_id:
     res = {"video_url": "", "voice_url": ""}
     
     # 1. Video matching
-    is_asking_video = any(k in msg for k in [
-        "ভিডিও", "ভিডিও দেন", "ভিডিও দেখতে চাই", "ভিডিও পাঠান", "ডেমো ভিডিও", "প্রিন্টিং ভিডিও", 
-        "video", "demo video", "গুগল ফর্মের ভিডিও", "আপলোড ভিডিও", "সংশোধন ভিডিও"
-    ]) or any(k in msg for k in ["গুগল ফর্ম", "তথ্য কিভাবে দিব", "ছবি কিভাবে আপলোড", "কিভাবে পূরণ", "সংশোধন কিভাবে"])
-    
-    if is_asking_video:
+    is_asking_correction_video = any(k in msg for k in ["সংশোধন", "এডিট", "কারেকশন", "ভুল হলে", "ভুল", "correction", "edit"])
+    is_asking_submission_video = any(k in msg for k in [
+        "ভিডিও", "ভিডিও দেন", "ভিডিও দেখতে চাই", "ভিডিও পাঠান", "ডেমো ভিডিও", "video", "demo video",
+        "গুগল ফর্মের ভিডিও", "আপলোড ভিডিও", "ফর্ম পূরণের ভিডিও", "ফর্মের নিয়ম", "ফর্মের নিয়ম",
+        "কিভাবে পূরণ", "কীভাবে পূরণ", "কিভাবে আপলোড", "কীভাবে আপলোড", "ছবি আপলোড", "তথ্য কিভাবে দিব",
+        "তথ্য কীভাবে দেব", "আপলোড করব", "আপলোড করবো", "গুগল ফর্ম"
+    ])
+
+    if is_asking_correction_video:
         all_videos = get_saved_media("video", workspace_id=workspace_id)
-        if all_videos:
-            # Check if specifically asking for correction/modification video
-            if any(k in msg for k in ["সংশোধন", "এডিট", "কারেকশন", "ভুল", "correction", "edit"]):
-                for v in all_videos:
-                    title_desc = (v.get("title", "") + " " + v.get("description", "")).lower()
-                    if "সংশোধন" in title_desc or "correction" in title_desc or "edit" in title_desc:
-                        res["video_url"] = v["file_url"]
-                        break
-            # Otherwise (asking for Google Form fillup, uploading info/photo, or general submission guide)
-            else:
-                for v in all_videos:
-                    title_desc = (v.get("title", "") + " " + v.get("description", "")).lower()
-                    if ("আপলোড" in title_desc or "submission" in title_desc or "upload" in title_desc) and "সংশোধন" not in title_desc:
-                        res["video_url"] = v["file_url"]
-                        break
-            
-            # Fallback to first video if not specifically matched
-            if not res["video_url"] and all_videos:
-                res["video_url"] = all_videos[0]["file_url"]
+        for v in all_videos:
+            title_desc = (v.get("title", "") + " " + v.get("description", "") + " " + v.get("file_url", "")).lower()
+            if "সংশোধন" in title_desc or "correction" in title_desc or "edit" in title_desc:
+                res["video_url"] = v["file_url"]
+                break
+        if not res["video_url"] and all_videos:
+            res["video_url"] = all_videos[0]["file_url"]
+        if not res["video_url"]:
+            res["video_url"] = "/static/uploads/media/google_form_edit_correction_guide.mp4"
+    elif is_asking_submission_video:
+        all_videos = get_saved_media("video", workspace_id=workspace_id)
+        for v in all_videos:
+            title_desc = (v.get("title", "") + " " + v.get("description", "") + " " + v.get("file_url", "")).lower()
+            if ("আপলোড" in title_desc or "submission" in title_desc or "guide" in title_desc or "upload" in title_desc) and "সংশোধন" not in title_desc:
+                res["video_url"] = v["file_url"]
+                break
+        if not res["video_url"] and all_videos:
+            res["video_url"] = all_videos[0]["file_url"]
+        if not res["video_url"]:
+            res["video_url"] = "/static/uploads/media/google_form_submission_guide.mp4"
             
     # 2. Voice matching
     is_asking_voice = any(k in msg for k in [

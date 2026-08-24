@@ -666,23 +666,7 @@ def init_db():
     # Migration: clear unrelated phone number ID 1265595526643418 so only verified target ID is stored
     cursor.execute("UPDATE settings SET value = '' WHERE key = 'whatsapp_phone_number_id' AND value = '1265595526643418'")
 
-    # Migration: update sample photos and honorific training rules
-    cursor.execute(
-        "UPDATE ai_training_rules SET title = ?, response_or_rule = ? WHERE id = 25 OR title LIKE '%ভাইয়া%' OR title LIKE '%আপু%' OR title LIKE '%সম্বোধন%'",
-        ("কাস্টমারের নাম দেখে স্যার/ম্যাম সম্বোধন", "কাস্টমার পুরুষ হলে 'স্যার' এবং মহিলা হলে 'ম্যাম' সম্বোধন করবে। কখনোই 'ভাইয়া' বা 'আপু' বলবে না।")
-    )
-    cursor.execute(
-        "UPDATE ai_training_rules SET response_or_rule = ? WHERE title LIKE '%স্যাম্পল%'",
-        ("কাস্টমার ছবি বা স্যাম্পল দেখতে চাইলে কালবিলম্ব না করে সরাসরি বলবে জি স্যার/ম্যাম, অবশ্যই দিচ্ছি। নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো পাঠানো হলো। এবং সাথে সাথে সবগুলো স্যাম্পল ছবি পাঠাবে।",)
-    )
-    cursor.execute("""
-        INSERT OR REPLACE INTO ai_training_rules (id, workspace_id, title, category, question_or_trigger, response_or_rule, is_active)
-        VALUES (
-            120, 1, 'প্যাকেজের ছবি চাওয়ার নিয়ম', 'Protocol', 'প্যাকেজের ছবি',
-            'কাস্টমার প্যাকেজ বা কম্বো প্যাকেজের ছবি চাইলে টেক্সটে কোনো লম্বা প্যাকেজ লিস্ট দেবে না। শুধুমাত্র বলবে ''জি স্যার/ম্যাম, অবশ্যই দিচ্ছি।'' এবং প্যাকেজের ৭টি ছবি পাঠাবে। সব ছবি পাঠানো শেষ হলে স্বয়ংক্রিয়ভাবে বলবে ''আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন স্যার/ম্যাম।''',
-            1
-        )
-    """)
+
 
     # Safe Automatic Migration for Workspace 1 (RS Graphics)
     cursor.execute("SELECT COUNT(*) FROM workspaces")
@@ -719,26 +703,6 @@ def init_db():
         except Exception:
             pass
 
-    # Automatically purge demo/test workspaces created during previous test sessions
-    try:
-        cursor.execute("""
-            DELETE FROM generated_forms 
-            WHERE form_id IN (SELECT master_form_id FROM google_connections WHERE master_form_id IS NOT NULL AND master_form_id != '')
-        """)
-        cursor.execute("""
-            DELETE FROM generated_forms 
-            WHERE form_id IN (SELECT master_form_id FROM google_form_templates WHERE master_form_id IS NOT NULL AND master_form_id != '')
-        """)
-        cursor.execute("DELETE FROM workspaces WHERE id != 1 AND (name LIKE '%SmartTech%' OR name LIKE '%Test Shop%' OR name LIKE '%Audit Shop%' OR name LIKE '%Smart Accessories%' OR name LIKE '%Page 2%')")
-        cursor.execute("DELETE FROM ai_training_rules WHERE workspace_id != 1 OR title LIKE 'Unique RS Rule%' OR title LIKE 'Unique Gadget Rule%'")
-        cursor.execute("DELETE FROM products WHERE workspace_id != 1")
-        cursor.execute("DELETE FROM faqs WHERE workspace_id != 1")
-        cursor.execute("DELETE FROM saved_media WHERE workspace_id != 1")
-        cursor.execute("DELETE FROM connected_pages WHERE workspace_id != 1 AND (page_name LIKE '%SmartTech%' OR page_name LIKE '%Test%' OR page_name LIKE '%Audit%')")
-        cursor.execute("DELETE FROM whatsapp_accounts WHERE workspace_id != 1 AND (display_phone_number LIKE '%0002%' OR phone_number_id LIKE '%202%')")
-    except Exception as e:
-        print(f"[Purge Demo Workspaces Warning]: {e}")
-
     # Safe Idempotent Consistency Check for Facebook Page 1 and WhatsApp Accounts
     ensure_facebook_page_consistency(conn=conn)
     ensure_whatsapp_account_consistency(conn=conn)
@@ -760,7 +724,7 @@ def init_db():
         ("৬. একক আইটেমের মূল্য তালিকা", "শুধু আইডি কার্ড (১০০ পিস বা বেশি): ৩৫ টাকা/পিস (১০০ × ৩৫ = ৩,৫০০ টাকা)। ২ সেমি মোটা Ribbon: ২৮ টাকা/পিস। ১.৫ সেমি মোটা Ribbon: ২৫ টাকা/পিস। কভার: ক্যাটালগ ও তালিকা অনুযায়ী নির্ধারিত আলাদা মূল্য।", "price_policy", "শুধু কার্ডের দাম কত?", "Pricing", 1),
         ("৭. কাস্টম অর্ডার ও পেমেন্ট পলিসি (Full COD প্রযোজ্য নয়)", "আমাদের ID Card, Ribbon, Cover এবং Package-এর অর্ডারগুলো কাস্টমারের প্রতিষ্ঠানের নাম ও লোগো দিয়ে কাস্টমাইজ করে তৈরি হয়। তাই আমাদের কোনো Full Cash on Delivery (COD) নেই। অর্ডার কনফার্ম করতে Advance Payment বাধ্যতামূলক (সাধারণত ১০,০০০-১২,০০০ টাকার অর্ডারে ১,০০০-১,৫০০ টাকা এবং বেশি মূল্যের অর্ডারে প্রয়োজন অনুযায়ী বাড়বে)। বাকি টাকা ডেলিভারির সময় পরিশোধযোগ্য। কাস্টমার পুরো টাকা কুরিয়ারে দিতে চাইলে বলবে: 'আমাদের পণ্যগুলো Custom Order হওয়ায় Full Cash on Delivery প্রযোজ্য নয়। কারণ আপনার প্রতিষ্ঠানের নাম ও তথ্য অনুযায়ী পণ্যগুলো বিশেষভাবে তৈরি করা হয়। তাই অর্ডার Confirm করার সময় একটি Advance Payment নেওয়া হয় এবং বাকি টাকা Delivery-এর সময় পরিশোধ করা যায়।'", "instruction", "ক্যাশ অন ডেলিভারি হবে?", "Payment & Security", 1),
         ("৮. অর্ডার কনফার্মেশন ও হোয়াটসঅ্যাপে তথ্য সংগ্রহ", "কাস্টমার অর্ডার কনফার্ম করতে চাইলে বলবে: 'অবশ্যই। অর্ডার প্রসেস করার জন্য আপনার প্রতিষ্ঠানের প্রয়োজনীয় তথ্যগুলো আমাদের পাঠাতে হবে। আপনি প্রয়োজনীয় তথ্য ও লোগো আমাদের WhatsApp নম্বর 01816504097-এ পাঠিয়ে দিন। Design আমরা আমাদের পক্ষ থেকেই তৈরি করে দেব।' (কখনোই কাস্টমারের কাছে ডিজাইন ফাইল চাওয়া যাবে না)।", "instruction", "অর্ডার কনফার্ম করতে চাই", "Order Processing", 1),
-        ("৯. গুগল ফর্ম ও ডেমো ভিডিও পলিসি", "কাস্টমার গুগল ফর্ম চাইলে বলবে: 'অবশ্যই। আপনি একটু অপেক্ষা করুন। আপনার জন্য Google Form প্রস্তুত করে আমরা পাঠিয়ে দেব।' (এজেন্ট নিজে থেকে সরাসরি কোনো ফর্ম পাঠাবে না, ওনার/টিম পাঠাবেন)। গুগল ফর্মে কীভাবে তথ্য দিতে হয় জানতে চাইলে Video 1 (Google Form পূরণ করার ভিডিও) এবং সংশোধনের জন্য Video 2 (তথ্য সংশোধনের ভিডিও) দেবে।", "instruction", "গুগল ফর্ম", "Data Collection", 1),
+        ("৯. তথ্য দেওয়ার দুই মাধ্যম ও ভিডিও পলিসি", "কাস্টমার তথ্য কীভাবে দেব জানতে চাইলে বলবে: 'আমাদের তথ্য দেওয়ার ২টি সহজ মাধ্যম রয়েছে স্যার/ম্যাম: ১) WhatsApp: আমাদের অফিসিয়াল হোয়াটসঅ্যাপ নম্বর 01816504097-এ প্রতিষ্ঠানের নাম, লোগো এবং প্রয়োজনীয় তথ্যগুলো সরাসরি পাঠিয়ে দিতে পারেন। ২) Google Form: আপনার প্রতিষ্ঠানের জন্য আমরা একটি কাস্টমাইজড গুগল ফর্ম তৈরি করে দিতে পারব, যাতে সহজে ঘরে বসেই তথ্য ও ছবি আপলোড করতে পারবেন।' কাস্টমার গুগল ফর্মে কীভাবে তথ্য ও ছবি আপলোড করতে হয় জানতে চাইলে 'গুগল ফর্মে আইডি কার্ডের তথ্য ও ছবি আপলোড করার নিয়ম' (Video 1) দেবে। আর তথ্য সাবমিট করার পর জানতে চাইলে যে 'তথ্য কীভাবে সংশোধন বা ঠিক করব?', তখন 'তথ্য ও ছবি সাবমিট করার পরে সংশোধনের নিয়ম' (Video 2) দেবে।", "instruction", "তথ্য কিভাবে দিব", "Data Collection", 1),
         ("১০. ডেলিভারি চার্জ ও হিসাব", "ঢাকার ভেতরে: প্রথম ১ কেজি ৮০ টাকা, অতিরিক্ত প্রতি কেজি ২০ টাকা করে এবং প্রতি ১,০০০ টাকায় ১০ টাকা COD/ফিওডি চার্জ যুক্ত হবে। ঢাকার বাইরে: প্রথম ১ কেজি ১৩০ টাকা, অতিরিক্ত প্রতি কেজি ২০ টাকা করে এবং প্রতি ১,০০০ টাকায় ১০ টাকা COD/ফিওডি চার্জ যুক্ত হবে।", "qa", "ডেলিভারি চার্জ কত?", "Delivery & Payment", 1),
         ("১১. প্রোডাকশন সময় ও ডেলিভারি টাইমলাইন", "কাস্টমার কাজ করতে কতদিন লাগবে জানতে চাইলে বলবে: 'আপনার কাছ থেকে প্রয়োজনীয় সব তথ্য দিয়ে Order Complete করার পর আমাদের কাজ সম্পন্ন করতে ন্যূনতম ৫ থেকে ৬ দিন সময় প্রয়োজন হবে। এরপর আমরা আপনার কাজ প্রস্তুত করে Proof দেখাব। আপনি Proof দেখে Final করলে আমরা Printing করব। Printing হওয়ার দিনই Courier করে দেব, ইনশাআল্লাহ। এরপর Courier-এর মাধ্যমে সাধারণত ২৪ থেকে ৪৮ ঘণ্টার মধ্যে আপনার পণ্য হাতে পৌঁছে যাবে, ইনশাআল্লাহ।'", "qa", "কতদিন সময় লাগবে?", "Timeline", 1),
         ("১২. এজেন্টের পরিচয় ও ওনার সম্বোধনের নিয়ম", "এজেন্টের নাম 'নাদিম'। ওনারের নাম 'মোহাম্মদ রাশেদুল ইসলাম'। এজেন্ট কখনোই নিজে থেকে ওনারের নাম বলবে না, সর্বদা অত্যন্ত শ্রদ্ধার সাথে 'আমাদের ওনার স্যার' বা 'ওনার স্যার' বলবে। কেউ যদি 'রাশেদ ভাই কোথায়?' বা 'রাশেদ কোথায়?' জানতে চায়, তখন বলবে: 'রাশেদ স্যার আমাদের ওনার স্যার। আপনার বিষয়টি ওনার স্যারকে জানিয়ে দিচ্ছি।'", "instruction", "রাশেদ ভাই কোথায়", "Persona & Etiquette", 1),
@@ -780,16 +744,9 @@ def init_db():
                 INSERT INTO ai_training_rules (workspace_id, title, response_or_rule, rule_type, question_or_trigger, category, is_active)
                 VALUES (1, ?, ?, ?, ?, ?, ?)
             """, (r_title, r_resp, r_type, r_trig, r_cat, r_active))
-        else:
-            cursor.execute("""
-                UPDATE ai_training_rules
-                SET response_or_rule = ?, rule_type = ?, question_or_trigger = ?, category = ?, is_active = ?
-                WHERE id = ?
-            """, (r_resp, r_type, r_trig, r_cat, r_active, existing_r["id"]))
 
-    # Products Table: Fresh setup without hardcoded demo seeds
+    # Products Table: Ensure workspace scoping without deleting user-added products
     cursor.execute("UPDATE products SET workspace_id = 1 WHERE workspace_id IS NULL OR workspace_id = 0")
-    cursor.execute("DELETE FROM products WHERE code IN ('PJ-101', 'TP-202', 'CB-303')")
     
     # Clean up legacy /forms/d/e/ URLs to use canonical /forms/d/{id}/viewform
     try:
@@ -801,6 +758,9 @@ def init_db():
         """)
     except Exception:
         pass
+
+    # Ensure default saved media (videos, voices) are present
+    ensure_default_saved_media(conn=conn)
 
     conn.commit()
     conn.close()
@@ -1028,21 +988,13 @@ def delete_faq(faq_id: int) -> bool:
 # ============================================================
 
 def ensure_default_saved_media(conn=None):
-    """Initializes default saved media only once on first database setup and never resurrects deleted items."""
+    """Initializes default saved media idempotently and safely without overwriting user custom media."""
     should_close = False
     if conn is None:
         conn = get_db_connection()
         should_close = True
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT value FROM settings WHERE key = 'saved_media_initial_seeded'")
-        row = cursor.fetchone()
-        if row:
-            return  # Already seeded initially; respect user's deletions
-
-        # Mark as seeded so future calls never resurrect deleted items
-        cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('saved_media_initial_seeded', '1')")
-
         defaults = [
             (
                 "গুগল ফর্মে আইডি কার্ডের তথ্য ও ছবি আপলোড করার নিয়ম",
