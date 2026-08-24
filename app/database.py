@@ -2926,15 +2926,40 @@ def claim_media_delivery(
             ex_dict = dict(existing)
             status = ex_dict.get("status", "PENDING")
             
-            # If already sent, skip immediately
+            # If already sent in the SAME batch or within 45s (webhook duplicate retry), skip duplicate.
+            # But for a new user turn (>45s later or different batch_id), allow sending!
             if status == "SENT":
-                conn.close()
-                return False, ex_dict
+                sent_at_str = ex_dict.get("updated_at") or ex_dict.get("created_at")
+                existing_batch = ex_dict.get("batch_id")
+                is_recent = False
+                if sent_at_str:
+                    try:
+                        sent_dt = datetime.fromisoformat(str(sent_at_str).replace(" ", "T"))
+                        if sent_dt.tzinfo is None:
+                            sent_dt = sent_dt.replace(tzinfo=timezone.utc)
+                        diff = (datetime.now(timezone.utc) - sent_dt).total_seconds()
+                        if diff < 45 or (batch_id and existing_batch == batch_id):
+                            is_recent = True
+                    except Exception:
+                        pass
+                if is_recent:
+                    conn.close()
+                    return False, ex_dict
                 
-            # If UNKNOWN (timed out previously), block immediate duplicate retry
+            # If UNKNOWN (timed out previously), block immediate retry within 60s
             if status == "UNKNOWN":
-                conn.close()
-                return False, ex_dict
+                updated_at_str = ex_dict.get("updated_at")
+                if updated_at_str:
+                    try:
+                        updated_dt = datetime.fromisoformat(str(updated_at_str).replace(" ", "T"))
+                        if updated_dt.tzinfo is None:
+                            updated_dt = updated_dt.replace(tzinfo=timezone.utc)
+                        diff = (datetime.now(timezone.utc) - updated_dt).total_seconds()
+                        if diff < 60:
+                            conn.close()
+                            return False, ex_dict
+                    except Exception:
+                        pass
                 
             # If currently SENDING, check if lock is fresh (<60s)
             if status == "SENDING":
