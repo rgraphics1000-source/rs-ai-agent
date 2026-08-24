@@ -97,9 +97,19 @@ app.include_router(google_router)
 # Ensure database tables are created on startup
 @app.on_event("startup")
 def startup_event():
-    init_db()
-    ensure_facebook_page_consistency()
-    ensure_whatsapp_account_consistency()
+    try:
+        init_db()
+    except Exception as e:
+        print(f"[DB Startup Exception]: {e}")
+    try:
+        ensure_facebook_page_consistency()
+    except Exception as e:
+        print(f"[FB Consistency Exception]: {e}")
+    try:
+        ensure_whatsapp_account_consistency()
+    except Exception as e:
+        print(f"[WA Consistency Exception]: {e}")
+
     # Run webhook subscription in background daemon thread to ensure instant port binding
     import threading
     def _bg_subscribe():
@@ -108,7 +118,7 @@ def startup_event():
         except Exception as e:
             print(f"[Facebook Auto-Subscribe on Startup Exception]: {e}")
     threading.Thread(target=_bg_subscribe, daemon=True).start()
-    print(f"[{settings.PROJECT_NAME}] Database initialized successfully.")
+    print(f"[{settings.PROJECT_NAME}] Server started successfully on port {os.getenv('PORT', 8000)}.")
 
 # Lightweight Health Check Endpoints
 @app.get("/health")

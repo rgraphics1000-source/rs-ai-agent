@@ -4,6 +4,7 @@ services:
     runtime: docker
     plan: free
     region: singapore
+    healthCheckPath: /health
     envVars:
       - key: PORT
         value: "10000"

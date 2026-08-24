@@ -9,34 +9,26 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
     curl \
-    git \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Set up a new user named "user" with user ID 1000 (Required for Hugging Face Spaces / Render)
-RUN useradd -m -u 1000 user
-USER user
-ENV HOME=/home/user \
-    PATH=/home/user/.local/bin:$PATH
-
-WORKDIR $HOME/app
+WORKDIR /app
 
 # Install python dependencies
-COPY --chown=user:user requirements.txt .
-RUN pip install --no-cache-dir --upgrade -r requirements.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy project files
-COPY --chown=user:user . .
+COPY . .
 
-# Ensure upload directory exists and is writable
-RUN mkdir -p static/uploads
+# Ensure upload directory exists and has full permissions
+RUN mkdir -p static/uploads && chmod -R 777 static/uploads
 
 # Expose ports (10000 for Render, 7860 for Hugging Face, 8000 for VPS/local)
 EXPOSE 10000
-EXPOSE 7860
 EXPOSE 8000
+EXPOSE 7860
 
 # Launch FastAPI app with Uvicorn on dynamic PORT (default 10000 for Render)
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]
