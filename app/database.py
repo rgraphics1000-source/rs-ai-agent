@@ -1264,6 +1264,14 @@ def ensure_default_saved_media(conn=None):
                 1
             ),
             (
+                "কার্ড ও ফিতা এর কোয়ালিটি কেমন হবে",
+                "voice",
+                "/static/uploads/media/id_card_and_fita_quality.aac",
+                "আমাদের জাপানি UV কালার প্রিন্ট পিভিসি আইডি কার্ড এবং প্রিমিয়াম ডিজিটাল সাবলিমেশন ফিতার কোয়ালিটি ও মান সংক্রান্ত ভয়েস বার্তা।",
+                0,
+                1
+            ),
+            (
                 "আইডি কার্ড, ফিতা ও কভারের বৈশিষ্ট্য ও কোয়ালিটি",
                 "voice",
                 "/static/uploads/media/id_card_features_voice_note.mp3",

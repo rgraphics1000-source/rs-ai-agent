@@ -69,8 +69,11 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
         res2 = evaluate_id_card_workflow("এই কভার টা কত করে", workspace_id=1)
         self.assertIsNone(res2)
 
-        res3 = evaluate_id_card_workflow("ভাইয়া বলেন [কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: T-014V_SOFT_COVER_10_TK_4.png]", workspace_id=1)
-        self.assertIsNone(res3)
+    def test_06_quality_inquiry_sends_quality_voice_note(self):
+        res = evaluate_id_card_workflow("আপনাদের কার্ড ও ফিতার কোয়ালিটি কেমন হবে?", workspace_id=1)
+        self.assertIsNotNone(res)
+        self.assertIn("id_card_and_fita_quality.aac", res.get("voice_url"))
+        self.assertIn("কোয়ালিটি ও বৈশিষ্ট্য", res.get("reply_text"))
 
 if __name__ == "__main__":
     unittest.main()

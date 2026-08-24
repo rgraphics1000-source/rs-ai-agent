@@ -266,11 +266,13 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
 ৮. প্রোডাকশন সময় ও ডেলিভারি টাইমলাইন:
    - কাস্টমার ডেলিভারি সময় বা কতদিন লাগবে জানতে চাইলে বলবে: "আপনার কাছ থেকে প্রয়োজনীয় সব তথ্য দিয়ে Order Complete করার পর আমাদের কাজ সম্পন্ন করতে ন্যূনতম ৫ থেকে ৬ দিন সময় প্রয়োজন হবে। এরপর আমরা আপনার কাজ প্রস্তুত করে Proof দেখাব। আপনি Proof দেখে Final করলে আমরা Printing করব। Printing হওয়ার দিনই Courier করে দেব, ইনশাআল্লাহ। এরপর Courier-এর মাধ্যমে সাধারণত ২৪ থেকে ৪৮ ঘণ্টার মধ্যে আপনার পণ্য হাতে পৌঁছে যাবে, ইনশাআল্লাহ।"
 
-৯. ভিডিও ও ভয়েস ডেমো পাঠানোর নিয়ম (Persistent Media):
-   - কাস্টমার গুগল ফর্মে কীভাবে তথ্য ও ছবি আপলোড করতে হয় জানতে চাইলে "Google Form পূরণ করার ভিডিও" (Video 1) দেবে।
-   - তথ্য সংশোধন করতে চাইলে "তথ্য সংশোধনের ভিডিও" (Video 2) দেবে।
-   - আইডি কার্ড, ফিতা ও কভারের বৈশিষ্ট্য বা কোয়ালিটি জানতে চাইলে সংরক্ষিত ভয়েস ক্লিপগুলো দেবে।
-   - প্যাকেজের ছবি পাঠানোর পর ৮০+ পিস অর্ডারে স্পেশাল অফার ভয়েস ক্লিপ (PTT-20260119-WA0105.mp3) দেবে।
+৯. ভিডিও ও ভয়েস ডেমো পাঠানোর নিয়ম (Persistent Media Directives):
+   - কাস্টমার যদি আমাদের আইডি কার্ড বা ফিতার কোয়ালিটি / বৈশিষ্ট্য / মান কেমন হবে জানতে চায় (যেমন: "কোয়ালিটি কেমন", "কোয়ালিটি কেমন হবে", "মান কেমন", "কার্ড ও ফিতার কোয়ালিটি কেমন হবে", "কোয়ালিটি সম্পর্কে জানতে চাই"):
+     • বলবে: "জি {honorific}, আমাদের কার্ড ও ফিতার কোয়ালিটি ও বৈশিষ্ট্য কেমন হবে সে সম্পর্কে বিস্তারিত জানতে নিচের ভয়েস বার্তাটি শুনুন।"
+     • এবং সাথে সাথে 'কার্ড ও ফিতা এর কোয়ালিটি কেমন হবে' ভয়েস ক্লিপটি (`/static/uploads/media/id_card_and_fita_quality.aac`) কাস্টমারকে পাঠিয়ে দেবে।
+   - কাস্টমার গুগল ফর্মে কীভাবে তথ্য ও ছবি আপলোড করতে হয় জানতে চাইলে "Google Form পূরণ করার ভিডিও" (Video 1: `/static/uploads/media/google_form_submission_guide.mp4`) দেবে।
+   - তথ্য সংশোধন করতে চাইলে "তথ্য সংশোধনের ভিডিও" (Video 2: `/static/uploads/media/google_form_edit_correction_guide.mp4`) দেবে।
+   - প্যাকেজের ছবি পাঠানোর পর ৮০+ পিস অর্ডারে স্পেশাল অফার ভয়েস ক্লিপ (`/static/uploads/voice/PTT-20260119-WA0105.mp3`) দেবে।
 
 ৯. ভয়েস মেসেজের সরাসরি উত্তর দেওয়ার কঠোর নিয়ম:
    - কাস্টমার ভয়েস মেসেজ পাঠালে অডিওটি মনোযোগ দিয়ে শুনে কাস্টমার যা জানতে চেয়েছেন তার সরাসরি ও তাৎক্ষণিক উত্তর দেবে। কখনোই বলবে না: 'টাইপ করে দিন' বা 'ভয়েস পেয়েছি'।
@@ -620,6 +622,22 @@ def evaluate_id_card_workflow(
     ])
     if is_specific_item_inquiry:
         return None
+
+    # Check if customer is asking about card/fita quality or features
+    is_asking_quality = any(k in msg for k in [
+        "কোয়ালিটি", "কোয়ালিটি", "মান কেমন", "কোয়ালিটি কেমন", "কোয়ালিটি কেমন হবে",
+        "কোয়ালিটি কেমন হবে", "বৈশিষ্ট্য", "quality"
+    ])
+    if is_asking_quality:
+        return {
+            "reply_text": f"জি {honorific}, আমাদের কার্ড ও ফিতার কোয়ালিটি ও বৈশিষ্ট্য কেমন হবে সে সম্পর্কে বিস্তারিত জানতে নিচের ভয়েস বার্তাটি শুনুন:",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "/static/uploads/media/id_card_and_fita_quality.aac",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "id_card_quality_voice_dispatch"
+        }
 
     # Check history context for bot questions and prior quantity
     last_bot_msg = ""
@@ -1061,18 +1079,20 @@ def detect_saved_media_to_send(user_msg: str, bot_reply: str = "", workspace_id:
     # 2. Voice matching
     is_asking_voice = any(k in msg for k in [
         "ভয়েস", "ভয়েস", "ভয়েস দেন", "ভয়েস দেন", "অডিও", "রেকর্ডিং", "ভয়েসে বলেন", "ভয়েসে বলেন",
-        "বৈশিষ্ট্য", "কোয়ালিটি", "কোয়ালিটি", "voice", "audio", "quality"
+        "বৈশিষ্ট্য", "কোয়ালিটি", "কোয়ালিটি", "মান কেমন", "কোয়ালিটি কেমন", "কোয়ালিটি কেমন", "voice", "audio", "quality"
     ])
     if is_asking_voice:
         all_voices = get_saved_media("voice", workspace_id=workspace_id)
         if all_voices:
             for v in all_voices:
-                title_desc = (v.get("title", "") + " " + v.get("description", "")).lower()
-                if "বৈশিষ্ট্য" in title_desc or "কোয়ালিটি" in title_desc or "কোয়ালিটি" in title_desc or "feature" in title_desc or "quality" in title_desc:
+                title_desc = (v.get("title", "") + " " + v.get("description", "") + " " + v.get("file_url", "")).lower()
+                if "id_card_and_fita_quality" in title_desc or "কোয়ালিটি" in title_desc or "কোয়ালিটি" in title_desc or "বৈশিষ্ট্য" in title_desc:
                     res["voice_url"] = v["file_url"]
                     break
             if not res["voice_url"] and all_voices:
                 res["voice_url"] = all_voices[0]["file_url"]
+        if not res["voice_url"]:
+            res["voice_url"] = "/static/uploads/media/id_card_and_fita_quality.aac"
             
     return res
 
@@ -1094,6 +1114,9 @@ def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", worksp
 
     if any(k in msg for k in ["সময়", "কতদিন", "কয়দিন", "time", "duration"]):
         return f"জি {honorific}, তথ্য দেওয়ার পর কাজ ও ডিজাইন করতে ৫-৬ দিন সময় লাগবে। প্রুফ অনুমোদনের পর প্রিন্ট করে ২৪-৪৮ ঘণ্টার মধ্যে কুরিয়ারে ডেলিভারি পেয়ে যাবেন।"
+
+    if any(k in msg for k in ["কোয়ালিটি", "কোয়ালিটি", "মান কেমন", "কোয়ালিটি কেমন", "কোয়ালিটি কেমন হবে", "কোয়ালিটি কেমন হবে", "বৈশিষ্ট্য", "quality"]):
+        return f"জি {honorific}, আমাদের কার্ড ও ফিতার কোয়ালিটি ও বৈশিষ্ট্য কেমন হবে সে সম্পর্কে বিস্তারিত জানতে নিচের ভয়েস বার্তাটি শুনুন:"
 
     # Workspace 1 (RS Graphics) specific fallbacks
     if int(workspace_id or 1) == 1:
