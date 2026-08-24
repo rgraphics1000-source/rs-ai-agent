@@ -393,9 +393,35 @@ def extract_order_quantity_number(text: str) -> Optional[int]:
     if any(k in cleaned_lower for k in ["টাকা", "টাকার", "tk", "taka", "৳", "রেট", "মূল্য", "খরচ"]) and not any(k in cleaned_lower for k in ["পিস", "pcs", "টা", "টি", "কপি", "বানাবো"]):
         return None
 
+    # Range pattern: e.g. "2-3 শত", "2-3 sho", "2-3শ", "200-300 পিস", "৫০-১০০ পিস"
+    m_range_hundreds = re.search(r'(\d+)\s*[-/toথেকে]+\s*(\d+)\s*(?:শত|শ|sho|শো)', cleaned_lower)
+    if m_range_hundreds:
+        try:
+            return int(m_range_hundreds.group(1)) * 100
+        except Exception:
+            pass
+
+    m_range = re.search(r'(\d+)\s*[-/toথেকে]+\s*(\d+)\s*(?:পিস|পিসেস|টা|টি|pcs|pc|pieces|piece|কপি)?', cleaned_lower)
+    if m_range:
+        try:
+            val = int(m_range.group(1))
+            if 1 <= val <= 50000:
+                return val
+        except Exception:
+            pass
+
+    # Hundred multipliers: e.g. "5 শ", "5শ", "5 শত", "২ শত", "৩ শ", "5 sho"
+    m_hundred = re.search(r'(\d+)\s*(?:শত|শ|sho|শো)\s*(?:পিস|পিসেস|টা|টি|pcs|pc|pieces|piece|কপি)?', cleaned_lower)
+    if m_hundred:
+        try:
+            return int(m_hundred.group(1)) * 100
+        except Exception:
+            pass
+
     # Word based numbers in bengali
     bengali_words = [
         ('এক হাজার', 1000), ('হাজার', 1000), ('পাঁচশত', 500), ('পাঁচশ', 500),
+        ('চারশত', 400), ('চারশ', 400),
         ('তিনশত', 300), ('তিনশ', 300), ('দুইশত', 200), ('দুইশ', 200),
         ('একশত', 100), ('একশ', 100), ('নব্বই', 90), ('আশি', 80), ('সত্তর', 70),
         ('ষাট', 60), ('পঞ্চাশ', 50), ('পঁঞ্চাশ', 50), ('চল্লিশ', 40),
@@ -545,38 +571,59 @@ VOICE_PACKAGE_SPECIAL_OFFER = "/static/uploads/voice/PTT-20260119-WA0105.mp3"
 
 def build_full_sample_sequence(quantity: int = None, customer_name: str = "Customer", workspace_id: int = 1) -> list:
     """
-    Returns the clean package sequence:
-    1. Review Link (for building trust):
-       "আমাদের কাজের কোয়ালিটি ও সম্মানিত কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন: https://www.facebook.com/share/p/19Agfhw4gv/"
-    2. All 7 Package photos
-    3. Post-package Voice Note or Price explanation based on quantity:
-       - Quantity >= 80 (80, 90, 100+ pcs): Voice note PTT-20260119-WA0105.mp3
-       - Quantity 30-49 pcs (30 to 49 pcs): +10 TK per piece explanation
-       - Quantity 50-79 pcs: Fixed package rate explanation
+    Returns the complete phased sample sequence according to strict training:
+    1. Initial Cards (15 photos)
+    2. Text: "এগুলো আমাদের কার্ড, আমাদের তৈরি করা কার্ড।"
+    3. Fita (8 photos)
+    4. Text: "এগুলো আমাদের প্রিন্ট করা ফিতা।"
+    5. Covers (8 photos)
+    6. Voice Note (Special Offer voice note PTT-20260119-WA0105.mp3 if quantity >= 80 or not specified)
+    7. Review Link: "আমাদের কাজের কোয়ালিটি ও সম্মানিত কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন: https://www.facebook.com/share/p/19Agfhw4gv/"
+    8. Package sample photos (7 photos)
+    9. Concluding question / tier text based on quantity.
     """
     honorific = detect_customer_gender_title(customer_name)
     seq = []
     
-    # 1. Review Link for customer trust
+    # 1. Cards (15 photos) + Text
+    id_card_imgs = get_id_card_sample_images(workspace_id=workspace_id)
+    if id_card_imgs:
+        seq.append({"type": "images", "category": "id_card", "urls": id_card_imgs})
+        seq.append({"type": "text", "text": f"এগুলো আমাদের কার্ড, আমাদের তৈরি করা কার্ড।"})
+
+    # 2. Fita (8 photos) + Text
+    fita_imgs = get_fita_sample_images(workspace_id=workspace_id)
+    if fita_imgs:
+        seq.append({"type": "images", "category": "fita", "urls": fita_imgs})
+        seq.append({"type": "text", "text": f"এগুলো আমাদের প্রিন্ট করা ফিতা।"})
+
+    # 3. Covers (8 photos)
+    cover_imgs = get_cover_sample_images(workspace_id=workspace_id)
+    if cover_imgs:
+        seq.append({"type": "images", "category": "cover", "urls": cover_imgs})
+
+    # 4. Voice Note (Special Offer)
+    if quantity is None or quantity >= 80:
+        seq.append({
+            "type": "voice",
+            "url": VOICE_PACKAGE_SPECIAL_OFFER,
+            "text": f"প্যাকেজের বিস্তারিত ও স্পেশাল অফার সংক্রান্ত ভয়েস বার্তাটি শুনুন {honorific}।"
+        })
+
+    # 5. Review Link for customer trust
     seq.append({
         "type": "text",
         "text": f"আমাদের কাজের কোয়ালিটি ও সম্মানিত কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন:\n{REVIEW_FACEBOOK_POST_URL}"
     })
 
-    # 2. Packages (7 photos)
+    # 6. Packages (7 photos)
     pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
     if pkg_imgs:
         seq.append({"type": "images", "category": "package", "urls": pkg_imgs})
 
-    # 3. Post-package Voice Note / Tier explanation
+    # 7. Post-package Voice Note / Tier explanation
     if quantity is not None:
-        if quantity >= 80:
-            seq.append({
-                "type": "voice",
-                "url": VOICE_PACKAGE_SPECIAL_OFFER,
-                "text": f"প্যাকেজের বিস্তারিত ও স্পেশাল অফার সংক্রান্ত ভয়েস বার্তাটি শুনুন {honorific}।"
-            })
-        elif 30 <= quantity < 50:
+        if 30 <= quantity < 50:
             seq.append({
                 "type": "text",
                 "text": f"আমাদের প্যাকেজগুলোর রেট ১০০+ অর্ডারের ক্ষেত্রে প্রযোজ্য। আপনাদের যেহেতু ১০০ এর কম ({quantity} পিস), তাই প্রতি প্যাকেজে ১০ টাকা করে বেশি হবে। আপনার কোন প্যাকেজটি পছন্দ জানাবেন {honorific}।"
@@ -585,6 +632,11 @@ def build_full_sample_sequence(quantity: int = None, customer_name: str = "Custo
             seq.append({
                 "type": "text",
                 "text": f"প্যাকেজের ছবিতে উল্লেখিত রেগুলার মূল্যে আমরা আপনার কাজটি নিখুঁতভাবে তৈরি করে দেব। আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+            })
+        else:
+            seq.append({
+                "type": "text",
+                "text": f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
             })
     else:
         seq.append({
@@ -766,7 +818,7 @@ def evaluate_id_card_workflow(
             pkg_imgs = get_package_sample_images(workspace_id)
             voice_to_send = VOICE_PACKAGE_SPECIAL_OFFER if qty >= 80 else ""
             return {
-                "reply_text": f"জি {honorific}, অবশ্যই দিচ্ছি। নিচে আমাদের প্যাকেজগুলো পাঠানো হলো:",
+                "reply_text": f"জি {honorific}, তাহলে আমি আপনাকে আমাদের স্যাম্পলগুলো পাঠিয়ে দিচ্ছি।",
                 "media_sequence": seq,
                 "matched_images": pkg_imgs,
                 "voice_url": voice_to_send,
@@ -778,43 +830,15 @@ def evaluate_id_card_workflow(
     # Case C: Asking specifically for packages or samples
     is_package_request = any(k in msg for k in [
         "প্যাকেজ", "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
-        "কম্বো", "কম্বো প্যাকেজ", "package", "combo", "পেকেজ"
+        "কম্বো", "কম্বো প্যাকেজ", "package", "combo", "পেকেজ", "স্যাম্পল", "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দিন"
     ]) and not any(k in msg for k in ["এটি", "এটা", "এইটা", "এই প্যাকেজ", "পছন্দ", "নির্বাচন"])
     if is_package_request:
+        seq = build_full_sample_sequence(quantity=effective_qty, customer_name=customer_name, workspace_id=workspace_id)
         pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
-        seq = [
-            {
-                "type": "text",
-                "text": f"আমাদের কাজের কোয়ালিটি ও সম্মানিত কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন:\n{REVIEW_FACEBOOK_POST_URL}"
-            },
-            {"type": "images", "category": "package", "urls": pkg_imgs}
-        ]
-        voice_to_send = ""
-        if effective_qty is not None and effective_qty >= 80:
-            seq.append({
-                "type": "voice",
-                "url": VOICE_PACKAGE_SPECIAL_OFFER,
-                "text": f"প্যাকেজের বিস্তারিত ও স্পেশাল অফার সংক্রান্ত ভয়েস বার্তাটি শুনুন {honorific}।"
-            })
-            voice_to_send = VOICE_PACKAGE_SPECIAL_OFFER
-        elif effective_qty is not None and 30 <= effective_qty < 50:
-            seq.append({
-                "type": "text",
-                "text": f"আমাদের প্রতি প্যাকেজে প্যাকেজের সাথে আরো ১০ টাকা করে বৃদ্ধি হবে। যেহেতু আমাদের এই প্যাকেজগুলোর যে রেট দেওয়া আছে এটা ১০০ প্লাস অর্ডারের ক্ষেত্রে প্রযোজ্য। আপনাদের যেহেতু ১০০ এর অনেক কম যার কারণে আপনাদের প্রতি প্যাকেজে ১০ টাকা করে বেশি দিলে আমরা আপনাদের কাজটা করতে পারবো।"
-            })
-        elif effective_qty is not None and 50 <= effective_qty < 80:
-            seq.append({
-                "type": "text",
-                "text": f"প্যাকেজের ছবিতে উল্লেখিত রেগুলার মূল্যে আমরা আপনার কাজটি নিখুঁতভাবে তৈরি করে দেব। আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
-            })
-        else:
-            seq.append({
-                "type": "text",
-                "text": f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
-            })
+        voice_to_send = VOICE_PACKAGE_SPECIAL_OFFER if (effective_qty is None or effective_qty >= 80) else ""
 
         return {
-            "reply_text": f"জি {honorific}, অবশ্যই দিচ্ছি। নিচে আমাদের প্যাকেজগুলোর ছবি দেওয়া হলো:",
+            "reply_text": f"জি {honorific}, তাহলে আমি আপনাকে আমাদের স্যাম্পলগুলো পাঠিয়ে দিচ্ছি।",
             "media_sequence": seq,
             "matched_images": pkg_imgs,
             "voice_url": voice_to_send,

@@ -61,14 +61,14 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(res["media_sequence"]), 0)
 
     def test_05_quantity_80_to_100_triggers_full_sequence_with_review_link_packages_and_voice(self):
-        """Quantity >= 80 (e.g. 80, 90, 100 pcs) sends: Review Link -> 7 Packages -> Voice Note."""
+        """Quantity >= 80 (e.g. 80, 90, 100 pcs) sends: Cards -> Fita -> Covers -> Voice -> Review -> Packages."""
         res = evaluate_id_card_workflow(
             message_text="১০০ পিস বানাবো",
             customer_name="Al-Amin",
             workspace_id=1
         )
         self.assertIsNotNone(res)
-        self.assertIn("প্যাকেজগুলো পাঠানো হলো", res["reply_text"])
+        self.assertIn("স্যাম্পলগুলো পাঠিয়ে দিচ্ছি", res["reply_text"])
         seq = res["media_sequence"]
         
         # Verify sequence components
@@ -80,11 +80,25 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         # Verify review link presence
         text_contents = [s.get("text", "") for s in seq if s["type"] == "text"]
         self.assertTrue(any(REVIEW_FACEBOOK_POST_URL in t for t in text_contents))
+        self.assertTrue(any("এগুলো আমাদের কার্ড" in t for t in text_contents))
+        self.assertTrue(any("এগুলো আমাদের প্রিন্ট করা ফিতা" in t for t in text_contents))
         
-        # Verify package images in sequence (only packages, not all other products)
+        # Verify card, fita, cover, package images in sequence
         pkg_seq = [s for s in seq if s.get("category") == "package"]
         self.assertEqual(len(pkg_seq), 1)
         self.assertEqual(len(pkg_seq[0]["urls"]), 7)
+        
+        card_seq = [s for s in seq if s.get("category") == "id_card"]
+        self.assertEqual(len(card_seq), 1)
+        self.assertGreaterEqual(len(card_seq[0]["urls"]), 15)
+
+        fita_seq = [s for s in seq if s.get("category") == "fita"]
+        self.assertEqual(len(fita_seq), 1)
+        self.assertGreaterEqual(len(fita_seq[0]["urls"]), 8)
+
+        cover_seq = [s for s in seq if s.get("category") == "cover"]
+        self.assertEqual(len(cover_seq), 1)
+        self.assertGreaterEqual(len(cover_seq[0]["urls"]), 8)
         
         # Verify voice note in sequence
         voice_seq = [s for s in seq if s["type"] == "voice"]
@@ -133,7 +147,7 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(REVIEW_FACEBOOK_POST_URL in t for t in text_contents))
 
     def test_08_direct_package_request(self):
-        """Customer asking 'প্যাকেজের ছবি দিন' receives Review Link and 7 Package photos."""
+        """Customer asking 'প্যাকেজের ছবি দিন' receives full sequence with Review Link and Packages."""
         res = evaluate_id_card_workflow(
             message_text="প্যাকেজের ছবি দিন",
             customer_name="Mamun",
