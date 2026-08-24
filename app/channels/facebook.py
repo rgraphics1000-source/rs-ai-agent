@@ -334,20 +334,11 @@ def send_fb_media_message_detailed(
                 print(f"[Facebook Media Delivery SUCCESS] workspace_id={workspace_id} recipient={masked_rec} media={filename} http_status=200 message_id={msg_id} attachment_id={att_id}")
                 return True, msg_id
             else:
-                err_text = r.text
-                update_media_delivery_status(delivery_key, "FAILED", last_error=err_text)
-                print(f"[Facebook Media Delivery FAILED] workspace_id={workspace_id} recipient={masked_rec} media={filename} http_status={r.status_code} error={err_text}")
-                return False, ""
-        except requests.exceptions.Timeout as t_err:
-            update_media_delivery_status(delivery_key, "UNKNOWN", last_error="Binary upload timeout (25s)")
-            print(f"[Facebook Media Delivery UNKNOWN] workspace_id={workspace_id} recipient={masked_rec} media={filename} reason=network_timeout retry_blocked=true")
-            return False, ""
+                print(f"[Facebook Binary Media Upload Warning]: status={r.status_code} body={r.text}. Falling back to URL payload.")
         except Exception as up_err:
-            update_media_delivery_status(delivery_key, "FAILED", last_error=str(up_err))
-            print(f"[Facebook Media Delivery FAILED] workspace_id={workspace_id} recipient={masked_rec} media={filename} error={up_err}")
-            return False, ""
+            print(f"[Facebook Binary Media Upload Warning]: {up_err}. Falling back to URL payload.")
 
-    # 2. Remote URL attachment payload
+    # 2. Remote URL attachment payload (with fallback)
     base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
     full_url = media_url if media_url.startswith("http") else f"{base_server_url}{media_url}"
     payload = {
@@ -360,7 +351,8 @@ def send_fb_media_message_detailed(
                     "is_reusable": True
                 }
             }
-        }
+        },
+        "messaging_type": "RESPONSE"
     }
     try:
         r = requests.post(url, params=params, json=payload, timeout=15)

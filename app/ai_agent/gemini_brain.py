@@ -797,7 +797,8 @@ def evaluate_id_card_workflow(
                     for bm in recent_bot_msgs
                 )
 
-            if already_sent_packages:
+            is_asking_again = any(k in msg for k in ["আবার", "আসেনি", "পাইনি", "পাই নাই", "আসে নাই", "পুনরায়", "আবারও", "আবার পাঠান", "ছবি আসেনি"])
+            if already_sent_packages and not is_asking_again:
                 if 30 <= qty < 50:
                     tier_text = f"জি {honorific}, আমাদের প্যাকেজগুলোর রেট ১০০+ অর্ডারের ক্ষেত্রে প্রযোজ্য। আপনার যেহেতু ১০০ এর কম ({qty} পিস), তাই প্রতি প্যাকেজে ১০ টাকা করে বেশি হবে। আপনার কোন প্যাকেজটি পছন্দ জানাবেন প্লিজ।"
                 elif 50 <= qty < 80:
@@ -827,10 +828,14 @@ def evaluate_id_card_workflow(
                 "response_source": "id_card_sample_dispatch"
             }
 
-    # Case C: Asking specifically for packages or samples
+    # Case C: Asking specifically for packages, samples, or requesting photos again
     is_package_request = any(k in msg for k in [
         "প্যাকেজ", "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
-        "কম্বো", "কম্বো প্যাকেজ", "package", "combo", "পেকেজ", "স্যাম্পল", "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দিন"
+        "কম্বো", "কম্বো প্যাকেজ", "package", "combo", "পেকেজ",
+        "স্যাম্পল", "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দিন", "স্যাম্পল দেন", "স্যাম্পল দেখতে চাই",
+        "ছবি পাঠান", "ছবি দিন", "ছবি দেন", "ছবি দেখান", "ছবি দেখাও", "ছবি পাঠাও", "ছবি দেখতে চাই",
+        "আবার পাঠান", "আবার দিন", "আবার দেন", "আবার দেখান", "ছবি আসেনি", "ছবিগুলো আসেনি", "ছবি পাই নাই", "ছবি পাইনি",
+        "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "দিন", "পাঠান", "দেখান", "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দাও"
     ]) and not any(k in msg for k in ["এটি", "এটা", "এইটা", "এই প্যাকেজ", "পছন্দ", "নির্বাচন"])
     if is_package_request:
         seq = build_full_sample_sequence(quantity=effective_qty, customer_name=customer_name, workspace_id=workspace_id)
