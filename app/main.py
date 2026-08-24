@@ -118,6 +118,23 @@ def startup_event():
         except Exception as e:
             print(f"[Facebook Auto-Subscribe on Startup Exception]: {e}")
     threading.Thread(target=_bg_subscribe, daemon=True).start()
+
+    # Self-ping keepalive loop to prevent Render free-tier idle spin-down
+    def _bg_keepalive():
+        import time, urllib.request
+        time.sleep(180)
+        while True:
+            try:
+                server_domain = os.getenv("RENDER_EXTERNAL_URL") or "https://rs-ai-agent.onrender.com"
+                url = f"{server_domain.rstrip('/')}/health"
+                req = urllib.request.Request(url, headers={"User-Agent": "RS-AI-Agent-KeepAlive/1.0"})
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    print(f"[KeepAlive Ping]: HTTP {resp.getcode()} to {url}")
+            except Exception as k_err:
+                print(f"[KeepAlive Ping Notice]: {k_err}")
+            time.sleep(540)  # Ping every 9 minutes (Render sleeps at 15 minutes)
+    threading.Thread(target=_bg_keepalive, daemon=True).start()
+
     print(f"[{settings.PROJECT_NAME}] Server started successfully on port {os.getenv('PORT', 8000)}.")
 
 # Lightweight Health Check Endpoints
