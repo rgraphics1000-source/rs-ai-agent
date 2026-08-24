@@ -860,6 +860,19 @@ async def handle_facebook_webhook_event(data: dict):
                         except Exception as e:
                             print(f"[Facebook Media DL Error]: {e}")
 
+                    # Check for Quoted / Replied Message (e.g. customer replies to a product photo)
+                    reply_to = msg.get("reply_to")
+                    quoted_mid = reply_to.get("mid") if isinstance(reply_to, dict) else None
+                    if quoted_mid:
+                        from app.database import resolve_quoted_message_media
+                        quoted_info = resolve_quoted_message_media(quoted_mid, workspace_id=workspace_id)
+                        if quoted_info and quoted_info.get("media_url"):
+                            quoted_fname = quoted_info.get("filename")
+                            if not image_bytes and quoted_info.get("image_bytes"):
+                                image_bytes = quoted_info.get("image_bytes")
+                                image_mime = quoted_info.get("image_mime", "image/jpeg")
+                            msg_text = f"{msg_text} [কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: {quoted_fname}]".strip()
+
                     # Fetch customer name and record customer message scoped to this Workspace & Page
                     customer_name = get_fb_user_profile(sender_id, page_token=page_token, page_id=page_id)
                     record_conversation_message(

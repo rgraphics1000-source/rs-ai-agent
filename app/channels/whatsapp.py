@@ -1210,6 +1210,19 @@ async def handle_whatsapp_webhook_event(data: dict):
                             except Exception as dl_err:
                                 print(f"[WhatsApp Audio DL Error]: {dl_err}")
 
+                    # Check for Quoted / Contextual Replied Message (e.g. customer replies to a product photo)
+                    context_data = msg.get("context")
+                    quoted_wa_id = context_data.get("id") if isinstance(context_data, dict) else None
+                    if quoted_wa_id:
+                        from app.database import resolve_quoted_message_media
+                        quoted_info = resolve_quoted_message_media(quoted_wa_id, workspace_id=workspace_id)
+                        if quoted_info and quoted_info.get("media_url"):
+                            quoted_fname = quoted_info.get("filename")
+                            if not image_bytes and quoted_info.get("image_bytes"):
+                                image_bytes = quoted_info.get("image_bytes")
+                                image_mime = quoted_info.get("image_mime", "image/jpeg")
+                            msg_text = f"{msg_text} [কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: {quoted_fname}]".strip()
+
                     # Record incoming customer message scoped strictly to Workspace
                     customer_name = raw_customer_name or f"WhatsApp User ({sender_phone})"
                     record_conversation_message(
