@@ -879,25 +879,32 @@ def evaluate_id_card_workflow(
                     "response_source": "id_card_sample_dispatch"
                 }
 
-            # Check if package samples were already sent in recent conversation history!
+            # Check if package samples were already sent in conversation history!
             already_sent_packages = False
             if conversation_history:
                 recent_bot_msgs = [
-                    m.get("content", "") for m in conversation_history[-6:]
-                    if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant")
+                    (m.get("content", "") or m.get("text", "") or "").lower() for m in conversation_history[-15:]
+                    if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant", "seller", "ai")
+                ]
+                recent_bot_media = [
+                    str(m.get("media_url") or "").lower() for m in conversation_history[-15:]
+                    if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant", "seller", "ai")
                 ]
                 already_sent_packages = any(
-                    any(ext in bm for ext in ["pakage", "package", "pkg", "/uploads/package"]) or
-                    "প্যাকেজগুলো পাঠানো হলো" in bm or "প্যাকেজের ছবি" in bm
+                    any(ext in bm for ext in [
+                        "pakage", "package", "pkg", "/uploads/package", "প্যাকেজ", "স্যাম্পলগুলো পাঠিয়ে দিচ্ছি",
+                        "পছন্দ হয় জানাবেন", "পছন্দ হয়েছে জানাবেন", "এগুলো আমাদের কার্ড", "এগুলো আমাদের প্রিন্ট করা ফিতা",
+                        "প্যাকেজগুলো পাঠানো হলো", "প্যাকেজের ছবি"
+                    ])
                     for bm in recent_bot_msgs
-                )
+                ) or any("package" in m or "sample" in m or "/uploads/" in m for m in recent_bot_media)
 
             is_asking_again = any(k in msg for k in ["আবার", "আসেনি", "পাইনি", "পাই নাই", "আসে নাই", "পুনরায়", "আবারও", "আবার পাঠান", "ছবি আসেনি"])
             if already_sent_packages and not is_asking_again:
                 if 30 <= qty < 50:
                     tier_text = f"জি {honorific}, আমাদের প্যাকেজগুলোর রেট ১০০+ অর্ডারের ক্ষেত্রে প্রযোজ্য। আপনার যেহেতু ১০০ এর কম ({qty} পিস), তাই প্রতি প্যাকেজে ১০ টাকা করে বেশি হবে। আপনার কোন প্যাকেজটি পছন্দ জানাবেন প্লিজ।"
                 elif 50 <= qty < 80:
-                    tier_text = f"জি {honorific}, প্যাকেজের ছবিতে উল্লেখিত রেগুলার মূল্যে আমরা আপনার কাজটি নিখুঁতভাবে তৈরি করে দেব। আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন প্লিজ।"
+                    tier_text = f"জি {honorific}, প্যাকেজের ছবিতে উল্লেখিত রেগুলার মূল্যে ({qty} পিসের জন্য) আমরা আপনার কাজটি নিখুঁতভাবে তৈরি করে দেব। আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন প্লিজ।"
                 else:
                     tier_text = f"জি {honorific}, আপনার {qty} পিস অর্ডারের জন্য স্পেশাল প্যাকেজ প্রযোজ্য হবে। আপনার কোন প্যাকেজটি পছন্দ জানাবেন প্লিজ।"
                 return {
@@ -921,19 +928,41 @@ def evaluate_id_card_workflow(
                 "response_source": "id_card_ask_sample_permission"
             }
 
+    # Check if customer points out that samples were already sent (e.g. "স্যাম্পলগুলো তো পাঠিয়েছেন", "ছবি তো দিয়েছেন")
+    is_pointing_out_already_sent = any(k in msg for k in [
+        "তো পাঠিয়েছেন", "তো পাঠিয়েছেন", "তো পাঠাইছেন", "তো দিয়েছেন", "তো দিয়েছেন", "তো দিছেন",
+        "আগেই দিয়েছেন", "আগেই দিয়েছেন", "আগেই পাঠিয়েছেন", "আগেই পাঠিয়েছেন", "আগেই পেয়েছি", "আগেই পাইছি",
+        "আগে দিয়েছেন", "আগে দিয়েছেন", "আগে পাঠাইছেন", "আগে পাঠিয়েছেন", "আগে পাইছি", "আগে পেয়েছি",
+        "তো পাইছি", "তো পেয়েছি", "তো দিলেন", "তো দিলেনই", "আগে দিছেন"
+    ]) and any(k in msg for k in ["স্যাম্পল", "ছবি", "প্যাকেজ", "পিক", "কার্ড", "ফিতা", "কভার"])
+
+    if is_pointing_out_already_sent:
+        return {
+            "reply_text": f"জি {honorific}, আন্তরিকভাবে দুঃখিত। পূর্বের পাঠানো স্যাম্পল ও প্যাকেজগুলো দেখে আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন প্লিজ, অথবা আপনার আর কোনো কিছু জানার থাকলে বলুন {honorific}।",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "samples_already_sent_acknowledged"
+        }
+
     # Case C: Confirming to send samples, or asking specifically for packages/samples
     is_sample_confirmation = bot_asked_sample_permission and any(k in msg for k in [
         "হ্যাঁ", "হাঁ", "জি", "হুম", "hm", "yes", "sure", "ok", "ঠিক আছে", "আচ্ছা", "পাঠান", "দেখান", "দিন", "দেন", "পাঠিয়ে দেন", "পাঠিয়ে দিন", "পাঠাও", "দেখা", "সেন্ড করুন", "দাও"
-    ])
-    is_package_request = is_sample_confirmation or (
-        any(k in msg for k in [
-            "প্যাকেজ", "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
-            "কম্বো", "কম্বো প্যাকেজ", "package", "combo", "পেকেজ",
-            "স্যাম্পল", "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দিন", "স্যাম্পল দেন", "স্যাম্পল দেখতে চাই",
-            "ছবি পাঠান", "ছবি দিন", "ছবি দেন", "ছবি দেখান", "ছবি দেখাও", "ছবি পাঠাও", "ছবি দেখতে চাই",
-            "আবার পাঠান", "আবার দিন", "আবার দেন", "আবার দেখান", "ছবি আসেনি", "ছবিগুলো আসেনি", "ছবি পাই নাই", "ছবি পাইনি",
-            "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "দিন", "পাঠান", "দেখান", "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দাও"
-        ]) and not any(k in msg for k in ["এটি", "এটা", "এইটা", "এই প্যাকেজ", "পছন্দ", "নির্বাচন"])
+    ]) and not any(k in msg for k in ["তো পাঠিয়েছেন", "তো দিয়েছেন", "আগেই", "আগে"])
+
+    is_package_request = not is_pointing_out_already_sent and (
+        is_sample_confirmation or (
+            any(k in msg for k in [
+                "প্যাকেজ", "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
+                "কম্বো", "কম্বো প্যাকেজ", "package", "combo", "পেকেজ",
+                "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দিন", "স্যাম্পল দেন", "স্যাম্পল দেখতে চাই", "স্যাম্পল দেখতে",
+                "ছবি পাঠান", "ছবি দিন", "ছবি দেন", "ছবি দেখান", "ছবি দেখাও", "ছবি পাঠাও", "ছবি দেখতে চাই",
+                "আবার পাঠান", "আবার দিন", "আবার দেন", "আবার দেখান", "ছবি আসেনি", "ছবিগুলো আসেনি", "ছবি পাই নাই", "ছবি পাইনি",
+                "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "দিন", "পাঠান", "দেখান", "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দাও"
+            ]) and not any(k in msg for k in ["এটি", "এটা", "এইটা", "এই প্যাকেজ", "পছন্দ", "নির্বাচন", "তো পাঠিয়েছেন", "তো দিয়েছেন", "আগেই", "আগে"])
+        )
     )
     if is_package_request:
         seq = build_full_sample_sequence(quantity=effective_qty, customer_name=customer_name, workspace_id=workspace_id)

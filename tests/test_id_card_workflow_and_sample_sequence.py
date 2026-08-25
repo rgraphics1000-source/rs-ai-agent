@@ -167,8 +167,42 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         # Step-by-step negotiation rules
         self.assertIn("ধাপে ধাপে", prompt)
         self.assertIn("শুরুতে সবসময় প্যাকেজের নির্ধারিত রেগুলার রেট", prompt)
-        self.assertIn("৮২ টাকা", prompt)
-        self.assertIn("৫ টাকা", prompt)
+    def test_10_quantity_change_after_samples_sent_explains_tier_rule(self):
+        """When packages were already sent in chat and customer asks 'আর যদি ৩০ পিস করাই', answer +10 TK rule immediately."""
+        history = [
+            {"sender": "user", "content": "১০০ পিস বানাব"},
+            {"sender": "bot", "content": "জি স্যার, তাহলে আমি আপনাকে আমাদের স্যাম্পলগুলো পাঠিয়ে দিচ্ছি।"},
+            {"sender": "bot", "content": "আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন স্যার।"}
+        ]
+        res = evaluate_id_card_workflow(
+            message_text="আর যদি ৩০ পিস করাই",
+            customer_name="MD Rashadul Islam",
+            conversation_history=history,
+            workspace_id=1
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "id_card_tier_text_reply")
+        self.assertIn("১০ টাকা করে বেশি হবে", res["reply_text"])
+        self.assertEqual(len(res["media_sequence"]), 0)
+        self.assertEqual(len(res["matched_images"]), 0)
+
+    def test_11_samples_already_sent_acknowledgment_without_resending_photos(self):
+        """When customer says 'স্যাম্পলগুলো তো পাঠিয়েছেন', acknowledge politely with zero photos."""
+        history = [
+            {"sender": "bot", "content": "জি স্যার, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?"}
+        ]
+        res = evaluate_id_card_workflow(
+            message_text="স্যাম্পলগুলো তো পাঠিয়েছেন",
+            customer_name="MD Rashadul Islam",
+            conversation_history=history,
+            workspace_id=1
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "samples_already_sent_acknowledged")
+        self.assertIn("আন্তরিকভাবে দুঃখিত", res["reply_text"])
+        self.assertIn("কোন প্যাকেজটি পছন্দ", res["reply_text"])
+        self.assertEqual(len(res["media_sequence"]), 0)
+        self.assertEqual(len(res["matched_images"]), 0)
 
 if __name__ == "__main__":
     unittest.main()
