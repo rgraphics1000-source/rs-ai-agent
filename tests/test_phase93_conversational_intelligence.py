@@ -477,6 +477,30 @@ class TestPhase93ConversationalIntelligence(unittest.TestCase):
         self.assertTrue("যোগাযোগ" in r_need_owner["reply_text"] or "জানিয়ে" in r_need_owner["reply_text"])
         self.assertEqual(r_need_owner["response_source"], "human_request_acknowledgement")
 
+    # -------------------------------------------------------------
+    # 23. GENERAL PRODUCT MAKING & PREMIUM PACKAGE SHOWCASE
+    # -------------------------------------------------------------
+    def test_23_premium_package_showcase_and_product_inquiry(self):
+        """Invariant 23: 'আমার তো কিছু বানানো দরকার' prompts quantity; 'সবচেয়ে প্রিমিয়াম প্যাকেজটি দেখান তো' shows Package 7 with images."""
+        # 1. 'আমার তো কিছু বানানো দরকার'
+        r_prod = MasterOrchestrator.execute_decision("আমার তো কিছু বানানো দরকার", self.sender_id, "Customer", self.ws_id)
+        self.assertIn("বানাতে পারবেন", r_prod["reply_text"])
+        self.assertIn("কত পিস", r_prod["reply_text"])
+        self.assertEqual(r_prod["response_source"], "product_inquiry_quantity_prompt")
+
+        # 2. 'সবচেয়ে প্রিমিয়াম প্যাকেজটি দেখান তো'
+        r_prem = MasterOrchestrator.execute_decision("সবচেয়ে প্রিমিয়াম প্যাকেজটি দেখান তো", self.sender_id, "Customer", self.ws_id)
+        self.assertIn("প্যাকেজ ৭", r_prem["reply_text"])
+        self.assertTrue(len(r_prem["matched_images"]) > 0)
+        self.assertEqual(r_prem["response_source"], "sample_dispatch_pipeline")
+
+        # 3. 'প্যাকেজটি দেখান' (fresh customer)
+        fresh_sender = f"{self.sender_id}_fresh"
+        r_show = MasterOrchestrator.execute_decision("প্যাকেজটি দেখান", fresh_sender, "Customer", self.ws_id)
+        self.assertIn("স্যাম্পল", r_show["reply_text"])
+        self.assertTrue(len(r_show["matched_images"]) > 0)
+        self.assertEqual(r_show["response_source"], "sample_dispatch_pipeline")
+
 
 if __name__ == "__main__":
     unittest.main()

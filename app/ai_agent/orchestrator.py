@@ -185,6 +185,9 @@ class MasterOrchestrator:
         pkg_match = re.search(r'(?:প্যাকেজ|package|pkg)\s*([১-৭1-7])', norm_msg)
         if pkg_match:
             entities["package_id"] = normalize_package_id(pkg_match.group(1))
+        elif any(kw in norm_msg for kw in ["সবচেয়ে প্রিমিয়াম", "সবচেয়ে প্রিমিয়াম", "প্রিমিয়াম প্যাকেজ", "সেরা প্যাকেজ", "টপ প্যাকেজ", "সবচেয়ে ভালো প্যাকেজ"]):
+            entities["package_id"] = 7
+            entities["is_premium_inquiry"] = True
         elif conversation_state and conversation_state.get("package_id"):
             entities["package_id"] = conversation_state.get("package_id")
 
@@ -307,7 +310,8 @@ class MasterOrchestrator:
             "প্যাকেজের দাম", "প্যাকেজের রেট", "প্যাকেজ কত", "প্যাকেজ মূল্য", "প্যাকেজগুলোর দাম",
             "per piece koto", "dam koto", "rate koto", "koto tk"
         ]
-        if any(kw in norm_msg for kw in price_keywords) or pkg_match:
+        has_visual_demand = any(w in norm_msg for w in ["দেখান", "দ্যাখান", "দেখতে", "দেখব", "ছবি", "পিক", "pic", "image", "স্যাম্পল", "নমুনা"])
+        if any(kw in norm_msg for kw in price_keywords) or (pkg_match and not has_visual_demand):
             if any(kw in norm_msg for kw in ["প্রতি পিস", "per piece", "এক পিস", "প্রতিটি"]):
                 detected_intents.append(CustomerIntent.PER_PIECE_PRICE)
             else:
@@ -351,10 +355,18 @@ class MasterOrchestrator:
         if any(kw in norm_msg for kw in quality_phrases) and not any(kw in norm_msg for kw in quality_not):
             detected_intents.append(CustomerIntent.QUALITY_INQUIRY)
 
-        # M. Sample & Resample Requests
+        # M. Sample, Resample & Package Showcase Requests
         if entities["is_resample_request"]:
             detected_intents.append(CustomerIntent.RESAMPLE_REQUEST)
-        if any(kw in norm_msg for kw in ["স্যাম্পল", "ছবি পাঠান", "ছবি দেন", "নমুনা পাঠান", "প্যাকেজের ছবি", "প্যাকেজ দেখতে চাই", "স্যাম্পল দেখতে চাই"]):
+        sample_keywords = [
+            "স্যাম্পল", "ছবি পাঠান", "ছবি দেন", "নমুনা পাঠান", "প্যাকেজের ছবি", "প্যাকেজ দেখতে চাই",
+            "স্যাম্পল দেখতে চাই", "প্যাকেজটি দেখান", "প্যাকেজ দেখান", "প্যাকেজগুলো দেখান", "প্যাকেজ দেখতে",
+            "সবচেয়ে প্রিমিয়াম", "সবচেয়ে প্রিমিয়াম", "প্রিমিয়াম প্যাকেজ", "সেরা প্যাকেজ", "ভালো প্যাকেজ",
+            "ছবি দেখান", "নমুনা দেখান", "স্যাম্পল দেখান", "দ্যাখান", "দেখান", "ছবিগুলা দেখান", "ছবিগুলো দেখান",
+            "স্যাম্পল দিন", "স্যাম্পল দেন", "নমুনা দেন", "নমুনা দিন", "ছবি দিন", "ছবি দেন", "দেখব", "দেখতে চাই",
+            "sample", "samples", "photo", "photos", "picture"
+        ]
+        if any(kw in norm_msg for kw in sample_keywords) or (("প্যাকেজ" in norm_msg or "কার্ড" in norm_msg) and any(w in norm_msg for w in ["দেখান", "দ্যাখান", "দেখতে", "দেখব", "ছবি", "পিক", "pic", "image"])):
             detected_intents.append(CustomerIntent.SAMPLE_REQUEST)
 
         # N. Non-ID Products / Topic Change
@@ -394,9 +406,17 @@ class MasterOrchestrator:
             else:
                 detected_intents.append(CustomerIntent.SAMPLE_CONFIRMATION)
 
-        # R. General ID Card Product Interest
-        if any(kw in norm_msg for kw in ["আইডি কার্ড", "id card", "কার্ড বানাবো", "কার্ড বানাতে", "কার্ড করতে চাই", "কার্ডের কাজ", "কার্ড লাগবে", "কার্ড তৈরি"]):
-            if entities["quantity"] is None and not entities["package_id"] and not any(i in detected_intents for i in (CustomerIntent.PRICE_INQUIRY, CustomerIntent.GREETING, CustomerIntent.TOPIC_CHANGE, CustomerIntent.SOCIAL_PLEASANTRY)):
+        # R. General ID Card & Printing Product Interest
+        product_intent_words = [
+            "আইডি কার্ড", "id card", "কার্ড বানাবো", "কার্ড বানাতে", "কার্ড করতে চাই", "কার্ডের কাজ",
+            "কার্ড লাগবে", "কার্ড তৈরি", "বানানো দরকার", "বানাতে চাই", "বানাবো", "বানাতে হবে",
+            "কিছু বানাবো", "কিছু বানানো দরকার", "কিছু করতে চাই", "কিছু প্রিন্ট", "প্রিন্ট করব",
+            "প্রিন্ট করাতে চাই", "অর্ডার দিতে চাই", "অর্ডার করব", "তৈরি করতে চাই", "বানানো যাবে",
+            "বানানো যাবে কি", "বানাতে পারবো", "প্রিন্টিং", "কার্ড প্রিন্ট", "ফিতা প্রিন্ট", "বানাইতে চাই",
+            "কিছু বানাব", "বানানো লাগবে", "কাজ করাবো", "কাজ করাতে চাই", "তৈরি করব", "তৈরি করা যাবে"
+        ]
+        if any(kw in norm_msg for kw in product_intent_words) or ("বানানো" in norm_msg and any(w in norm_msg for w in ["দরকার", "চাই", "হবে", "যাবে", "লাগবে"])):
+            if entities["quantity"] is None and not entities["package_id"] and not any(i in detected_intents for i in (CustomerIntent.PRICE_INQUIRY, CustomerIntent.GREETING, CustomerIntent.TOPIC_CHANGE, CustomerIntent.SOCIAL_PLEASANTRY, CustomerIntent.SAMPLE_REQUEST)):
                 detected_intents.append(CustomerIntent.PRODUCT_INQUIRY)
 
         # Deduplicate preserving strict priority order
@@ -762,7 +782,10 @@ class MasterOrchestrator:
             # H. SAMPLE DELIVERY & RESAMPLE
             elif primary_intent in (CustomerIntent.SAMPLE_REQUEST, CustomerIntent.SAMPLE_CONFIRMATION, CustomerIntent.RESAMPLE_REQUEST):
                 selected_tools.append("media_router")
-                if samples_already_sent and not entities.get("is_resample_request"):
+                p_num = entities.get("package_id")
+                norm_m = (customer_message or "").strip().lower()
+
+                if samples_already_sent and not entities.get("is_resample_request") and not p_num and not entities.get("is_premium_inquiry"):
                     draft_reply = f"জি {honorific}, পূর্বের পাঠানো স্যাম্পল ও প্যাকেজগুলো দেখে আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন প্লিজ, অথবা আপনার আর কোনো কিছু জানার থাকলে বলুন {honorific}।"
                     response_source = "samples_already_sent_acknowledged"
                 else:
@@ -777,7 +800,13 @@ class MasterOrchestrator:
                         record_question_asked(s_id, "PACKAGE_SELECTION_PROMPT", ws_id)
                     except Exception:
                         pass
-                    draft_reply = f"জি {honorific}, অবশ্যই দিচ্ছি।"
+
+                    if p_num == 7 or entities.get("is_premium_inquiry") or "প্রিমিয়াম" in norm_m or "প্রিমিয়াম" in norm_m:
+                        draft_reply = f"জি {honorific}, আমাদের সবচেয়ে প্রিমিয়াম ও আকর্ষণীয় প্যাকেজ হলো 'প্যাকেজ ৭'। এতে থাকছে প্রিমিয়াম ডিজিটাল সাটিন মাল্টিকালার ফিতা, জাপানি মেশিনে প্রিন্ট করা ১০০% ওয়াটারপ্রুফ এইচডি আইডি কার্ড এবং প্রিমিয়াম কভার/হোল্ডার। এর নিয়মিত মূল্য প্রতি সেট ৯১ টাকা (৮০+ পিসে ৮৭ টাকা)। নিচে প্যাকেজের ছবি ও স্যাম্পল দেওয়া হলো:"
+                    elif p_num:
+                        draft_reply = f"জি {honorific}, প্যাকেজ {p_num}-এর ছবি ও স্যাম্পল নিচে দেওয়া হলো:"
+                    else:
+                        draft_reply = f"জি {honorific}, অবশ্যই দিচ্ছি। আমাদের আইডি কার্ড ও ফিতার প্যাকেজগুলোর স্যাম্পল ছবি নিচে দেওয়া হলো:"
                     matched_images = matched_imgs
                     media_sequence = seq
                     response_source = "sample_dispatch_pipeline"
@@ -1010,13 +1039,13 @@ class MasterOrchestrator:
                 draft_reply = f"জি {honorific}, অর্ডার কনফার্ম করতে ৫০% অগ্রিম পেমেন্ট করতে হয় (অগ্রিম পেমেন্ট বাধ্যতামূলক)। বাকি টাকা প্রোডাক্ট হাতে পেয়ে ক্যাশ অন ডেলিভারিতে দিতে পারবেন (ফুল ক্যাশ অন ডেলিভারি প্রযোজ্য নয়)।"
                 response_source = "advance_payment_policy"
 
-            # R. GENERAL PRODUCT INQUIRY ("আইডি কার্ড বানাবো")
+            # R. GENERAL PRODUCT INQUIRY ("আমার তো কিছু বানানো দরকার", "আইডি কার্ড বানাবো")
             elif primary_intent == CustomerIntent.PRODUCT_INQUIRY:
                 selected_tools.append("pricing_engine")
                 if effective_qty is not None and effective_qty >= 30:
                     draft_reply = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য অবশ্যই করতে পারব। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
                 else:
-                    draft_reply = f"জি {honorific}, অবশ্যই। আপনি কত পিস আইডি কার্ড করতে চান এবং কার্ডের সঙ্গে ফিতা ও কভারও নিতে চান কি?"
+                    draft_reply = f"জি {honorific}, অবশ্যই বানাতে পারবেন! আপনি কত পিস আইডি কার্ড বা ফিতা করতে চান এবং কার্ডের সঙ্গে ফিতা ও কভারও নিতে চান কি?"
                 response_source = "product_inquiry_quantity_prompt"
 
             # S. UNKNOWN / KNOWLEDGE ENGINE RETRIEVAL / CONVERSATIONAL BRAIN / TEAM ESCALATION
@@ -1084,7 +1113,7 @@ class MasterOrchestrator:
                         draft_reply = unk["reply_text"]
                         response_source = "no_guess_team_escalation"
                     else:
-                        draft_reply = f"জি {honorific}, আমি আরএস গ্রাফিক্সের সেলস সহকারী নাদিম। আমাদের আইডি কার্ড, ফিতা ও প্রিন্টিং সংক্রান্ত যেকোনো তথ্যে আপনাকে সহযোগিতা করতে প্রস্তুত। আপনার কি কোনো আইডি কার্ড বা ফিতার প্রয়োজন রয়েছে জানাবেন প্লিজ?"
+                        draft_reply = f"জি {honorific}, আপনার আইডি কার্ড, ফিতা বা প্রিন্টিং সংক্রান্ত যেকোনো প্রশ্ন থাকলে আমাকে জানাতে পারেন, আমি বিস্তারিত জানিয়ে সহযোগিতা করছি।"
                         response_source = "conversational_friendly_fallback"
 
             # -------------------------------------------------------------
