@@ -25,6 +25,7 @@ from app.database import (
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.channels.debouncer import message_debouncer, PendingBatch
 from app.ai_agent.gemini_brain import process_customer_message, detect_customer_gender_title
+from app.ai_agent.orchestrator import MasterOrchestrator
 
 GRAPH_API_URL = "https://graph.facebook.com/v19.0"
 
@@ -598,22 +599,41 @@ async def process_facebook_batch(batch: PendingBatch):
     # Fetch conversation history scoped strictly to this Workspace
     history = get_conversation_history("facebook", sender_id, limit=12, page_id=page_id, workspace_id=workspace_id)
 
-    # Process with Gemini AI Brain with Workspace-isolated context & full image list
-    ai_result = await process_customer_message(
-        message_text=combined_text,
+    # Process with MasterOrchestrator (Central Intelligent Decision Pipeline)
+    ai_result = MasterOrchestrator.execute_decision(
+        customer_message=combined_text,
+        sender_id=sender_id,
+        customer_name=customer_name,
+        workspace_id=workspace_id,
+        conversation_history=history,
+        channel="facebook",
         image_bytes=image_bytes,
         image_mime=image_mime,
         image_list=image_list,
         audio_bytes=audio_bytes,
         audio_mime=audio_mime,
-        conversation_history=history,
-        channel="facebook",
-        sender_id=sender_id,
-        customer_name=customer_name,
         generate_voice_reply=bool(audio_bytes),
-        workspace_id=workspace_id,
         page_id=page_id
     )
+
+    # Sentinel: If orchestrator delegates to Gemini brain (non-primary workspace or multimodal)
+    _rs = ai_result.get("response_source", "")
+    if _rs in ("gemini_fallthrough", "multimodal_delegate"):
+        ai_result = await process_customer_message(
+            message_text=combined_text,
+            image_bytes=image_bytes,
+            image_mime=image_mime,
+            image_list=image_list,
+            audio_bytes=audio_bytes,
+            audio_mime=audio_mime,
+            conversation_history=history,
+            channel="facebook",
+            sender_id=sender_id,
+            customer_name=customer_name,
+            generate_voice_reply=bool(audio_bytes),
+            workspace_id=workspace_id,
+            page_id=page_id
+        )
 
     # Pre-Send Safety Guard: Double-check takeover state & version before delivering to user
     state = get_conversation_state(sender_id=sender_id, workspace_id=workspace_id)

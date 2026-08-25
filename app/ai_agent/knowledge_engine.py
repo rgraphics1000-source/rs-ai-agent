@@ -123,11 +123,12 @@ class KnowledgeEngine:
 
         # Owner Name inquiry (Never hallucinate; follow Rule 13 / No-guess policy)
         owner_patterns = [
-            "owner এর নাম কি", "owner এর নাম কী", "owner কে", "মালিকের নাম কি", "মালিকের নাম কী",
-            "মালিক কে", "ওনারের নাম কি", "ওনারের নাম কী", "বসের নাম কি", "বসের নাম কী",
-            "who is the owner", "owner name"
+            "owner এর নাম কি", "owner এর নাম কী", "owner-এর নাম কি", "owner-এর নাম কী",
+            "owner এর নাম", "owner-এর নাম", "owner কে", "মালিকের নাম কি", "মালিকের নাম কী",
+            "মালিকের নাম", "মালিক কে", "ওনারের নাম কি", "ওনারের নাম কী", "ওনারের নাম",
+            "বসের নাম কি", "বসের নাম কী", "বসের নাম", "who is the owner", "owner name"
         ]
-        if any(p in raw_msg for p in owner_patterns):
+        if any(p in raw_msg for p in owner_patterns) or re.search(r'(?:owner|ওনার|মালিক|বস)[-\s]*(?:এর)?\s*(?:নাম|কে)', raw_msg):
             # Record team escalation
             if sender_id:
                 create_team_escalation(

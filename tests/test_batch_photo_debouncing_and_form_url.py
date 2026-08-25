@@ -26,8 +26,17 @@ class TestBatchPhotoDebouncingAndFormUrl(unittest.TestCase):
 
     @patch("app.channels.whatsapp.send_whatsapp_message", return_value=True)
     @patch("app.channels.whatsapp.process_customer_message")
-    def test_01_batch_5_photos_produces_single_ai_reply(self, mock_process, mock_send):
+    @patch("requests.get")
+    def test_01_batch_5_photos_produces_single_ai_reply(self, mock_get, mock_process, mock_send):
         """When customer sends 5 photos simultaneously, AI processes them as 1 turn and sends 1 reply."""
+        mock_meta = MagicMock()
+        mock_meta.json.return_value = {"url": "https://meta.example.com/fake_img.jpg"}
+        mock_img = MagicMock()
+        mock_img.status_code = 200
+        mock_img.content = b"FAKE_IMAGE_BYTES"
+        mock_img.headers = {"content-type": "image/jpeg"}
+        mock_get.side_effect = [mock_meta, mock_img] * 5
+
         async def fake_process(**kwargs):
             return {
                 "reply_text": "জি স্যার, আপনার ৫টি ছবি পেয়েছি। আমরা চমৎকার প্রিন্টিং করে দেব।",

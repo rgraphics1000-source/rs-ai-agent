@@ -56,6 +56,8 @@ from app.database import is_conversation_ai_active, get_db_connection
 
 class CustomerIntent(str, Enum):
     GREETING = "GREETING"
+    SOCIAL_PLEASANTRY = "SOCIAL_PLEASANTRY"
+    QUALITY_INQUIRY = "QUALITY_INQUIRY"
     QUANTITY_INQUIRY = "QUANTITY_INQUIRY"
     QUANTITY_PROVIDED = "QUANTITY_PROVIDED"
     PRODUCT_INQUIRY = "PRODUCT_INQUIRY"
@@ -146,13 +148,14 @@ class MasterOrchestrator:
             except Exception:
                 pass
 
-            # Robust local regex fallback for quantity
+            # Robust local regex fallback for quantity (strictly avoiding prices like '৭৫ টাকা')
             if entities["quantity"] is None:
                 clean_for_qty = re.sub(r't-?\d+[a-z]?', '', digits_norm_msg, flags=re.IGNORECASE)
+                clean_for_qty = re.sub(r'\b\d+\s*(?:টাকা|টাকায়|টাকাতে|tk|taka|৳)', '', clean_for_qty, flags=re.IGNORECASE)
                 m_q = re.search(r'(\d+)\s*(?:টা|টি|পিস|কার্ড|কপি|id\s*cards?|cards?|pieces?|pcs?|items?)', clean_for_qty)
                 if not m_q:
                     m_q = re.search(r'(?:প্যাকেজ|package|pkg)\s*[১-৭1-7]\s*(\d+)', clean_for_qty)
-                if not m_q:
+                if not m_q and not any(k in norm_msg for k in ["টাকা", "টাকায়", "টাকাতে", "tk", "taka", "৳", "রেট", "মূল্য"]):
                     m_q = re.search(r'\b(\d{2,4})\b', clean_for_qty)
                 if m_q:
                     try:
@@ -276,11 +279,19 @@ class MasterOrchestrator:
         elif entities["package_id"] and any(kw in norm_msg for kw in ["এটা কত", "দাম কত", "রেট কত", "কত", "মূল্য"]):
             intents.append(CustomerIntent.PRICE_INQUIRY)
 
-        if entities["is_negotiating"] or any(kw in norm_msg for kw in [
-            "কম রাখা যায় না", "কম রাখবেন", "কম হবে না", "কম করা যাবে না", "কম করা যাবে না?", "কম হবে?",
-            "কম রাখা যাবে", "কম রাখা যাবে কি", "কম রাখবেন কি", "কিছু কম", "একটু কম", "ডিসকাউন্ট দেন",
-            "ডিসকাউন্ট", "ছাড় দেন", "ছাড় হবে", "কিছু কম রাখেন", "কিছু কম হবে", "সম্মান করবেন",
-            "একটু কম রাখেন", "বেশি রাখছেন", "কমায় দেন", "অনুমতি দিয়েছে", "সম্মতি আছে"
+        # Robust negotiation detection
+        _neg_regex = re.search(
+            r'কম\s*(?:রাখা|করা|হওয়া|হবে|রাখবেন|দেওয়া|যাবে|যায়|করবেন|করেন|কইরেন|রাখেন|হবেনা|রাখা যাবে না)'
+            r'|একটু\s*কম|কিছু\s*কম|কমায়\s*দেন|কম\s*দেন|কম\s*রাখেন'
+            r'|ডিসকাউন্ট|ছাড়\s*(?:দেন|হবে|দিবেন)?|বেশি\s*রাখছেন|সম্মান\s*করবেন'
+            r'|অনুমতি\s*দিয়েছে|সম্মতি\s*আছে',
+            norm_msg
+        )
+        if entities["is_negotiating"] or _neg_regex or any(kw in norm_msg for kw in [
+            "কম রাখা যায় না", "কম রাখবেন", "কম হবে না", "কম করা যাবে না", "কম রাখা যাবে না",
+            "কম হবে?", "কম রাখা যাবে", "কম রাখা যাবে কি", "কম রাখবেন কি", "কিছু কম", "একটু কম",
+            "ডিসকাউন্ট দেন", "ডিসকাউন্ট", "ছাড় দেন", "ছাড় হবে", "কিছু কম রাখেন", "কিছু কম হবে",
+            "সম্মান করবেন", "একটু কম রাখেন", "বেশি রাখছেন", "কমায় দেন", "অনুমতি দিয়েছে", "সম্মতি আছে"
         ]):
             intents.append(CustomerIntent.NEGOTIATION)
             entities["is_negotiating"] = True
@@ -297,6 +308,24 @@ class MasterOrchestrator:
         if any(kw in norm_msg for kw in ["ডেলিভারি চার্জ", "কুরিয়ার চার্জ", "ডেলিভারি", "কুরিয়ার", "delivery"]):
             intents.append(CustomerIntent.DELIVERY_INQUIRY)
 
+        # Social Pleasantry
+        _pleasantry_phrases = [
+            "কেমন আছেন", "কেমন আছ", "কেমন আছো", "কি খবর", "কী খবর", "ভালো আছেন",
+            "ভাল আছেন", "ভালো আছো", "ভালো আছ", "কেমন চলছে", "how are you",
+            "আপনি ভালো", "ভালো তো", "সুস্থ আছেন", "মজায় আছেন"
+        ]
+        if any(kw in norm_msg for kw in _pleasantry_phrases):
+            intents.append(CustomerIntent.SOCIAL_PLEASANTRY)
+
+        # Quality Inquiry
+        _quality_phrases = [
+            "কোয়ালিটি কেমন", "কোয়ালিটি কেমন হবে", "মান কেমন", "কোয়ালিটি সম্পর্কে",
+            "কোয়ালিটি জানতে চাই", "কার্ড ও ফিতার কোয়ালিটি", "কোয়ালিটি"
+        ]
+        _quality_not = ["প্যাকেজ", "দাম কত", "কত করে", "খরচ কত"]
+        if any(kw in norm_msg for kw in _quality_phrases) and not any(kw in norm_msg for kw in _quality_not):
+            intents.append(CustomerIntent.QUALITY_INQUIRY)
+
         # Greeting
         if any(kw in norm_msg for kw in ["সালাম", "salam", "assalam", "হাই", "হ্যালো", "hello", "hi"]):
             intents.append(CustomerIntent.GREETING)
@@ -307,7 +336,7 @@ class MasterOrchestrator:
             intents.append(CustomerIntent.TOPIC_CHANGE)
             entities["topic"] = "non_id_product_inquiry"
 
-        # General ID Card Product interest (without specific quantity or price keyword)
+        # General ID Card Product interest
         if any(kw in norm_msg for kw in ["আইডি কার্ড", "id card", "কার্ড বানাবো", "কার্ড বানাতে", "কার্ড করতে চাই", "কার্ডের কাজ", "কার্ড লাগবে", "কার্ড তৈরি"]):
             if entities["quantity"] is None and not entities["package_id"] and not any(i in intents for i in (CustomerIntent.PRICE_INQUIRY, CustomerIntent.GREETING, CustomerIntent.TOPIC_CHANGE)):
                 intents.append(CustomerIntent.PRODUCT_INQUIRY)
@@ -343,7 +372,14 @@ class MasterOrchestrator:
         customer_name: str = "Customer",
         workspace_id: int = 1,
         conversation_history: Optional[List[Dict[str, Any]]] = None,
-        channel: str = "facebook"
+        channel: str = "facebook",
+        image_bytes: bytes = None,
+        image_mime: str = "image/jpeg",
+        image_list: list = None,
+        audio_bytes: bytes = None,
+        audio_mime: str = "audio/mp4",
+        generate_voice_reply: bool = False,
+        page_id: str = None
     ) -> Dict[str, Any]:
         """
         Executes central decision orchestration across authoritative tools and returns validated payload.
@@ -353,6 +389,26 @@ class MasterOrchestrator:
         s_id = str(sender_id or "web_user").strip()
 
         try:
+            # 0. FALL THROUGH TO GEMINI IF WORKSPACE != 1
+            if ws_id != 1:
+                return {
+                    "reply_text": "",
+                    "matched_images": [],
+                    "media_sequence": [],
+                    "voice_url": "",
+                    "video_url": "",
+                    "order_created": None,
+                    "response_source": "gemini_fallthrough",
+                    "ai_reply_allowed": True,
+                    "orchestrator_log": {
+                        "primary_intent": CustomerIntent.UNKNOWN,
+                        "intents": [],
+                        "entities": {},
+                        "selected_tools": ["gemini_brain_delegate"],
+                        "requires_owner_approval": False
+                    }
+                }
+
             # -------------------------------------------------------------
             # STEP 1: HUMAN / ADMIN TAKEOVER CHECK (Absolute Silence Guard)
             # -------------------------------------------------------------
@@ -373,6 +429,29 @@ class MasterOrchestrator:
                         "intents": [],
                         "entities": {},
                         "selected_tools": ["admin_takeover_silence"],
+                        "requires_owner_approval": False
+                    }
+                }
+
+            # -------------------------------------------------------------
+            # STEP 1.5: MULTIMODAL DELEGATION (Images / Voice Notes)
+            # If customer uploaded image(s) or audio, delegate to multimodal Gemini brain
+            # -------------------------------------------------------------
+            if image_bytes or audio_bytes or (image_list and len(image_list) > 0):
+                return {
+                    "reply_text": "",
+                    "matched_images": [],
+                    "media_sequence": [],
+                    "voice_url": "",
+                    "video_url": "",
+                    "order_created": None,
+                    "response_source": "multimodal_delegate",
+                    "ai_reply_allowed": True,
+                    "orchestrator_log": {
+                        "primary_intent": CustomerIntent.UNKNOWN,
+                        "intents": [],
+                        "entities": {},
+                        "selected_tools": ["gemini_brain_multimodal"],
                         "requires_owner_approval": False
                     }
                 }
@@ -413,9 +492,48 @@ class MasterOrchestrator:
             video_url = ""
 
             # -------------------------------------------------------------
+            # STEP 3.5: GOOGLE FORM WORKFLOW (Highest Priority for Form Inquiries)
+            # -------------------------------------------------------------
+            if not (CustomerIntent.GOOGLE_FORM_CORRECTION_HELP in all_intents or CustomerIntent.MEDIA_REQUEST in all_intents):
+                try:
+                    from app.ai_agent.gemini_brain import resolve_google_form_workflow
+                    gf_res = resolve_google_form_workflow(
+                        user_message=customer_message,
+                        conversation_history=conversation_history,
+                        customer_phone=s_id,
+                        customer_name=customer_name,
+                        workspace_id=ws_id
+                    )
+                    if gf_res and gf_res.get("reply"):
+                        draft_reply = gf_res["reply"]
+                        voice_url = gf_res.get("voice_url", "")
+                        video_url = gf_res.get("video_url", "")
+                        response_source = "deterministic_google_form"
+                        selected_tools.append("google_form_workflow")
+
+                        return {
+                            "reply_text": draft_reply,
+                            "matched_images": [],
+                            "media_sequence": [],
+                            "voice_url": voice_url,
+                            "video_url": video_url,
+                            "order_created": None,
+                            "response_source": response_source,
+                            "orchestrator_log": {
+                                "primary_intent": primary_intent,
+                                "intents": all_intents,
+                                "entities": entities,
+                                "selected_tools": selected_tools,
+                                "requires_owner_approval": False,
+                                "response_source": response_source
+                            }
+                        }
+                except Exception as gf_err:
+                    print(f"[Orchestrator Google Form Workflow Error]: {gf_err}")
+
+            # -------------------------------------------------------------
             # STEP 4: IDENTITY & NO-GUESS KNOWLEDGE SHORT-CIRCUITS
             # -------------------------------------------------------------
-            # A. Identity Inquiries (Agent Name: নাদিম, Owner Name: Escalation)
             identity_res = KnowledgeEngine.check_identity_inquiry(
                 message=customer_message,
                 customer_name=customer_name,
@@ -427,7 +545,6 @@ class MasterOrchestrator:
                 response_source = identity_res.get("response_source", "knowledge_engine")
                 selected_tools.append("knowledge_engine")
 
-            # B. Media Request / Google Form Video Help
             elif CustomerIntent.GOOGLE_FORM_CORRECTION_HELP in all_intents or CustomerIntent.MEDIA_REQUEST in all_intents:
                 selected_tools.append("media_router")
                 m_res = MediaRouter.route_media(
@@ -439,7 +556,6 @@ class MasterOrchestrator:
                 draft_reply = f"জি {honorific}, গুগল ফর্মে তথ্য সাবমিট করার পর ভুল হলে তা সংশোধন করার নিয়মের ভিডিও গাইড নিচে দেওয়া হলো:"
                 response_source = "media_router_video_dispatch"
 
-            # C. Topic Change & Non-ID Card Inquiries
             elif primary_intent == CustomerIntent.PHOTO_SERVICE:
                 selected_tools.append("knowledge_engine")
                 draft_reply = (
@@ -472,7 +588,7 @@ class MasterOrchestrator:
                         response_source = "no_guess_team_escalation"
 
             # -------------------------------------------------------------
-            # STEP 5: MOQ POLICY (< 30 pieces)
+            # STEP 5: MOQ POLICY
             # -------------------------------------------------------------
             elif primary_intent == CustomerIntent.MOQ_REJECTED or (effective_qty is not None and effective_qty < 30 and not entities.get("is_specific_item")):
                 selected_tools.append("pricing_engine")
@@ -480,7 +596,7 @@ class MasterOrchestrator:
                 response_source = "moq_rejected_policy"
 
             # -------------------------------------------------------------
-            # STEP 6: SAMPLE DELIVERY & DUPLICATION PROTECTION
+            # STEP 6: SAMPLE DELIVERY
             # -------------------------------------------------------------
             elif primary_intent in (CustomerIntent.SAMPLE_REQUEST, CustomerIntent.SAMPLE_CONFIRMATION, CustomerIntent.RESAMPLE_REQUEST):
                 selected_tools.append("media_router")
@@ -499,16 +615,48 @@ class MasterOrchestrator:
                         record_question_asked(s_id, "PACKAGE_SELECTION_PROMPT", ws_id)
                     except Exception:
                         pass
-
-                    v_url = "/static/uploads/package/PTT-20260119-WA0105.mp3" if (effective_qty is not None and effective_qty >= 80) else ""
                     draft_reply = f"জি {honorific}, অবশ্যই দিচ্ছি।"
                     matched_images = matched_imgs
                     media_sequence = seq
-                    voice_url = v_url
                     response_source = "sample_dispatch_pipeline"
 
             # -------------------------------------------------------------
-            # STEP 7: GENERAL PRODUCT INQUIRY (Asks for quantity before price)
+            # STEP 7: QUALITY INQUIRY
+            # -------------------------------------------------------------
+            elif primary_intent == CustomerIntent.QUALITY_INQUIRY:
+                selected_tools.append("knowledge_engine")
+                draft_reply = f"জি {honorific}, আমাদের কার্ড ও ফিতার কোয়ালিটি ও বৈশিষ্ট্য কেমন হবে সে সম্পর্কে বিস্তারিত জানতে নিচের ভয়েস বার্তাটি শুনুন:"
+                voice_url = "/static/uploads/media/id_card_and_fita_quality.aac"
+                response_source = "id_card_quality_voice_dispatch"
+
+            # -------------------------------------------------------------
+            # STEP 8: SOCIAL PLEASANTRY
+            # -------------------------------------------------------------
+            elif primary_intent == CustomerIntent.SOCIAL_PLEASANTRY:
+                norm_msg = (customer_message or "").strip().lower()
+                has_salam = any(kw in norm_msg for kw in ["সালাম", "salam", "assalam"])
+                if has_salam:
+                    draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, ভালো আছি। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                else:
+                    draft_reply = f"আলহামদুলিল্লাহ {honorific}, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                response_source = "social_pleasantry_response"
+
+            # -------------------------------------------------------------
+            # STEP 9: GREETING
+            # -------------------------------------------------------------
+            elif primary_intent == CustomerIntent.GREETING:
+                norm_msg = (customer_message or "").strip().lower()
+                has_product_ref = any(kw in norm_msg for kw in ["আইডি কার্ড", "id card", "কার্ড", "ফিতা", "কভার", "প্যাকেজ", "বানাবো", "বানাতে", "লাগবে"])
+                if has_product_ref and effective_qty is not None and effective_qty >= 30:
+                    draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনার {effective_qty} পিস আইডি কার্ডের অর্ডারের জন্য কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
+                elif has_product_ref:
+                    draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনি কত পিস আইডি কার্ড বানাতে চান জানাবেন প্লিজ?"
+                else:
+                    draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                response_source = "standard_greeting"
+
+            # -------------------------------------------------------------
+            # STEP 10: PRODUCT INQUIRY / QUANTITY / PRICE / ETC
             # -------------------------------------------------------------
             elif primary_intent == CustomerIntent.PRODUCT_INQUIRY:
                 selected_tools.append("pricing_engine")
@@ -519,9 +667,6 @@ class MasterOrchestrator:
                 draft_reply = f"জি {honorific}, অবশ্যই। আপনি কত পিস আইডি কার্ড করতে চান এবং কার্ডের সঙ্গে ফিতা ও কভারও নিতে চান কি?"
                 response_source = "product_inquiry_quantity_prompt"
 
-            # -------------------------------------------------------------
-            # STEP 8: QUANTITY PROVIDED & TIER ACKNOWLEDGMENT
-            # -------------------------------------------------------------
             elif primary_intent == CustomerIntent.QUANTITY_PROVIDED:
                 selected_tools.append("pricing_engine")
                 try:
@@ -553,9 +698,6 @@ class MasterOrchestrator:
                     draft_reply = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য {tier_note}। কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ {honorific}।"
                     response_source = "quantity_updated_tier_ack"
 
-            # -------------------------------------------------------------
-            # STEP 9: PRICING, PER-PIECE RATES & NEGOTIATION
-            # -------------------------------------------------------------
             elif any(i in all_intents for i in (CustomerIntent.PRICE_INQUIRY, CustomerIntent.PER_PIECE_PRICE, CustomerIntent.SPECIFIC_ITEM_PRICE, CustomerIntent.NEGOTIATION)):
                 selected_tools.append("pricing_engine")
                 if CustomerIntent.DELIVERY_INQUIRY in all_intents:
@@ -730,20 +872,51 @@ class MasterOrchestrator:
                 response_source = "standard_greeting"
 
             # -------------------------------------------------------------
-            # STEP 12: UNKNOWN INQUIRY / NO-GUESS BOUNDARY
+            # STEP 14: MULTIMODAL FALLBACK (Images / Voice Notes without text match)
+            # If customer sent image/audio with unresolvable text, delegate to Gemini LLM
+            # -------------------------------------------------------------
+            elif (image_bytes or audio_bytes or image_list) and not draft_reply:
+                selected_tools.append("gemini_brain_multimodal")
+                return {
+                    "reply_text": "",
+                    "matched_images": [],
+                    "media_sequence": [],
+                    "voice_url": "",
+                    "video_url": "",
+                    "order_created": None,
+                    "response_source": "multimodal_delegate",
+                    "ai_reply_allowed": True,
+                    "orchestrator_log": {
+                        "primary_intent": primary_intent,
+                        "intents": all_intents,
+                        "entities": entities,
+                        "selected_tools": selected_tools,
+                        "requires_owner_approval": False
+                    }
+                }
+
+            # -------------------------------------------------------------
+            # STEP 15: UNKNOWN INQUIRY / NO-GUESS BOUNDARY
             # -------------------------------------------------------------
             else:
+                # First check training rules for a match
                 selected_tools.append("knowledge_engine")
-                unk = KnowledgeEngine.handle_unknown_inquiry(
-                    customer_message=customer_message,
-                    sender_id=s_id,
-                    detected_topic="unresolved_inquiry",
-                    workspace_id=ws_id,
-                    customer_name=customer_name,
-                    channel=channel
-                )
-                draft_reply = unk["reply_text"]
-                response_source = "no_guess_team_escalation"
+                k_res = KnowledgeEngine.retrieve_relevant_knowledge(customer_message, workspace_id=ws_id)
+                if k_res.get("has_authoritative_answer") and k_res.get("matched_rules"):
+                    r_rule = k_res["matched_rules"][0]
+                    draft_reply = f"জি {honorific}, {r_rule.get('response_or_rule', '')}"
+                    response_source = "training_rule_answer"
+                else:
+                    unk = KnowledgeEngine.handle_unknown_inquiry(
+                        customer_message=customer_message,
+                        sender_id=s_id,
+                        detected_topic="unresolved_inquiry",
+                        workspace_id=ws_id,
+                        customer_name=customer_name,
+                        channel=channel
+                    )
+                    draft_reply = unk["reply_text"]
+                    response_source = "no_guess_team_escalation"
 
             # -------------------------------------------------------------
             # STEP 13: UNIVERSAL RESPONSE VALIDATION & POLICY GUARD

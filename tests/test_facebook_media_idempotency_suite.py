@@ -63,7 +63,7 @@ class TestFacebookMediaIdempotencySuite(unittest.TestCase):
             }]
         }
         
-        with patch("app.channels.facebook.process_customer_message") as mock_ai, \
+        with patch("app.channels.facebook.MasterOrchestrator.execute_decision") as mock_ai, \
              patch("app.channels.facebook.send_fb_text_message") as mock_send_text:
             mock_ai.return_value = {
                 "reply_text": "আইডি কার্ড ৫০ টাকা",
@@ -354,7 +354,7 @@ class TestFacebookMediaIdempotencySuite(unittest.TestCase):
                 }]
             }]
         }
-        with patch("app.channels.facebook.process_customer_message") as mock_ai, \
+        with patch("app.channels.facebook.MasterOrchestrator.execute_decision") as mock_ai, \
              patch("app.channels.facebook.send_fb_text_message") as mock_send:
             mock_ai.return_value = {"reply_text": "উত্তর", "matched_images": []}
             async def _run():

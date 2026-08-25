@@ -291,8 +291,8 @@ class TestWorkspaceIsolationSuite(unittest.TestCase):
                 }]
             }
             with patch("app.channels.facebook.send_fb_text_message") as mock_send, \
-                 patch("app.channels.facebook.process_customer_message") as mock_ai:
-                mock_ai.return_value = {"reply": "Hello from W1", "orders": []}
+                 patch("app.channels.facebook.MasterOrchestrator.execute_decision") as mock_ai:
+                mock_ai.return_value = {"reply_text": "Hello from W1", "orders": [], "response_source": "orchestrator"}
                 async def _run_p1():
                     await handle_facebook_webhook_event(payload_p1)
                     await message_debouncer.flush("facebook", 1, "fb_cust_11")
@@ -393,8 +393,8 @@ class TestWorkspaceIsolationSuite(unittest.TestCase):
             }]
         }
         with patch("app.channels.whatsapp.send_whatsapp_message") as mock_send, \
-             patch("app.channels.whatsapp.process_customer_message") as mock_ai:
-            mock_ai.return_value = {"reply": "WA Reply 1", "orders": []}
+             patch("app.channels.whatsapp.MasterOrchestrator.execute_decision") as mock_ai:
+            mock_ai.return_value = {"reply_text": "WA Reply 1", "orders": [], "response_source": "orchestrator"}
             async def _run_wa1():
                 await handle_whatsapp_webhook_event(payload_wa1)
                 await message_debouncer.flush("whatsapp", 1, "8801700000001")

@@ -27,6 +27,7 @@ from app.database import (
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.ai_agent.gemini_brain import process_customer_message, detect_customer_gender_title
+from app.ai_agent.orchestrator import MasterOrchestrator
 
 GRAPH_API_URL = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}"
 PROCESSED_WA_MESSAGE_IDS = set()
@@ -879,22 +880,41 @@ async def process_whatsapp_batch(batch: PendingBatch):
     products = get_all_products(workspace_id=workspace_id)
     print(f"[WhatsApp AI] workspace_id={workspace_id} training_rules_loaded={len(training_rules)} faqs_loaded={len(faqs)} products_loaded={len(products)}")
 
-    # Process with Gemini AI Brain with Workspace isolation & full multi-image list
-    ai_result = await process_customer_message(
-        message_text=combined_text,
+    # Process with MasterOrchestrator (Central Intelligent Decision Pipeline)
+    ai_result = MasterOrchestrator.execute_decision(
+        customer_message=combined_text,
+        sender_id=sender_phone,
+        customer_name=customer_name,
+        workspace_id=workspace_id,
+        conversation_history=history,
+        channel="whatsapp",
         image_bytes=image_bytes,
         image_mime=image_mime,
         image_list=image_list,
         audio_bytes=audio_bytes,
         audio_mime=audio_mime,
-        conversation_history=history,
-        channel="whatsapp",
-        sender_id=sender_phone,
-        customer_name=customer_name,
         generate_voice_reply=bool(audio_bytes),
-        workspace_id=workspace_id,
         page_id=page_id
     )
+
+    # Sentinel: If orchestrator delegates to Gemini brain (non-primary workspace or multimodal)
+    _rs = ai_result.get("response_source", "")
+    if _rs in ("gemini_fallthrough", "multimodal_delegate"):
+        ai_result = await process_customer_message(
+            message_text=combined_text,
+            image_bytes=image_bytes,
+            image_mime=image_mime,
+            image_list=image_list,
+            audio_bytes=audio_bytes,
+            audio_mime=audio_mime,
+            conversation_history=history,
+            channel="whatsapp",
+            sender_id=sender_phone,
+            customer_name=customer_name,
+            generate_voice_reply=bool(audio_bytes),
+            workspace_id=workspace_id,
+            page_id=page_id
+        )
 
     # Pre-Send Safety Guard: Double-check takeover state & version before delivering to customer
     state = get_conversation_state(sender_id=sender_phone, workspace_id=workspace_id)
