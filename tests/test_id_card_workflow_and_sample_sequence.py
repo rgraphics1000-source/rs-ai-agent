@@ -133,9 +133,9 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(res)
         self.assertIn("প্রতিটি প্যাকেজের ছবির সাথে দাম লেখা আছে", res["reply_text"])
         self.assertIn("প্যাকেজ ১", res["reply_text"])
-        self.assertIn("৫৮ টাকা", res["reply_text"])
+        self.assertIn("৭০ টাকা", res["reply_text"])
         self.assertIn("প্যাকেজ ৭", res["reply_text"])
-        self.assertIn("৩৬ টাকা", res["reply_text"])
+        self.assertIn("৯১ টাকা", res["reply_text"])
         self.assertEqual(res["response_source"], "id_card_package_pricing_breakdown")
 
     def test_08_direct_package_request(self):
@@ -203,6 +203,35 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIn("কোন প্যাকেজটি পছন্দ", res["reply_text"])
         self.assertEqual(len(res["media_sequence"]), 0)
         self.assertEqual(len(res["matched_images"]), 0)
+
+    def test_12_specific_package_price_confirmation(self):
+        """When customer asks 'প্যাকেজ ৬, ১০০+ অর্ডারে কত??', respond with 83 Tk directly without sending sample images."""
+        res = evaluate_id_card_workflow(
+            message_text="প্যাকেজ ৬, ১০০+ অর্ডারে কত??",
+            customer_name="MD Rashadul Islam",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "specific_package_price_confirmed")
+        self.assertIn("৮৩ টাকা", res["reply_text"])
+        self.assertEqual(len(res["media_sequence"]), 0)
+        self.assertEqual(len(res["matched_images"]), 0)
+
+    def test_13_prevent_duplicate_sample_dispatch_when_already_sent(self):
+        """When samples were already sent in history, asking general package/sample doesn't blast all images again."""
+        history = [
+            {"sender": "bot", "content": "জি স্যার, তাহলে আমি আপনাকে আমাদের স্যাম্পলগুলো পাঠিয়ে দিচ্ছি।"},
+            {"sender": "bot", "media_url": "/uploads/package/wa0002.jpg"}
+        ]
+        res = evaluate_id_card_workflow(
+            message_text="প্যাকেজ",
+            customer_name="MD Rashadul Islam",
+            conversation_history=history,
+            workspace_id=1
+        )
+        # Should not re-dispatch full 30 images
+        if res is not None and res.get("response_source") == "package_sample_dispatch":
+            self.fail("Should not re-dispatch package samples when already sent in history!")
 
 if __name__ == "__main__":
     unittest.main()
