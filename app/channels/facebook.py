@@ -868,15 +868,21 @@ async def handle_facebook_webhook_event(data: dict):
 
                         try:
                             if att_type == "image":
-                                r = requests.get(att_url, timeout=10)
-                                if r.status_code == 200:
+                                r = requests.get(att_url, timeout=12)
+                                if r.status_code != 200 and page_token:
+                                    r = requests.get(att_url, params={"access_token": page_token}, timeout=12)
+                                if r.status_code == 200 and len(r.content) > 0:
                                     image_bytes = r.content
                                     image_mime = r.headers.get("content-type", "image/jpeg").split(";")[0].strip()
                             elif att_type in ["audio", "voice"]:
-                                r = requests.get(att_url, timeout=10)
-                                if r.status_code == 200:
+                                r = requests.get(att_url, timeout=12)
+                                if r.status_code != 200 and page_token:
+                                    r = requests.get(att_url, params={"access_token": page_token}, timeout=12)
+                                if r.status_code == 200 and len(r.content) > 0:
                                     audio_bytes = r.content
                                     audio_mime = r.headers.get("content-type", "audio/mp4").split(";")[0].strip()
+                                    if not msg_text:
+                                        msg_text = "[কাস্টমার একটি ভয়েস অডিও বার্তা পাঠিয়েছেন]"
                         except Exception as e:
                             print(f"[Facebook Media DL Error]: {e}")
 

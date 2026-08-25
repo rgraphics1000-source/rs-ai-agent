@@ -1718,6 +1718,34 @@ def generate_smart_fallback_reply(
                         return f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য (৩০-৪৯ পিস টিয়ারে) রেগুলার রেটের চেয়ে প্রতি সেটে ১০ টাকা বেশি হবে। কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ।"
                 return f"জি {honorific}, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
 
+        # Conversational Greetings & Pleasantries in fallback
+        if any(k in msg for k in ["আসসালামু আলাইকুম", "সালাম", "assalamu", "salam"]):
+            return f"ওয়ালাইকুমুস সালাম {honorific}! আরএস গ্রাফিক্সের পক্ষ থেকে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+
+        if any(k in msg for k in ["ভালো আছেন", "কেমন আছেন", "ভাল আছেন", "valo achen", "kemon achen"]):
+            return f"আলহামদুলিল্লাহ {honorific}, আমি ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+
+        if any(k in msg for k in ["কি কর", "কি করো", "কি করেন", "ki kor", "ki koro", "কি করছো"]):
+            return f"জি {honorific}, আমি আরএস গ্রাফিক্সের সেলস সহকারী নাদিম। আপনাদের সেবায় প্রস্তুত আছি। আইডি কার্ড, ফিতা বা প্রিন্টিং সংক্রান্ত যেকোনো তথ্যে সহযোগিতা করতে পারি।"
+
+        if any(k in msg for k in ["আপনি কে", "কে আপনি", "আপনার নাম", "নাম কি", "নাম কী", "who are you"]):
+            return f"জি {honorific}, আমার নাম নাদিম। আমি আরএস গ্রাফিক্সের সেলস সহকারী হিসেবে দায়িত্ব পালন করছি।"
+
+        if any(k in msg for k in ["মালিক", "ওনার", "owner"]):
+            return f"জি {honorific}, বিষয়টি আমাদের টিমকে জানাচ্ছি। আমাদের টিম আপনাকে বিস্তারিত জানিয়ে দেবে।"
+
+        if any(k in msg for k in ["hi", "hello", "হাই", "হ্যালো", "hey"]):
+            return f"জি {honorific}, আরএস গ্রাফিক্সের পক্ষ থেকে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+
+        if any(k in msg for k in ["ভয়েস", "ভয়েস", "voice", "audio"]):
+            return f"জি {honorific}, আপনার ভয়েস বার্তাটি পেয়েছি। আপনার আইডি কার্ড, ফিতা বা প্রিন্টিং সংক্রান্ত যেকোনো প্রশ্ন থাকলে বলুন, আমি বিস্তারিত জানিয়ে সহযোগিতা করছি।"
+
+        if any(k in msg for k in ["বানানো দরকার", "কিছু বানানো", "বানাতে চাই", "প্রিন্ট করতে চাই"]):
+            return f"জি {honorific}, অবশ্যই বানাতে পারবেন! আপনি কত পিস আইডি কার্ড বা ফিতা করতে চান এবং কার্ডের সঙ্গে ফিতা ও কভারও নিতে চান কি?"
+
+        if any(k in msg for k in ["প্রিমিয়াম", "প্রিমিয়াম", "প্যাকেজ ৭", "প্যাকেজ 7", "সবচেয়ে ভালো"]):
+            return f"জি {honorific}, আমাদের সবচেয়ে প্রিমিয়াম প্যাকেজ হলো 'প্যাকেজ ৭'। এতে থাকছে ডিজিটাল সাটিন মাল্টিকালার ফিতা, ১০০% ওয়াটারপ্রুফ এইচডি কার্ড ও মেটাল ফ্রেম কভার (প্রতি সেট ৯১ টাকা)।"
+
         if any(k in msg for k in ["আইডি কার্ড", "আইডি কাড", "id card", "আইডিকার্ড", "কার্ড বানাতে", "কার্ড করতে", "কার্ড বানাবো"]):
             return f"জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন?"
 
@@ -1733,7 +1761,7 @@ def generate_smart_fallback_reply(
         if any(k in msg for k in ["দাম", "রেট", "মূল্য", "price", "cost"]):
             return f"জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন জানাবেন প্লিজ? আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস।"
 
-        return f"জি {honorific}, আসসালামু আলাইকুম! আপনি আইডি কার্ড কত পিস বানাবেন জানাবেন প্লিজ?"
+        return f"জি {honorific}, আপনার আইডি কার্ড, ফিতা বা প্রিন্টিং সংক্রান্ত যেকোনো প্রশ্ন থাকলে আমাকে জানাতে পারেন, আমি বিস্তারিত জানিয়ে সহযোগিতা করছি।"
 
     # Workspace 2+ Clean Generic Fallbacks (Never mentioning RS Graphics or ID cards)
     if any(k in msg for k in ["দাম", "রেট", "মূল্য", "price", "cost"]):
@@ -1898,10 +1926,10 @@ async def process_customer_message(
         # Prioritize high-quota active working models
         candidate_models = [
             "gemini-2.5-flash",
-            "gemini-flash-latest",
-            "gemini-flash-lite-latest",
-            "gemini-3.5-flash-lite",
-            "gemini-3.6-flash"
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+            "gemini-2.0-flash-lite"
         ]
 
         response = None
