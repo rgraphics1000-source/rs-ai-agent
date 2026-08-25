@@ -61,6 +61,7 @@ class TestProductionReliability(unittest.TestCase):
         self.ws_id = 1
         self.sender_id = f"rel_cust_{self._testMethodName}"
         self.conv_id = f"conv_1_{self.sender_id}"
+        enable_conversation_ai(sender_id=self.sender_id, workspace_id=self.ws_id, enabled_by="test_setup")
 
         # Clean test state for this sender
         conn = get_db_connection()
@@ -575,21 +576,21 @@ class TestProductionReliability(unittest.TestCase):
     # =========================================================================
     def test_36_owner_takeover_enforces_absolute_silence(self):
         """TEST 36: When takeover is active, MasterOrchestrator returns silence."""
-        set_admin_takeover(self.sender_id, "admin_user", self.ws_id)
+        set_admin_takeover(sender_id=self.sender_id, takeover_by="admin_user", workspace_id=self.ws_id)
         decision = MasterOrchestrator.execute_decision("১০০টা প্যাকেজ ৭ দেন", sender_id=self.sender_id, workspace_id=self.ws_id)
         self.assertEqual(decision["reply_text"], "")
         self.assertFalse(decision["ai_reply_allowed"])
 
     def test_37_owner_takeover_blocks_gemini_calls(self):
         """TEST 37: Takeover blocks any AI execution and returns silence."""
-        set_admin_takeover(self.sender_id, "admin_user", self.ws_id)
+        set_admin_takeover(sender_id=self.sender_id, takeover_by="admin_user", workspace_id=self.ws_id)
         decision = MasterOrchestrator.execute_decision("Hello", sender_id=self.sender_id, workspace_id=self.ws_id)
         self.assertFalse(decision["ai_reply_allowed"])
         self.assertEqual(decision["reply_text"], "")
 
     def test_38_owner_takeover_blocks_media_and_approvals(self):
         """TEST 38: Takeover suppresses media routing and approval generation."""
-        set_admin_takeover(self.sender_id, "admin_user", self.ws_id)
+        set_admin_takeover(sender_id=self.sender_id, takeover_by="admin_user", workspace_id=self.ws_id)
         decision = MasterOrchestrator.execute_decision("ভিডিওটা দেন আর ৮০ টাকায় approve করেন", sender_id=self.sender_id, workspace_id=self.ws_id)
         self.assertEqual(decision["video_url"], "")
         self.assertEqual(decision["voice_url"], "")

@@ -40,6 +40,8 @@ class TestOwnerApproval(unittest.TestCase):
         self.ws_id = 1
         self.test_sender = f"appr_test_{self._testMethodName}"
         self.conv_id = f"conv_1_{self.test_sender}"
+        from app.database import enable_conversation_ai
+        enable_conversation_ai(sender_id=self.test_sender, workspace_id=self.ws_id, enabled_by="test_setup")
 
         # Clean up database records for this test sender
         conn = get_db_connection()

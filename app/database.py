@@ -1788,16 +1788,24 @@ def is_muted_number(phone: str) -> bool:
     """Checks if a phone number or sender ID is in the muted/blacklisted AI numbers list."""
     if not phone:
         return False
-    clean_target = "".join([c for c in str(phone) if c.isdigit()])
-    if not clean_target:
-        return False
-    target_last10 = clean_target[-10:] if len(clean_target) >= 10 else clean_target
+    s_raw = str(phone).strip()
     current = get_muted_numbers()
     for existing in current:
-        c_exist = "".join([c for c in str(existing) if c.isdigit()])
-        e_last10 = c_exist[-10:] if len(c_exist) >= 10 else c_exist
-        if clean_target and c_exist and (clean_target == c_exist or (target_last10 and target_last10 == e_last10)):
+        if not existing:
+            continue
+        e_raw = str(existing).strip()
+        if s_raw == e_raw:
             return True
+        # If both are phone numbers (with standard length >= 8), compare normalized digits
+        clean_target = "".join([c for c in s_raw if c.isdigit()])
+        c_exist = "".join([c for c in e_raw if c.isdigit()])
+        if len(clean_target) >= 8 and len(c_exist) >= 8:
+            if clean_target == c_exist:
+                return True
+            target_last10 = clean_target[-10:]
+            e_last10 = c_exist[-10:]
+            if target_last10 == e_last10:
+                return True
     return False
 
 def get_muted_contacts_detailed() -> list:

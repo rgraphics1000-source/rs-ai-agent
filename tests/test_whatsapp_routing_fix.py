@@ -263,7 +263,10 @@ class TestWhatsAppRoutingFix(unittest.TestCase):
     def test_m_webhook_e2e_ai_reply_flow(self):
         """Test M: Webhook event with 4184514263660680 generates AI reply and sends using Workspace 1 credentials."""
         from app.channels.debouncer import message_debouncer
-        cust_num = "8801712345678"
+        import time
+        from app.database import enable_conversation_ai
+        cust_num = f"88017{int(time.time() * 1000) % 100000000:08d}"
+        enable_conversation_ai(sender_id=cust_num, workspace_id=1, enabled_by="test_setup")
         webhook_data = {
             "entry": [{
                 "changes": [{

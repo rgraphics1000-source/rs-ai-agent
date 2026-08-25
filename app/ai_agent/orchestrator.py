@@ -375,11 +375,18 @@ class MasterOrchestrator:
             selected_tools.append("delivery_calculator")
             is_inside = entities.get("location") == "inside_dhaka" if entities.get("location") else True
             subtotal = float(verified_context.get("pricing", {}).get("total_amount") or 5000.0)
-            del_res = calculate_delivery_and_cod(
-                subtotal=subtotal,
-                is_inside_dhaka=is_inside
-            )
-            verified_context["delivery"] = del_res
+            try:
+                del_res = calculate_delivery_and_cod(
+                    subtotal=subtotal,
+                    is_inside_dhaka=is_inside
+                )
+                verified_context["delivery"] = del_res
+            except Exception as e:
+                verified_context["delivery"] = {
+                    "base_delivery": 80.0 if is_inside else 130.0,
+                    "cod_charge": 0.0,
+                    "total_delivery_charge": 80.0 if is_inside else 130.0
+                }
 
         # C. MEDIA ROUTER TOOL
         routed_media = MediaRouter.route_media(
@@ -437,8 +444,9 @@ class MasterOrchestrator:
                 )
             else:
                 d_data = verified_context["delivery"]
+                base_fee = int(d_data.get("base_delivery", 80.0))
                 draft_reply_text = (
-                    f"জি {honorific}, আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে {int(d_data['base_delivery'])} টাকা "
+                    f"জি {honorific}, আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে {base_fee} টাকা "
                     f"এবং ঢাকার বাইরে ১৩০ টাকা। কাজ শুরুর পূর্বে ডেলিভারি চার্জ অগ্রিম পেমেন্ট বাধ্যতামূলক।"
                 )
 

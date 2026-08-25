@@ -35,6 +35,8 @@ class TestMasterOrchestrator(unittest.TestCase):
         ensure_default_saved_media()
         self.ws_id = 1
         self.test_sender = f"orch_test_{self._testMethodName}"
+        from app.database import enable_conversation_ai
+        enable_conversation_ai(sender_id=self.test_sender, workspace_id=self.ws_id, enabled_by="test_setup")
 
     def test_01_price_inquiry_uses_pricing_engine(self):
         """TEST 1: Price inquiry selects Pricing Engine and calculates authoritative price."""
