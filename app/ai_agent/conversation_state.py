@@ -8,7 +8,7 @@ import json
 import sqlite3
 from enum import Enum
 from typing import Dict, Any, Optional, List, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class SalesStage(str, Enum):
@@ -136,6 +136,7 @@ VALID_TRANSITIONS: Dict[str, List[str]] = {
         SalesStage.CLOSED,
     ],
     SalesStage.SAMPLE_SENT: [
+        SalesStage.QUANTITY_IDENTIFIED,
         SalesStage.PACKAGE_IDENTIFIED,
         SalesStage.PRICE_READY,
         SalesStage.ORDER_INTENT,
@@ -278,6 +279,14 @@ ALLOWED_STATE_FIELDS = {
     "last_customer_intent",
     "current_sales_stage",
     "conversation_id",
+    "memory_context",
+    "current_topic",
+    "previous_topic",
+    "pending_question",
+    "questions_asked",
+    "facts_confirmed",
+    "media_dispatched",
+    "selected_product",
 }
 
 
@@ -384,6 +393,39 @@ def update_conversation_state(
     current_state = get_or_create_conversation_state(s_id, ws_id, conversation_id)
     conv_id = str(conversation_id or current_state.get("conversation_id") or f"conv_{ws_id}_{s_id}").strip()
     previous_stage = current_state.get("current_sales_stage", SalesStage.NEW)
+
+    # Monotonic Sample State Guard: Once samples are sent, NEVER regress back to pending
+    current_sample_sent = bool(
+        current_state.get("sample_sent") in (1, "1", True) or
+        current_state.get("sample_permission") == "granted" or
+        current_state.get("current_sales_stage") in (
+            SalesStage.SAMPLE_SENT,
+            SalesStage.PACKAGE_IDENTIFIED,
+            SalesStage.PRICE_READY,
+            SalesStage.ORDER_INTENT,
+            SalesStage.ADVANCE_PENDING,
+            SalesStage.ADVANCE_CONFIRMED,
+            SalesStage.CUSTOMER_INFO_PENDING,
+            SalesStage.CUSTOMER_INFO_COMPLETE,
+            SalesStage.DESIGN_PROCESSING,
+            SalesStage.PROOF_PENDING,
+            SalesStage.PROOF_SENT,
+            SalesStage.CUSTOMER_CORRECTION,
+            SalesStage.FINAL_APPROVAL_PENDING,
+            SalesStage.FINAL_APPROVED,
+            SalesStage.PRINTING,
+            SalesStage.COURIER,
+            SalesStage.DELIVERED
+        )
+    )
+    if current_sample_sent:
+        if clean_updates.get("sample_permission") == "pending":
+            clean_updates.pop("sample_permission")
+        if clean_updates.get("sample_sent") in (0, "0", False):
+            clean_updates.pop("sample_sent")
+        if clean_updates.get("current_sales_stage") == SalesStage.SAMPLE_PERMISSION_PENDING:
+            clean_updates.pop("current_sales_stage")
+
     new_stage = clean_updates.get("current_sales_stage", previous_stage)
 
     # Validate stage transition if stage is changing
@@ -521,3 +563,157 @@ def get_state_audit_history(
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+# ============================================================
+# PHASE 9 CONVERSATION MEMORY & REPETITION GUARDS
+# ============================================================
+
+def record_question_asked(sender_id: str, question_code: str, workspace_id: int = 1) -> bool:
+    """Records a question asked by the agent to prevent repeated prompts."""
+    s_id = str(sender_id).strip()
+    ws_id = int(workspace_id or 1)
+    state = get_structured_conversation_state(s_id, ws_id)
+    raw_questions = state.get("questions_asked") or "[]"
+    try:
+        q_list = json.loads(raw_questions) if isinstance(raw_questions, str) else list(raw_questions)
+    except Exception:
+        q_list = []
+    if question_code not in q_list:
+        q_list.append(question_code)
+        update_conversation_state(
+            sender_id=s_id,
+            updates={
+                "questions_asked": json.dumps(q_list),
+                "pending_question": question_code
+            },
+            reason="record_question_asked",
+            workspace_id=ws_id
+        )
+    return True
+
+
+def record_fact_confirmed(sender_id: str, fact_key: str, fact_value: Any, workspace_id: int = 1) -> bool:
+    """Records a verified customer fact (e.g. quantity, product, design presence)."""
+    s_id = str(sender_id).strip()
+    ws_id = int(workspace_id or 1)
+    state = get_structured_conversation_state(s_id, ws_id)
+    raw_facts = state.get("facts_confirmed") or "{}"
+    try:
+        facts = json.loads(raw_facts) if isinstance(raw_facts, str) else dict(raw_facts)
+    except Exception:
+        facts = {}
+    facts[fact_key] = fact_value
+    updates = {"facts_confirmed": json.dumps(facts, default=str)}
+    if fact_key == "quantity" and isinstance(fact_value, (int, float)):
+        updates["quantity"] = int(fact_value)
+    elif fact_key == "package_id":
+        updates["package_id"] = str(fact_value)
+    elif fact_key == "topic":
+        updates["current_topic"] = str(fact_value)
+    update_conversation_state(
+        sender_id=s_id,
+        updates=updates,
+        reason=f"record_fact_{fact_key}",
+        workspace_id=ws_id
+    )
+    return True
+
+
+def record_media_dispatched(sender_id: str, media_type: str, media_items: List[str], workspace_id: int = 1) -> bool:
+    """Records a dispatched media batch in persistent memory."""
+    s_id = str(sender_id).strip()
+    ws_id = int(workspace_id or 1)
+    state = get_structured_conversation_state(s_id, ws_id)
+    raw_media = state.get("media_dispatched") or "[]"
+    try:
+        media_list = json.loads(raw_media) if isinstance(raw_media, str) else list(raw_media)
+    except Exception:
+        media_list = []
+
+    media_entry = {
+        "media_type": media_type,
+        "items": [str(x) for x in media_items],
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    media_list.append(media_entry)
+    updates = {"media_dispatched": json.dumps(media_list)}
+    if media_type in ("samples", "sample_batch", "package_samples"):
+        updates["sample_sent"] = 1
+        updates["sample_permission"] = "granted"
+    update_conversation_state(
+        sender_id=s_id,
+        updates=updates,
+        reason="record_media_dispatched",
+        workspace_id=ws_id
+    )
+    return True
+
+
+def is_question_already_answered(sender_id: str, question_code: str, workspace_id: int = 1) -> bool:
+    """Checks whether a specific question has already been answered by the customer."""
+    s_id = str(sender_id).strip()
+    ws_id = int(workspace_id or 1)
+    state = get_structured_conversation_state(s_id, ws_id)
+    if question_code == "QUANTITY_PROMPT":
+        return state.get("quantity") is not None and int(state.get("quantity") or 0) > 0
+    if question_code == "SAMPLE_PERMISSION_PROMPT":
+        return bool(state.get("sample_sent") in (1, "1", True) or state.get("sample_permission") == "granted")
+    if question_code == "PACKAGE_SELECTION_PROMPT":
+        return bool(state.get("package_id"))
+    raw_facts = state.get("facts_confirmed") or "{}"
+    try:
+        facts = json.loads(raw_facts) if isinstance(raw_facts, str) else dict(raw_facts)
+        return question_code in facts
+    except Exception:
+        return False
+
+
+def is_media_already_sent(sender_id: str, media_type: str = "samples", workspace_id: int = 1) -> bool:
+    """Checks whether a specific media type (e.g. sample photos) was already sent."""
+    s_id = str(sender_id).strip()
+    ws_id = int(workspace_id or 1)
+    state = get_structured_conversation_state(s_id, ws_id)
+    if media_type in ("samples", "sample_batch", "package_samples"):
+        if state.get("sample_sent") in (1, "1", True) or state.get("sample_permission") == "granted":
+            return True
+    raw_media = state.get("media_dispatched") or "[]"
+    try:
+        media_list = json.loads(raw_media) if isinstance(raw_media, str) else list(raw_media)
+        return any(m.get("media_type") == media_type for m in media_list if isinstance(m, dict))
+    except Exception:
+        return False
+
+
+def get_conversation_memory(sender_id: str, workspace_id: int = 1) -> Dict[str, Any]:
+    """Returns a structured memory dict for prompt and decision building."""
+    s_id = str(sender_id).strip()
+    ws_id = int(workspace_id or 1)
+    state = get_structured_conversation_state(s_id, ws_id)
+    try:
+        facts = json.loads(state.get("facts_confirmed") or "{}")
+    except Exception:
+        facts = {}
+    try:
+        questions = json.loads(state.get("questions_asked") or "[]")
+    except Exception:
+        questions = []
+    try:
+        media = json.loads(state.get("media_dispatched") or "[]")
+    except Exception:
+        media = []
+    return {
+        "sender_id": s_id,
+        "workspace_id": ws_id,
+        "current_topic": state.get("current_topic") or "id_card",
+        "previous_topic": state.get("previous_topic"),
+        "pending_question": state.get("pending_question"),
+        "sales_stage": state.get("current_sales_stage", SalesStage.NEW),
+        "quantity": state.get("quantity"),
+        "package_id": state.get("package_id"),
+        "sample_sent": bool(state.get("sample_sent") in (1, "1", True) or state.get("sample_permission") == "granted"),
+        "facts_confirmed": facts,
+        "questions_asked": questions,
+        "media_dispatched": media,
+        "human_takeover": bool(state.get("human_takeover") in (1, "1", True))
+    }

@@ -580,9 +580,84 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_owner_approval_audits_appr ON owner_approval_audits(approval_id);")
 
+    # 24. AI Training Rule Versions (Immutable Audit Trail for Training Knowledge)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS ai_training_rule_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rule_id INTEGER NOT NULL,
+        workspace_id INTEGER DEFAULT 1,
+        version INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        rule_type TEXT DEFAULT 'qa',
+        question_or_trigger TEXT,
+        response_or_rule TEXT NOT NULL,
+        category TEXT DEFAULT 'General',
+        status TEXT DEFAULT 'active',
+        is_active INTEGER DEFAULT 1,
+        priority INTEGER DEFAULT 10,
+        modified_by TEXT DEFAULT 'system',
+        source_reference TEXT,
+        change_summary TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_training_rule_versions_rule_ws ON ai_training_rule_versions(rule_id, workspace_id);")
+
+    # 25. Team Escalations (Durable Unknown Topic & Question Escalation Engine)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS team_escalations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER DEFAULT 1,
+        sender_id TEXT NOT NULL,
+        conversation_id TEXT,
+        customer_message TEXT NOT NULL,
+        detected_unknown_topic TEXT,
+        status TEXT DEFAULT 'PENDING', -- 'PENDING', 'RESOLVED', 'DISMISSED'
+        source_channel TEXT DEFAULT 'facebook',
+        resolved_by TEXT,
+        resolution_notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_escalations_sender_ws ON team_escalations(sender_id, workspace_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_escalations_status ON team_escalations(status);")
+
+    # Auto-migration columns for ai_training_rules (Phase 9 Durable Training Engine)
+    training_cols = [
+        ("priority", "INTEGER DEFAULT 10"),
+        ("version", "INTEGER DEFAULT 1"),
+        ("status", "TEXT DEFAULT 'active'"),
+        ("created_by", "TEXT DEFAULT 'system'"),
+        ("source_reference", "TEXT"),
+        ("archived_at", "TIMESTAMP"),
+        ("updated_at", "TIMESTAMP")
+    ]
+    for col_name, col_def in training_cols:
+        try:
+            cursor.execute(f"ALTER TABLE ai_training_rules ADD COLUMN {col_name} {col_def}")
+        except Exception:
+            pass
+
+    # Auto-migration columns for conversation_states (Phase 9 Rich Conversation Memory)
+    conv_state_cols = [
+        ("memory_context", "TEXT DEFAULT '{}'"),
+        ("current_topic", "TEXT DEFAULT 'id_card'"),
+        ("previous_topic", "TEXT"),
+        ("pending_question", "TEXT"),
+        ("questions_asked", "TEXT DEFAULT '[]'"),
+        ("facts_confirmed", "TEXT DEFAULT '{}'"),
+        ("media_dispatched", "TEXT DEFAULT '[]'")
+    ]
+    for col_name, col_def in conv_state_cols:
+        try:
+            cursor.execute(f"ALTER TABLE conversation_states ADD COLUMN {col_name} {col_def}")
+        except Exception:
+            pass
+
     # Multi-tenant scoping columns migration for all business tables
     scoped_tables = [
-        "products", "orders", "conversations", "comment_logs", 
+        "products", "orders", "conversations", "comment_logs",
         "faqs", "ai_training_rules", "saved_media", "connected_pages", "whatsapp_accounts"
     ]
     for tbl in scoped_tables:
@@ -878,11 +953,11 @@ def init_db():
 
     # Products Table: Ensure workspace scoping without deleting user-added products
     cursor.execute("UPDATE products SET workspace_id = 1 WHERE workspace_id IS NULL OR workspace_id = 0")
-    
+
     # Clean up legacy /forms/d/e/ URLs to use canonical /forms/d/{id}/viewform
     try:
         cursor.execute("""
-            UPDATE generated_forms 
+            UPDATE generated_forms
             SET form_url = 'https://docs.google.com/forms/d/' || form_id || '/viewform',
                 responder_uri = 'https://docs.google.com/forms/d/' || form_id || '/viewform'
             WHERE form_id IS NOT NULL AND form_id != '' AND (form_url LIKE '%/forms/d/e/%' OR responder_uri LIKE '%/forms/d/e/%')
@@ -918,7 +993,7 @@ def get_setting(key: str, default: str = "") -> str:
         cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
         row = cursor.fetchone()
         conn.close()
-        
+
         if row and row["value"] is not None and str(row["value"]).strip() != "":
             return str(row["value"]).strip()
     except Exception:
@@ -944,14 +1019,14 @@ def get_all_settings(masked: bool = False) -> dict:
     cursor.execute("SELECT key, value FROM settings")
     rows = cursor.fetchall()
     conn.close()
-    
+
     result = {row["key"]: row["value"] for row in rows}
-    
+
     # Overlay environment variables ONLY if database value is missing or empty
     env_keys = [
-        "META_APP_ID", "META_EMBEDDED_SIGNUP_CONFIG_ID", "FB_PAGE_ACCESS_TOKEN", 
-        "FB_VERIFY_TOKEN", "FB_PAGE_ID", "FB_APP_SECRET", "GEMINI_API_KEY", 
-        "META_SYSTEM_USER_ACCESS_TOKEN", "WHATSAPP_WABA_ID", "WHATSAPP_PHONE_NUMBER_ID", 
+        "META_APP_ID", "META_EMBEDDED_SIGNUP_CONFIG_ID", "FB_PAGE_ACCESS_TOKEN",
+        "FB_VERIFY_TOKEN", "FB_PAGE_ID", "FB_APP_SECRET", "GEMINI_API_KEY",
+        "META_SYSTEM_USER_ACCESS_TOKEN", "WHATSAPP_WABA_ID", "WHATSAPP_PHONE_NUMBER_ID",
         "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_VERIFY_TOKEN", "WHATSAPP_DISPLAY_PHONE_NUMBER"
     ]
     for ek in env_keys:
@@ -960,20 +1035,20 @@ def get_all_settings(masked: bool = False) -> dict:
             k = ek.lower()
             if not result.get(k) or str(result.get(k)).strip() == "":
                 result[k] = str(val).strip()
-            
+
     # Calculate connection statuses
     has_wa_token = bool(
         (result.get("meta_system_user_access_token") and len(str(result.get("meta_system_user_access_token")).strip()) > 10)
         or (result.get("whatsapp_access_token") and len(str(result.get("whatsapp_access_token")).strip()) > 10)
     )
     has_fb_token = bool(result.get("fb_page_access_token") and len(str(result.get("fb_page_access_token")).strip()) > 10)
-    
+
     result["whatsapp_token_configured"] = has_wa_token
     result["fb_token_configured"] = has_fb_token
-    
+
     if not result.get("whatsapp_connection_status") or result.get("whatsapp_connection_status") == "not_connected":
         result["whatsapp_connection_status"] = "connected" if has_wa_token else "not_connected"
-        
+
     if not result.get("whatsapp_connection_mode"):
         result["whatsapp_connection_mode"] = "business_app_coexistence"
 
@@ -994,73 +1069,333 @@ def get_all_settings(masked: bool = False) -> dict:
     return result
 
 # ============================================================
-# AI TRAINING & KNOWLEDGE BASE HELPERS
+# AI TRAINING & KNOWLEDGE BASE HELPERS (Phase 9 Durable Versioning)
 # ============================================================
 
 def get_active_training_rules(workspace_id: int = 1) -> list:
     """Returns all active AI training rules, Q&A, and policy guidelines scoped to a workspace."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM ai_training_rules WHERE workspace_id = ? AND is_active = 1 ORDER BY category ASC, id ASC", (int(workspace_id or 1),))
+    cursor.execute("""
+        SELECT * FROM ai_training_rules
+        WHERE workspace_id = ? AND is_active = 1 AND (status IS NULL OR status = 'active')
+        ORDER BY priority DESC, category ASC, id ASC
+    """, (int(workspace_id or 1),))
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
-def get_all_training_rules(workspace_id: Optional[int] = None) -> list:
-    """Returns all training rules for dashboard management, optionally scoped by workspace."""
+def get_all_training_rules(workspace_id: Optional[int] = None, include_archived: bool = False) -> list:
+    """Returns all training rules for dashboard management, optionally scoped by workspace and archived filter."""
     conn = get_db_connection()
     cursor = conn.cursor()
+    query = "SELECT * FROM ai_training_rules WHERE 1=1"
+    params = []
     if workspace_id is not None:
-        cursor.execute("SELECT * FROM ai_training_rules WHERE workspace_id = ? ORDER BY id DESC", (int(workspace_id),))
-    else:
-        cursor.execute("SELECT * FROM ai_training_rules ORDER BY id DESC")
+        query += " AND workspace_id = ?"
+        params.append(int(workspace_id))
+    if not include_archived:
+        query += " AND (status IS NULL OR status != 'archived')"
+    query += " ORDER BY id DESC"
+    cursor.execute(query, tuple(params))
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
-def create_training_rule(title: str, response_or_rule: str, rule_type: str = "qa", question_or_trigger: str = "", category: str = "General", is_active: int = 1, workspace_id: int = 1) -> int:
+def create_training_rule(
+    title: str,
+    response_or_rule: str,
+    rule_type: str = "qa",
+    question_or_trigger: str = "",
+    category: str = "General",
+    is_active: int = 1,
+    workspace_id: int = 1,
+    created_by: str = "system",
+    priority: int = 10,
+    source_reference: str = ""
+) -> int:
+    """Creates a durable training rule and records its version 1 audit snapshot."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO ai_training_rules (title, rule_type, question_or_trigger, response_or_rule, category, is_active, workspace_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (title, rule_type, question_or_trigger, response_or_rule, category, is_active, int(workspace_id or 1)))
-    conn.commit()
+        INSERT INTO ai_training_rules (
+            title, rule_type, question_or_trigger, response_or_rule, category,
+            is_active, workspace_id, version, status, created_by, priority, source_reference
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'active', ?, ?, ?)
+    """, (
+        title, rule_type, question_or_trigger, response_or_rule, category,
+        is_active, int(workspace_id or 1), created_by, priority, source_reference
+    ))
     rule_id = cursor.lastrowid
+
+    # Record Version 1 Snapshot
+    cursor.execute("""
+        INSERT INTO ai_training_rule_versions (
+            rule_id, workspace_id, version, title, rule_type, question_or_trigger,
+            response_or_rule, category, status, is_active, priority, modified_by,
+            source_reference, change_summary
+        ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, 'Initial version created')
+    """, (
+        rule_id, int(workspace_id or 1), title, rule_type, question_or_trigger,
+        response_or_rule, category, is_active, priority, created_by, source_reference
+    ))
+    conn.commit()
     conn.close()
     return rule_id
 
-def update_training_rule(rule_id: int, title: str, response_or_rule: str, rule_type: str = "qa", question_or_trigger: str = "", category: str = "General", is_active: int = 1, workspace_id: Optional[int] = None) -> bool:
+def update_training_rule(
+    rule_id: int,
+    title: str,
+    response_or_rule: str,
+    rule_type: str = "qa",
+    question_or_trigger: str = "",
+    category: str = "General",
+    is_active: int = 1,
+    workspace_id: Optional[int] = None,
+    modified_by: str = "admin",
+    change_summary: str = "Updated training content"
+) -> bool:
+    """Updates a training rule, increments version, and appends an immutable version audit snapshot."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    if workspace_id is not None:
-        cursor.execute("""
-            UPDATE ai_training_rules
-            SET title = ?, rule_type = ?, question_or_trigger = ?, response_or_rule = ?, category = ?, is_active = ?, workspace_id = ?
-            WHERE id = ?
-        """, (title, rule_type, question_or_trigger, response_or_rule, category, is_active, int(workspace_id), rule_id))
-    else:
-        cursor.execute("""
-            UPDATE ai_training_rules
-            SET title = ?, rule_type = ?, question_or_trigger = ?, response_or_rule = ?, category = ?, is_active = ?
-            WHERE id = ?
-        """, (title, rule_type, question_or_trigger, response_or_rule, category, is_active, rule_id))
+
+    # Fetch current version
+    cursor.execute("SELECT version, workspace_id, priority, source_reference FROM ai_training_rules WHERE id = ?", (rule_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+
+    old_version = int(row["version"] or 1)
+    new_version = old_version + 1
+    ws_id = int(workspace_id) if workspace_id is not None else int(row["workspace_id"] or 1)
+    prio = int(row["priority"] or 10)
+    src_ref = str(row["source_reference"] or "")
+
+    cursor.execute("""
+        UPDATE ai_training_rules
+        SET title = ?, rule_type = ?, question_or_trigger = ?, response_or_rule = ?,
+            category = ?, is_active = ?, version = ?, updated_at = CURRENT_TIMESTAMP, workspace_id = ?
+        WHERE id = ?
+    """, (
+        title, rule_type, question_or_trigger, response_or_rule,
+        category, is_active, new_version, ws_id, rule_id
+    ))
+
+    # Append new version record
+    cursor.execute("""
+        INSERT INTO ai_training_rule_versions (
+            rule_id, workspace_id, version, title, rule_type, question_or_trigger,
+            response_or_rule, category, status, is_active, priority, modified_by,
+            source_reference, change_summary
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
+    """, (
+        rule_id, ws_id, new_version, title, rule_type, question_or_trigger,
+        response_or_rule, category, is_active, prio, modified_by, src_ref, change_summary
+    ))
+
     conn.commit()
     conn.close()
     return True
 
-def delete_training_rule(rule_id: int) -> bool:
+def archive_training_rule(rule_id: int, modified_by: str = "admin") -> bool:
+    """Soft-archives a training rule, safely deactivating it without data loss."""
     conn = get_db_connection()
     cursor = conn.cursor()
+    cursor.execute("SELECT version, workspace_id, title, rule_type, question_or_trigger, response_or_rule, category, priority, source_reference FROM ai_training_rules WHERE id = ?", (rule_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+
+    old_ver = int(row["version"] or 1)
+    new_ver = old_ver + 1
+    ws_id = int(row["workspace_id"] or 1)
+
+    cursor.execute("""
+        UPDATE ai_training_rules
+        SET status = 'archived', is_active = 0, archived_at = CURRENT_TIMESTAMP, version = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, (new_ver, rule_id))
+
+    cursor.execute("""
+        INSERT INTO ai_training_rule_versions (
+            rule_id, workspace_id, version, title, rule_type, question_or_trigger,
+            response_or_rule, category, status, is_active, priority, modified_by,
+            source_reference, change_summary
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'archived', 0, ?, ?, ?, 'Archived by user')
+    """, (
+        rule_id, ws_id, new_ver, row["title"], row["rule_type"], row["question_or_trigger"],
+        row["response_or_rule"], row["category"], int(row["priority"] or 10), modified_by, str(row["source_reference"] or "")
+    ))
+
+    conn.commit()
+    conn.close()
+    return True
+
+def restore_training_rule(rule_id: int, modified_by: str = "admin") -> bool:
+    """Restores an archived training rule to active status."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT version, workspace_id, title, rule_type, question_or_trigger, response_or_rule, category, priority, source_reference FROM ai_training_rules WHERE id = ?", (rule_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+
+    old_ver = int(row["version"] or 1)
+    new_ver = old_ver + 1
+    ws_id = int(row["workspace_id"] or 1)
+
+    cursor.execute("""
+        UPDATE ai_training_rules
+        SET status = 'active', is_active = 1, archived_at = NULL, version = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, (new_ver, rule_id))
+
+    cursor.execute("""
+        INSERT INTO ai_training_rule_versions (
+            rule_id, workspace_id, version, title, rule_type, question_or_trigger,
+            response_or_rule, category, status, is_active, priority, modified_by,
+            source_reference, change_summary
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, ?, ?, ?, 'Restored to active')
+    """, (
+        rule_id, ws_id, new_ver, row["title"], row["rule_type"], row["question_or_trigger"],
+        row["response_or_rule"], row["category"], int(row["priority"] or 10), modified_by, str(row["source_reference"] or "")
+    ))
+
+    conn.commit()
+    conn.close()
+    return True
+
+def delete_training_rule(rule_id: int, permanent: bool = False) -> bool:
+    """Deletes or archives a training rule. Permanent deletion drops history, soft deletion archives."""
+    if not permanent:
+        return archive_training_rule(rule_id)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM ai_training_rule_versions WHERE rule_id = ?", (rule_id,))
     cursor.execute("DELETE FROM ai_training_rules WHERE id = ?", (rule_id,))
     conn.commit()
     conn.close()
     return True
 
 def toggle_training_rule(rule_id: int) -> bool:
+    """Toggles active state of a training rule."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE ai_training_rules SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE id = ?", (rule_id,))
+    cursor.execute("""
+        UPDATE ai_training_rules
+        SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, (rule_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+def get_training_rule_versions(rule_id: int) -> list:
+    """Returns the immutable version history of a training rule."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM ai_training_rule_versions WHERE rule_id = ? ORDER BY version DESC", (rule_id,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def search_training_rules(query: str, workspace_id: int = 1) -> list:
+    """Searches active training rules by keyword match across title, trigger, category, and response."""
+    if not query:
+        return get_active_training_rules(workspace_id)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    term = f"%{query.strip().lower()}%"
+    cursor.execute("""
+        SELECT * FROM ai_training_rules
+        WHERE workspace_id = ? AND is_active = 1 AND (status IS NULL OR status = 'active')
+          AND (LOWER(title) LIKE ? OR LOWER(question_or_trigger) LIKE ? OR LOWER(response_or_rule) LIKE ? OR LOWER(category) LIKE ?)
+        ORDER BY priority DESC, id ASC
+    """, (int(workspace_id or 1), term, term, term, term))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+# ============================================================
+# TEAM ESCALATIONS HELPERS (Phase 9 No-Guess Boundary Engine)
+# ============================================================
+
+def create_team_escalation(
+    sender_id: str,
+    customer_message: str,
+    detected_unknown_topic: str = "",
+    workspace_id: int = 1,
+    conversation_id: str = "",
+    source_channel: str = "facebook"
+) -> int:
+    """Creates or updates a deduplicated team escalation for an unanswered/unknown inquiry."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    s_id = str(sender_id).strip()
+    ws_id = int(workspace_id or 1)
+    topic_str = str(detected_unknown_topic or "").strip()
+    conv_id = str(conversation_id or f"conv_{ws_id}_{s_id}").strip()
+
+    # Deduplication check: Has a pending escalation been created recently for this topic?
+    cursor.execute("""
+        SELECT id FROM team_escalations
+        WHERE workspace_id = ? AND sender_id = ? AND detected_unknown_topic = ? AND status = 'PENDING'
+        ORDER BY id DESC LIMIT 1
+    """, (ws_id, s_id, topic_str))
+    existing = cursor.fetchone()
+    if existing:
+        esc_id = existing["id"]
+        cursor.execute("""
+            UPDATE team_escalations
+            SET customer_message = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (customer_message, esc_id))
+        conn.commit()
+        conn.close()
+        return esc_id
+
+    cursor.execute("""
+        INSERT INTO team_escalations (
+            workspace_id, sender_id, conversation_id, customer_message,
+            detected_unknown_topic, status, source_channel
+        ) VALUES (?, ?, ?, ?, ?, 'PENDING', ?)
+    """, (ws_id, s_id, conv_id, customer_message, topic_str, source_channel))
+    esc_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return esc_id
+
+def get_team_escalations(workspace_id: Optional[int] = None, status: str = "PENDING") -> list:
+    """Returns team escalations filtered by status and workspace."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if workspace_id is not None:
+        if status == "ALL":
+            cursor.execute("SELECT * FROM team_escalations WHERE workspace_id = ? ORDER BY id DESC", (int(workspace_id),))
+        else:
+            cursor.execute("SELECT * FROM team_escalations WHERE workspace_id = ? AND status = ? ORDER BY id DESC", (int(workspace_id), status))
+    else:
+        if status == "ALL":
+            cursor.execute("SELECT * FROM team_escalations ORDER BY id DESC")
+        else:
+            cursor.execute("SELECT * FROM team_escalations WHERE status = ? ORDER BY id DESC", (status,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def resolve_team_escalation(escalation_id: int, resolved_by: str = "admin", resolution_notes: str = "") -> bool:
+    """Marks a team escalation as resolved."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE team_escalations
+        SET status = 'RESOLVED', resolved_by = ?, resolution_notes = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, (resolved_by, resolution_notes, escalation_id))
     conn.commit()
     conn.close()
     return True
@@ -1130,7 +1465,7 @@ def resolve_quoted_message_media(quoted_mid: str, workspace_id: int = 1) -> dict
         conn = get_db_connection()
         cursor = conn.cursor()
         ws_id = int(workspace_id or 1)
-        
+
         cursor.execute("""
             SELECT m.id, m.media_url, m.content, m.message_type, m.external_message_id
             FROM messages m
@@ -1147,7 +1482,7 @@ def resolve_quoted_message_media(quoted_mid: str, workspace_id: int = 1) -> dict
                 ORDER BY id DESC LIMIT 1
             """, (str(quoted_mid), str(quoted_mid)))
             row = cursor.fetchone()
-            
+
         media_url = ""
         content = ""
         row_id = None
@@ -1170,13 +1505,13 @@ def resolve_quoted_message_media(quoted_mid: str, workspace_id: int = 1) -> dict
                     content = md_row["media_filename"] or ""
             except Exception:
                 pass
-                
+
         if not media_url and not content:
             return {}
         local_path = None
         img_bytes = None
         img_mime = "image/jpeg"
-        
+
         if media_url:
             clean_rel = str(media_url).lstrip("/")
             if os.path.exists(clean_rel):
@@ -1185,7 +1520,7 @@ def resolve_quoted_message_media(quoted_mid: str, workspace_id: int = 1) -> dict
                 local_path = str(media_url)[1:]
             elif os.path.exists(os.path.join("static", os.path.basename(str(media_url)))):
                 local_path = os.path.join("static", os.path.basename(str(media_url)))
-                
+
             if local_path and os.path.isfile(local_path):
                 try:
                     with open(local_path, "rb") as f:
@@ -1196,7 +1531,7 @@ def resolve_quoted_message_media(quoted_mid: str, workspace_id: int = 1) -> dict
                         img_mime = "image/webp"
                 except Exception as e:
                     print(f"[resolve_quoted_message_media read error]: {e}")
-                    
+
         return {
             "id": row["id"],
             "media_url": media_url,
@@ -1480,13 +1815,13 @@ def ensure_default_saved_media(conn=None):
         ]
         for m in defaults:
             cursor.execute("""
-                SELECT id, media_key FROM saved_media 
+                SELECT id, media_key FROM saved_media
                 WHERE media_key = ? AND workspace_id = ?
             """, (m["media_key"], m["workspace_id"]))
             row = cursor.fetchone()
             if row:
                 cursor.execute("""
-                    UPDATE saved_media 
+                    UPDATE saved_media
                     SET title = ?,
                         media_type = ?,
                         file_url = ?,
@@ -1506,8 +1841,8 @@ def ensure_default_saved_media(conn=None):
             else:
                 cursor.execute("""
                     INSERT INTO saved_media (
-                        media_key, title, media_type, file_url, description, 
-                        intent, trigger_phrases, negative_phrases, priority, 
+                        media_key, title, media_type, file_url, description,
+                        intent, trigger_phrases, negative_phrases, priority,
                         send_once, workspace_id, is_active
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1520,7 +1855,7 @@ def ensure_default_saved_media(conn=None):
         # Enforce single authoritative active record per media_key
         for m in defaults:
             cursor.execute("""
-                SELECT id FROM saved_media 
+                SELECT id FROM saved_media
                 WHERE media_key = ? AND workspace_id = ?
                 ORDER BY id DESC
             """, (m["media_key"], m["workspace_id"]))
@@ -1528,7 +1863,7 @@ def ensure_default_saved_media(conn=None):
             if len(dup_rows) > 1:
                 keep_id = dup_rows[0]["id"]
                 cursor.execute("""
-                    DELETE FROM saved_media 
+                    DELETE FROM saved_media
                     WHERE media_key = ? AND workspace_id = ? AND id != ?
                 """, (m["media_key"], m["workspace_id"], keep_id))
         conn.commit()
@@ -1562,7 +1897,7 @@ def get_saved_media_by_key(media_key: str, workspace_id: int = 1) -> Optional[di
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT * FROM saved_media 
+        SELECT * FROM saved_media
         WHERE media_key = ? AND (workspace_id = ? OR workspace_id = 1) AND is_active = 1
         ORDER BY priority DESC, id DESC LIMIT 1
     """, (str(media_key).strip(), int(workspace_id or 1)))
@@ -1577,7 +1912,7 @@ def get_saved_media_by_intent(intent: str, workspace_id: int = 1) -> list:
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT * FROM saved_media 
+        SELECT * FROM saved_media
         WHERE intent = ? AND (workspace_id = ? OR workspace_id = 1) AND is_active = 1
         ORDER BY priority DESC, id DESC
     """, (str(intent).strip(), int(workspace_id or 1)))
@@ -1625,14 +1960,14 @@ def create_saved_media(
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO saved_media (
-            title, media_type, file_url, description, duration_seconds, 
-            workspace_id, media_key, intent, trigger_phrases, negative_phrases, 
+            title, media_type, file_url, description, duration_seconds,
+            workspace_id, media_key, intent, trigger_phrases, negative_phrases,
             priority, send_once, is_active
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     """, (
-        title, media_type, file_url, description, duration_seconds, 
-        int(workspace_id or 1), media_key, intent, trigger_phrases, negative_phrases, 
+        title, media_type, file_url, description, duration_seconds,
+        int(workspace_id or 1), media_key, intent, trigger_phrases, negative_phrases,
         int(priority or 10), int(send_once or 1)
     ))
     conn.commit()
@@ -1660,14 +1995,14 @@ def toggle_conversation_ai(conversation_id: int, status: int = None) -> bool:
     if not row:
         conn.close()
         return False
-        
+
     sender_id = row["sender_id"]
     current_human = row["human_takeover"] or row["admin_takeover"] or 0
     new_takeover = status if status is not None else (0 if current_human == 1 else 1)
-    
+
     if new_takeover == 1:
         cursor.execute("""
-            UPDATE conversations 
+            UPDATE conversations
             SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
                 takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_toggle', takeover_reason = 'manual_toggle',
                 conversation_version = COALESCE(conversation_version, 1) + 1,
@@ -1678,7 +2013,7 @@ def toggle_conversation_ai(conversation_id: int, status: int = None) -> bool:
             add_muted_number(sender_id)
     else:
         cursor.execute("""
-            UPDATE conversations 
+            UPDATE conversations
             SET human_takeover = 0, admin_takeover = 0, ai_enabled = 1,
                 takeover_at = NULL, takeover_by = NULL, takeover_reason = NULL,
                 conversation_version = COALESCE(conversation_version, 1) + 1,
@@ -1687,7 +2022,7 @@ def toggle_conversation_ai(conversation_id: int, status: int = None) -> bool:
         """, (conversation_id,))
         if sender_id:
             remove_muted_number(sender_id)
-            
+
     conn.commit()
     conn.close()
     return True
@@ -1695,7 +2030,7 @@ def toggle_conversation_ai(conversation_id: int, status: int = None) -> bool:
 def get_muted_numbers() -> list:
     raw = get_setting("blacklisted_ai_numbers", "")
     items = [x.strip() for x in raw.replace("\n", ",").split(",") if x.strip()] if raw else []
-    
+
     # Also fetch any active conversations where human_takeover == 1
     try:
         conn = get_db_connection()
@@ -1723,10 +2058,10 @@ def add_muted_number(phone: str) -> list:
     if not phone:
         return get_muted_numbers()
     current = get_muted_numbers()
-    
+
     clean_target = "".join([c for c in phone if c.isdigit()])
     target_last10 = clean_target[-10:] if len(clean_target) >= 10 else clean_target
-    
+
     # Check if already present under any format
     already_present = False
     for existing in current:
@@ -1735,11 +2070,11 @@ def add_muted_number(phone: str) -> list:
         if clean_target and c_exist and (clean_target == c_exist or (target_last10 and target_last10 == e_last10)):
             already_present = True
             break
-            
+
     if not already_present:
         current.append(phone)
         set_setting("blacklisted_ai_numbers", ", ".join(current))
-    
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1758,7 +2093,7 @@ def remove_muted_number(phone: str) -> list:
     current = get_muted_numbers()
     clean_target = "".join([c for c in phone if c.isdigit()])
     target_last10 = clean_target[-10:] if len(clean_target) >= 10 else clean_target
-    
+
     def is_match(x):
         if x == phone:
             return True
@@ -1770,7 +2105,7 @@ def remove_muted_number(phone: str) -> list:
 
     updated = [x for x in current if not is_match(x)]
     set_setting("blacklisted_ai_numbers", ", ".join(updated))
-    
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1812,10 +2147,10 @@ def get_muted_contacts_detailed() -> list:
     muted_list = get_muted_numbers()
     if not muted_list:
         return []
-    
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
     detailed = []
     for raw_phone in muted_list:
         clean_num = "".join([c for c in raw_phone if c.isdigit()])
@@ -1830,7 +2165,7 @@ def get_muted_contacts_detailed() -> list:
                 orow = cursor.fetchone()
                 if orow and orow["customer_name"]:
                     customer_name = orow["customer_name"]
-        
+
         detailed.append({
             "phone": raw_phone,
             "name": customer_name,
@@ -1853,7 +2188,7 @@ def get_conversation_state(sender_id: str = None, conversation_id: int = None, w
         "takeover_by": None,
         "takeover_reason": None
     }
-    
+
     # 1. Check Master Switch
     if get_setting("ai_enabled", "true").lower() == "false":
         default_state["ai_enabled"] = False
@@ -1930,12 +2265,12 @@ def get_conversation_state(sender_id: str = None, conversation_id: int = None, w
             return default_state
 
         conn.close()
-        
+
         if row:
             row_dict = dict(row)
             is_takeover = bool(
-                row_dict.get("admin_takeover", 0) == 1 or 
-                row_dict.get("human_takeover", 0) == 1 or 
+                row_dict.get("admin_takeover", 0) == 1 or
+                row_dict.get("human_takeover", 0) == 1 or
                 row_dict.get("ai_enabled", 1) == 0
             )
             default_state["id"] = row_dict.get("id")
@@ -1970,7 +2305,7 @@ def set_admin_takeover(
         conn = get_db_connection()
         cursor = conn.cursor()
         ws_id = int(workspace_id or 1)
-        
+
         target_conv_ids = []
         if conversation_id:
             target_conv_ids = [conversation_id]
@@ -1978,7 +2313,7 @@ def set_admin_takeover(
             cursor.execute("SELECT id FROM conversations WHERE sender_id = ? AND (workspace_id = ? OR workspace_id IS NULL)", (str(sender_id), ws_id))
             rows = cursor.fetchall()
             target_conv_ids = [r["id"] for r in rows]
-            
+
         if not target_conv_ids and sender_id:
             cursor.execute("""
                 INSERT INTO conversations (
@@ -1992,7 +2327,7 @@ def set_admin_takeover(
         else:
             for cid in target_conv_ids:
                 cursor.execute("""
-                    UPDATE conversations 
+                    UPDATE conversations
                     SET admin_takeover = 1,
                         human_takeover = 1,
                         ai_enabled = 0,
@@ -2004,7 +2339,7 @@ def set_admin_takeover(
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """, (takeover_by, takeover_reason, cid))
-                
+
                 cursor.execute("SELECT conversation_version FROM conversations WHERE id = ?", (cid,))
                 vrow = cursor.fetchone()
                 if vrow and vrow["conversation_version"]:
@@ -2012,7 +2347,7 @@ def set_admin_takeover(
 
         conn.commit()
         conn.close()
-        
+
         # Cancel any active/pending debouncer batches for this customer
         if sender_id:
             add_muted_number(str(sender_id))
@@ -2027,12 +2362,12 @@ def set_admin_takeover(
                 sync_human_takeover_state(sender_id=str(sender_id), workspace_id=ws_id, is_takeover=True, reason=takeover_reason)
             except Exception as st_err:
                 print(f"[State Machine Sync Error on Takeover]: {st_err}")
-            
+
         print(f"[ADMIN_TAKEOVER] workspace_id={ws_id} conversation_id={conversation_id or sender_id} customer_id={sender_id} takeover_by={takeover_by} conversation_version={new_version}")
         print(f"[ADMIN_TAKEOVER_ENABLED] sender={sender_id} conv_id={conversation_id} new_version={new_version} by={takeover_by} reason={takeover_reason}")
     except Exception as e:
         print(f"[DB set_admin_takeover Error]: {e}")
-        
+
     return new_version
 
 def enable_conversation_ai(
@@ -2052,7 +2387,7 @@ def enable_conversation_ai(
         conn = get_db_connection()
         cursor = conn.cursor()
         ws_id = int(workspace_id or 1)
-        
+
         target_conv_ids = []
         if conversation_id:
             target_conv_ids = [conversation_id]
@@ -2060,7 +2395,7 @@ def enable_conversation_ai(
             cursor.execute("SELECT id FROM conversations WHERE sender_id = ? AND (workspace_id = ? OR workspace_id IS NULL)", (str(sender_id), ws_id))
             rows = cursor.fetchall()
             target_conv_ids = [r["id"] for r in rows]
-            
+
         if not target_conv_ids and sender_id:
             cursor.execute("""
                 INSERT INTO conversations (
@@ -2074,7 +2409,7 @@ def enable_conversation_ai(
         else:
             for cid in target_conv_ids:
                 cursor.execute("""
-                    UPDATE conversations 
+                    UPDATE conversations
                     SET admin_takeover = 0,
                         human_takeover = 0,
                         ai_enabled = 1,
@@ -2086,7 +2421,7 @@ def enable_conversation_ai(
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """, (cid,))
-                
+
                 cursor.execute("SELECT conversation_version FROM conversations WHERE id = ?", (cid,))
                 vrow = cursor.fetchone()
                 if vrow and vrow["conversation_version"]:
@@ -2094,7 +2429,7 @@ def enable_conversation_ai(
 
         conn.commit()
         conn.close()
-        
+
         if sender_id:
             remove_muted_number(str(sender_id))
             try:
@@ -2102,11 +2437,11 @@ def enable_conversation_ai(
                 sync_human_takeover_state(sender_id=str(sender_id), workspace_id=ws_id, is_takeover=False, reason=f"enabled_by_{enabled_by}")
             except Exception as st_err:
                 print(f"[State Machine Sync Error on Enable]: {st_err}")
-            
+
         print(f"[AI_REENABLED] workspace_id={ws_id} sender={sender_id} conv_id={conversation_id} new_version={new_version} by={enabled_by}")
     except Exception as e:
         print(f"[DB enable_conversation_ai Error]: {e}")
-        
+
     return new_version
 
 def is_conversation_ai_active(sender_id: str = None, conversation_id: int = None, workspace_id: int = 1) -> bool:
@@ -2190,10 +2525,10 @@ def ensure_facebook_page_consistency(conn=None) -> Optional[dict]:
                 UPDATE connected_pages SET
                     workspace_id = 1,
                     page_name = COALESCE(NULLIF(page_name, ''), ?),
-                    page_access_token = CASE 
+                    page_access_token = CASE
                         WHEN LENGTH(?) > 30 THEN ?
                         WHEN page_access_token IS NULL OR page_access_token = '' THEN ?
-                        ELSE page_access_token 
+                        ELSE page_access_token
                     END,
                     page_status = 'connected',
                     messenger_enabled = 1,
@@ -2207,8 +2542,8 @@ def ensure_facebook_page_consistency(conn=None) -> Optional[dict]:
         else:
             # Step 2: Look for candidate row belonging to Workspace 1
             cursor.execute("""
-                SELECT * FROM connected_pages 
-                WHERE workspace_id = 1 
+                SELECT * FROM connected_pages
+                WHERE workspace_id = 1
                    OR page_id IN ('rs_graphics_page_1', '', 'default')
                 ORDER BY id ASC
             """)
@@ -2221,10 +2556,10 @@ def ensure_facebook_page_consistency(conn=None) -> Optional[dict]:
                         workspace_id = 1,
                         page_id = ?,
                         page_name = COALESCE(NULLIF(page_name, ''), ?),
-                        page_access_token = CASE 
+                        page_access_token = CASE
                             WHEN LENGTH(?) > 30 THEN ?
                             WHEN page_access_token IS NULL OR page_access_token = '' THEN ?
-                            ELSE page_access_token 
+                            ELSE page_access_token
                         END,
                         page_status = 'connected',
                         messenger_enabled = 1,
@@ -2289,7 +2624,7 @@ def save_connected_page(data: dict) -> int:
     page_name = str(data.get("page_name", "")).strip() or "Facebook Page"
     page_token = str(data.get("page_access_token", "")).strip()
     workspace_id = data.get("workspace_id")
-    
+
     if not page_id:
         raise ValueError("page_id is required")
 
@@ -2334,7 +2669,7 @@ def save_connected_page(data: dict) -> int:
                     int(data.get("ai_enabled", 1))
                 ))
                 workspace_id = cursor.lastrowid
-    
+
     if existing:
         page_pk = existing["id"]
         cursor.execute("""
@@ -2406,7 +2741,7 @@ def delete_connected_page(page_id: str) -> bool:
         if not row:
             conn.close()
             return False
-        
+
         page_pk = row["id"]
         cursor.execute("UPDATE whatsapp_accounts SET connected_page_id = NULL WHERE connected_page_id = ?", (page_pk,))
         cursor.execute("DELETE FROM connected_pages WHERE id = ?", (page_pk,))
@@ -2498,8 +2833,8 @@ def ensure_whatsapp_account_consistency(conn=None) -> Optional[dict]:
         else:
             # Step 2: Look for candidate/legacy rows belonging to Workspace 1
             cursor.execute("""
-                SELECT * FROM whatsapp_accounts 
-                WHERE workspace_id = 1 
+                SELECT * FROM whatsapp_accounts
+                WHERE workspace_id = 1
                    OR phone_number_id IN ('418451426636680', '8801816504097_wa', '8801816504097', '')
                    OR display_phone_number LIKE '%01816504097%'
                 ORDER BY id ASC
@@ -2918,7 +3253,7 @@ def get_page_ai_config(page_id: str = "", workspace_id: int = None) -> dict:
         ws = get_workspace(workspace_id)
     elif page_id:
         ws = get_workspace_by_page_id(page_id)
-    
+
     if not ws:
         ws = get_workspace(1) or {}
 
@@ -3225,14 +3560,14 @@ def claim_media_delivery(
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute("SELECT * FROM facebook_media_deliveries WHERE delivery_key = ?", (delivery_key,))
         existing = cursor.fetchone()
-        
+
         if existing:
             ex_dict = dict(existing)
             status = ex_dict.get("status", "PENDING")
-            
+
             # If already sent in the SAME batch or within 45s (webhook duplicate retry), skip duplicate.
             # But for a new user turn (>45s later or different batch_id), allow sending!
             if status == "SENT":
@@ -3252,7 +3587,7 @@ def claim_media_delivery(
                 if is_recent:
                     conn.close()
                     return False, ex_dict
-                
+
             # If UNKNOWN (timed out previously), block immediate retry within 60s
             if status == "UNKNOWN":
                 updated_at_str = ex_dict.get("updated_at")
@@ -3267,7 +3602,7 @@ def claim_media_delivery(
                             return False, ex_dict
                     except Exception:
                         pass
-                
+
             # If currently SENDING, check if lock is fresh (<60s)
             if status == "SENDING":
                 updated_at_str = ex_dict.get("updated_at")
@@ -3283,7 +3618,7 @@ def claim_media_delivery(
                             return False, ex_dict
                     except Exception:
                         pass
-                        
+
             # Otherwise claim the item: update to SENDING
             cursor.execute("""
                 UPDATE facebook_media_deliveries SET
@@ -3433,7 +3768,7 @@ def save_google_connection(
             master_sheet_id,
             status
         ))
-        
+
         # Backup refresh token & email to settings table
         if refresh_token_encrypted:
             cursor.execute("""
@@ -3536,7 +3871,7 @@ def update_google_master_ids(
                 master_sheet_url, master_has_file_upload,
                 ws_id
             ))
-        
+
         if master_form_id:
             cursor.execute("""
                 INSERT INTO settings (key, value) VALUES (?, ?)
@@ -3609,8 +3944,8 @@ def get_master_form_templates(workspace_id: int = 1) -> List[dict]:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT * FROM google_form_templates 
-            WHERE workspace_id = ? AND active = 1 
+            SELECT * FROM google_form_templates
+            WHERE workspace_id = ? AND active = 1
             ORDER BY id DESC
         """, (int(workspace_id or 1),))
         rows = cursor.fetchall()
@@ -3626,7 +3961,7 @@ def get_master_form_template_by_id(template_id: int, workspace_id: int = 1) -> O
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT * FROM google_form_templates 
+            SELECT * FROM google_form_templates
             WHERE id = ? AND workspace_id = ?
         """, (int(template_id), int(workspace_id or 1)))
         row = cursor.fetchone()
@@ -3675,7 +4010,7 @@ def get_institution_by_mobile(workspace_id: int, mobile: str) -> Optional[dict]:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT * FROM institutions 
+            SELECT * FROM institutions
             WHERE workspace_id = ? AND (normalized_mobile = ? OR phone = ? OR institution_mobile = ?)
             ORDER BY id DESC LIMIT 1
         """, (int(workspace_id or 1), canonical, canonical, canonical))
@@ -3704,7 +4039,7 @@ def save_institution(
         cursor = conn.cursor()
         raw_phone = institution_mobile or phone or ""
         norm_phone = normalize_bd_mobile(raw_phone)
-        
+
         # Check by id, or by mobile, or by name within workspace
         existing = None
         if institution_id:
@@ -3712,7 +4047,7 @@ def save_institution(
             existing = cursor.fetchone()
         if not existing and norm_phone:
             cursor.execute("""
-                SELECT * FROM institutions 
+                SELECT * FROM institutions
                 WHERE workspace_id = ? AND (normalized_mobile = ? OR phone = ? OR institution_mobile = ?)
                 LIMIT 1
             """, (int(workspace_id or 1), norm_phone, norm_phone, norm_phone))
@@ -3767,8 +4102,8 @@ def get_generated_forms(workspace_id: int = 1) -> List[dict]:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT gf.*, 
-                   COALESCE(gf.institution_mobile, inst.normalized_mobile, inst.phone) as institution_phone, 
+            SELECT gf.*,
+                   COALESCE(gf.institution_mobile, inst.normalized_mobile, inst.phone) as institution_phone,
                    inst.contact_person
             FROM generated_forms gf
             LEFT JOIN institutions inst ON gf.institution_id = inst.id
@@ -3806,14 +4141,14 @@ def get_generated_forms_by_mobile(workspace_id: int, mobile: str) -> List[dict]:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT gf.*, 
-                   COALESCE(gf.institution_mobile, inst.normalized_mobile, inst.phone) as institution_phone, 
+            SELECT gf.*,
+                   COALESCE(gf.institution_mobile, inst.normalized_mobile, inst.phone) as institution_phone,
                    inst.contact_person
             FROM generated_forms gf
             LEFT JOIN institutions inst ON gf.institution_id = inst.id
             WHERE gf.workspace_id = ? AND (
-                gf.institution_mobile = ? OR 
-                inst.normalized_mobile = ? OR 
+                gf.institution_mobile = ? OR
+                inst.normalized_mobile = ? OR
                 inst.phone = ?
             )
             ORDER BY gf.id DESC
@@ -3832,7 +4167,7 @@ def search_institutions_and_forms_by_mobile(workspace_id: int, mobile: str) -> d
     canonical = normalize_bd_mobile(mobile)
     if not canonical:
         return {"institution": None, "forms": [], "count": 0}
-    
+
     inst = get_institution_by_mobile(workspace_id=workspace_id, mobile=canonical)
     forms = get_generated_forms_by_mobile(workspace_id=workspace_id, mobile=canonical)
     return {
@@ -3849,9 +4184,9 @@ def get_generated_form_by_institution(workspace_id: int, institution_name: str, 
         if institution_mobile:
             canonical = normalize_bd_mobile(institution_mobile)
             cursor.execute("""
-                SELECT * FROM generated_forms 
+                SELECT * FROM generated_forms
                 WHERE workspace_id = ? AND (
-                    institution_mobile = ? OR 
+                    institution_mobile = ? OR
                     (LOWER(TRIM(institution_name)) = LOWER(TRIM(?)) AND institution_mobile = ?)
                 )
                 ORDER BY id DESC LIMIT 1
@@ -3863,14 +4198,14 @@ def get_generated_form_by_institution(workspace_id: int, institution_name: str, 
 
         if institution_name:
             cursor.execute("""
-                SELECT * FROM generated_forms 
+                SELECT * FROM generated_forms
                 WHERE workspace_id = ? AND LOWER(TRIM(institution_name)) = LOWER(TRIM(?))
                 ORDER BY id DESC LIMIT 1
             """, (int(workspace_id or 1), institution_name))
             row = cursor.fetchone()
             conn.close()
             return dict(row) if row else None
-            
+
         conn.close()
         return None
     except Exception as e:
@@ -3968,14 +4303,14 @@ def get_google_form_fields(workspace_id: int = 1, template_id: int = None) -> Li
         cursor = conn.cursor()
         if template_id:
             cursor.execute("""
-                SELECT * FROM google_form_fields 
+                SELECT * FROM google_form_fields
                 WHERE workspace_id = ? AND (template_id = ? OR template_id IS NULL)
                 ORDER BY sort_order ASC, id ASC
             """, (int(workspace_id or 1), int(template_id)))
         else:
             cursor.execute("""
-                SELECT * FROM google_form_fields 
-                WHERE workspace_id = ? 
+                SELECT * FROM google_form_fields
+                WHERE workspace_id = ?
                 ORDER BY sort_order ASC, id ASC
             """, (int(workspace_id or 1),))
         rows = cursor.fetchall()
@@ -4091,7 +4426,7 @@ def save_form_submission(
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT * FROM google_form_submissions 
+            SELECT * FROM google_form_submissions
             WHERE form_id = ? AND response_id = ?
         """, (str(form_id).strip(), str(response_id).strip()))
         existing = cursor.fetchone()

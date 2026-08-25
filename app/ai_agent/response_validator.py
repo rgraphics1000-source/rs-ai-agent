@@ -138,7 +138,7 @@ class ResponseValidator:
         if effective_qty is not None and effective_qty < 30:
             moq_keywords = ["সর্বনিম্ন", "৩০ পিস", "30 pcs", "30 পিস", "৩০টি"]
             has_moq_mention = any(kw in reply_text for kw in moq_keywords)
-            
+
             if not has_moq_mention or "অর্ডার কনফার্ম" in reply_text or "অর্ডার নেওয়া হয়েছে" in reply_text:
                 reply_text = f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
                 matched_images = []
@@ -153,13 +153,16 @@ class ResponseValidator:
         # 3. ADVANCE & PROHIBITED 100% COD GUARD
         # -------------------------------------------------------------
         unauthorized_cod_phrases = [
-            "কোনো অগ্রিম লাগবে না", "অগ্রিম ছাড়াই", "সম্পূর্ণ ক্যাশ অন ডেলিভারি",
-            "ফুল ক্যাশ অন ডেলিভারি", "টাকা দেওয়া লাগবে না ডেলিভারির আগে",
-            "সব টাকা ডেলিভারির সময়", "১০০% ক্যাশ অন ডেলিভারি", "এডভান্স ছাড়া"
+            "কোনো অগ্রিম লাগবে না", "অগ্রিম ছাড়াই", "সম্পূর্ণ ক্যাশ অন ডেলিভারিতে পাবেন",
+            "ফুল ক্যাশ অন ডেলিভারিতে দেওয়া হবে", "টাকা দেওয়া লাগবে না ডেলিভারির আগে",
+            "সব টাকা ডেলিভারির সময়", "১০০% ক্যাশ অন ডেলিভারিতে", "এডভান্স ছাড়াই"
         ]
-        if any(p in reply_text for p in unauthorized_cod_phrases):
+        if any(p in reply_text for p in unauthorized_cod_phrases) or (
+            any(p in reply_text for p in ["সম্পূর্ণ ক্যাশ অন ডেলিভারি", "ফুল ক্যাশ অন ডেলিভারি", "১০০% ক্যাশ অন ডেলিভারি"])
+            and "প্রযোজ্য নয়" not in reply_text and "সম্ভব নয়" not in reply_text
+        ):
             reply_text = re.sub(
-                r'(কোনো\s+অগ্রিম\s+লাগবে\s+না|অগ্রিম\s+ছাড়া[^\s,।]*|সম্পূর্ণ\s+ক্যাশ\s+অন\s+ডেলিভারি|ফুল\s+ক্যাশ\s+অন\s+ডেলিভারি|এডভান্স\s+ছাড়া[^\s,।]*|১০০%\s+ক্যাশ\s+অন\s+ডেলিভারি)',
+                r'(কোনো\s+অগ্রিম\s+লাগবে\s+না|অগ্রিম\s+ছাড়া[^\s,।]*|সম্পূর্ণ\s+ক্যাশ\s+অন\s+ডেলিভারি[^\s,।]*|ফুল\s+ক্যাশ\s+অন\s+ডেলিভারি[^\s,।]*|এডভান্স\s+ছাড়া[^\s,।]*|১০০%\s+ক্যাশ\s+অন\s+ডেলিভারি[^\s,।]*)',
                 f'কাজের মান ও কাস্টমাইজেশনের কারণে কাজ শুরুর পূর্বে ডেলিভারি চার্জ বা আংশিক অগ্রিম পেমেন্ট বাধ্যতামূলক',
                 reply_text,
                 flags=re.IGNORECASE
@@ -242,7 +245,43 @@ class ResponseValidator:
                     validation_flags.append("REGULAR_TIER_DISCOUNT_STRIPPED")
 
         # -------------------------------------------------------------
-        # 8. PERSONA & CLEANLINESS SANITIZATION
+        # 8. HARD REPETITION & DUPLICATE MEDIA GUARDS (Phase 9)
+        # -------------------------------------------------------------
+        samples_already_sent = False
+        if sender_id:
+            try:
+                from app.ai_agent.conversation_state import is_media_already_sent
+                samples_already_sent = is_media_already_sent(str(sender_id), "samples", ws_id)
+            except Exception:
+                pass
+
+        # Intercept asking quantity if quantity is already known
+        if effective_qty is not None and effective_qty >= 30:
+            quantity_questions = [
+                "কত পিস বানাবেন", "কত পিস আইডি কার্ড", "কত পিস প্রয়োজন", "কত পিস কার্ড করতে চান",
+                "কত পিস লাগবে", "কত পিস অর্ডার", "কত পিস করতে চান"
+            ]
+            if any(q in reply_text for q in quantity_questions) and not any(k in reply_text for k in ["প্যাকেজ ১", "প্যাকেজ ২", "রেট নিচে দেওয়া হলো"]):
+                if not samples_already_sent:
+                    reply_text = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
+                else:
+                    reply_text = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ {honorific}।"
+                validation_flags.append("REPEATED_QUANTITY_QUESTION_INTERCEPTED")
+
+        # Intercept re-asking sample permission if samples were already sent
+        if samples_already_sent:
+            sample_perm_questions = [
+                "আমাদের স্যাম্পলগুলো পাঠাবো কি", "আমাদের স্যাম্পল পাঠাবো কি", "স্যাম্পল পাঠাবো কি",
+                "স্যাম্পলগুলো পাঠাবো কি", "স্যাম্পল ছবি পাঠাবো কি", "ছবি পাঠাবো কি", "স্যাম্পল পাঠাতে পারি কি"
+            ]
+            if any(sq in reply_text for sq in sample_perm_questions):
+                reply_text = f"জি {honorific}, পূর্বের পাঠানো স্যাম্পল ও প্যাকেজগুলো দেখে আপনার কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ {honorific}।"
+                matched_images = []
+                media_sequence = []
+                validation_flags.append("REPEATED_SAMPLE_PERMISSION_INTERCEPTED")
+
+        # -------------------------------------------------------------
+        # 9. PERSONA & CLEANLINESS SANITIZATION
         # -------------------------------------------------------------
         # Replace informal ভাইয়া / আপু with formal honorific
         clean_text = reply_text
