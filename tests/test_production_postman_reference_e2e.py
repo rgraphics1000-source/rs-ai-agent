@@ -83,14 +83,14 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
             self.assertTrue(ok)
             self.assertEqual(len(sent_calls), 1)
             call = sent_calls[0]
-            
+
             # 1. URL must match exact Meta Cloud API format
             self.assertEqual(call["url"], "https://graph.facebook.com/v23.0/4184514263660680/messages")
-            
+
             # 2. Header must be Bearer without extra quotes or formatting
             self.assertEqual(call["headers"]["Authorization"], f"Bearer {valid_system_user_token}")
             self.assertEqual(call["headers"]["Content-Type"], "application/json")
-            
+
             # 3. Payload must match exact Meta specification
             expected_payload = {
                 "messaging_product": "whatsapp",
@@ -106,7 +106,7 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
     def test_02_strict_token_isolation_fb_page_token_never_used_for_whatsapp(self):
         """Verifies that Facebook Page Access Tokens are NEVER resolved for WhatsApp Cloud API."""
         wa_acc = {"id": 1, "access_token": "", "phone_number_id": "4184514263660680"}
-        
+
         # Test environment with only FB_PAGE_ACCESS_TOKEN
         with patch.dict(os.environ, {
             "FB_PAGE_ACCESS_TOKEN": "EAAS_FB_PAGE_ACCESS_TOKEN_FOR_MESSENGER_1234567890",
@@ -378,7 +378,7 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
         import io
         captured = io.StringIO()
         raw_secret_token = "EAAG_EXTREMELY_SECRET_PRODUCTION_SYSTEM_USER_TOKEN_99999999999999"
-        
+
         with patch("sys.stdout", captured):
             with patch("requests.post") as mock_p:
                 mock_resp = MagicMock()

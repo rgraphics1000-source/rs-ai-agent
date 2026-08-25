@@ -26,10 +26,10 @@ def verify_file_accessible(workspace_id: int, file_id: str) -> Tuple[bool, dict]
             fileId=str(file_id).strip(),
             fields="id, name, mimeType, webViewLink, parents, owners, trashed"
         ).execute()
-        
+
         if file_meta.get("trashed"):
             return False, {"error": "File is in Google Drive trash bin."}
-            
+
         return True, file_meta
     except HttpError as err:
         status_code = err.resp.status if hasattr(err, "resp") else 500
@@ -43,7 +43,7 @@ def get_or_create_workspace_root_folder(workspace_id: int, workspace_name: str =
     """Creates or retrieves the main root folder for the workspace in Google Drive."""
     conn = get_google_connection(workspace_id=workspace_id)
     existing_folder_id = conn.get("drive_root_folder_id") if conn else None
-    
+
     if existing_folder_id:
         valid, meta = verify_file_accessible(workspace_id, existing_folder_id)
         if valid and meta.get("mimeType") == "application/vnd.google-apps.folder":
@@ -51,7 +51,7 @@ def get_or_create_workspace_root_folder(workspace_id: int, workspace_name: str =
 
     drive = get_drive_client(workspace_id=workspace_id)
     folder_name = f"{workspace_name} - Forms & ID Cards (Workspace {workspace_id})"
-    
+
     # Search if folder with this name already exists
     query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     res = drive.files().list(q=query, spaces="drive", fields="files(id, name)").execute()
@@ -79,7 +79,7 @@ def get_or_create_institution_folder(
 ) -> str:
     """Creates or retrieves a dedicated subfolder for the specific institution with mobile identifier."""
     drive = get_drive_client(workspace_id=workspace_id)
-    
+
     if not parent_folder_id:
         parent_folder_id = get_or_create_workspace_root_folder(workspace_id=workspace_id)
 
@@ -117,7 +117,7 @@ def copy_master_form_file(
     Moves the newly cloned Form into the institution's folder.
     """
     drive = get_drive_client(workspace_id=workspace_id)
-    
+
     # 1. Verify Master Form is accessible
     is_valid, master_meta = verify_file_accessible(workspace_id, master_form_id)
     if not is_valid:
@@ -139,10 +139,10 @@ def copy_master_form_file(
                 body=copy_body,
                 fields="id, name, webViewLink, parents"
             ).execute()
-            
+
             form_id = cloned_file.get("id")
             web_link = cloned_file.get("webViewLink", "")
-            
+
             # Ensure permissions allow responder access if needed
             try:
                 drive.permissions().create(

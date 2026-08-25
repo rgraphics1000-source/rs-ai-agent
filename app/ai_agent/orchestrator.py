@@ -1,13 +1,30 @@
 """
-Phase 9 & 9.3: Central Intelligent Conversation Engine & Master Orchestrator for RS Graphics AI Agent.
+Phase 6.0: Master Brain Orchestrator for RS Graphics AI Agent.
 
-Architecture & Invariants:
-1. STRICT SINGLE RESPONSE OWNER: Exactly 1 response decision & 1 outbound payload per inbound customer batch.
-2. CURRENT INTENT > STALE PENDING STATE: A customer saying 'ভালো আছেন?' or 'আপনি কে?' is never hijacked by a previous quantity prompt.
-3. STRUCTURED INTENT HIERARCHY: Prioritized semantic classification with explicit confidence and tool selection.
-4. ZERO-GUESS & OWNER PRIVACY: Unknown queries escalate to human team; Nadim is the only authoritative agent name.
-5. PROMPT & INSTRUCTION LEAKAGE IMMUNITY: Developer notes or prompt instructions are strictly barred from customer delivery.
-6. DETERMINISTIC BUSINESS ENGINES: Pricing, MOQ, discount caps, delivery fees, and order states are strictly deterministic.
+Architecture:
+Customer Message
+      ↓
+Conversation State (Persistent SQLite State Machine)
+      ↓
+Intent & Entity Detection (Structured Intent Object)
+      ↓
+Master Orchestrator
+      ↓
+Decision & Tool Selection (Structured Decision Object)
+      ↓
+Authoritative Business Tools (Pricing Engine, Media Router, Product Catalog, Form Resolver)
+      ↓
+Controlled Language Synthesis / Verified Response
+      ↓
+Response Validator & Policy Guard
+      ↓
+Outbound Dispatch
+
+Authoritative Hierarchy:
+LEVEL 1 — HARD BUSINESS RULES (Pricing Engine, State Machine, Policy Guard)
+LEVEL 2 — VERIFIED DATABASE DATA (Products, Saved Media, FAQs, Training Rules)
+LEVEL 3 — CUSTOMER CONVERSATION CONTEXT (History, Customer Name, Sender ID)
+LEVEL 4 — GEMINI GENERATION (Language formatting only)
 """
 
 import re
@@ -16,9 +33,7 @@ from enum import Enum
 from typing import Dict, Any, List, Optional
 
 from app.ai_agent.conversation_state import (
-    SalesStage, get_structured_conversation_state, update_conversation_state,
-    record_question_asked, record_fact_confirmed, record_media_dispatched,
-    is_question_already_answered, is_media_already_sent, get_conversation_memory
+    SalesStage, get_structured_conversation_state, update_conversation_state
 )
 from app.ai_agent.pricing_engine import (
     QuantityTier, get_quantity_tier, calculate_package_price,
@@ -31,85 +46,41 @@ from app.ai_agent.media_router import (
 from app.ai_agent.response_validator import (
     ResponseValidator, detect_customer_gender_title
 )
-from app.ai_agent.knowledge_engine import KnowledgeEngine, AGENT_NAME_BN
-from app.database import is_conversation_ai_active, get_db_connection, create_team_escalation
+from app.database import (
+    is_conversation_ai_active, get_saved_media, get_db_connection
+)
+from app.ai_agent.rule_registry import (
+    RuleRegistry, AuthorityLevel, ConflictAction, ConflictType
+)
 
 
 class CustomerIntent(str, Enum):
-    GREETING = "GREETING"
-    SOCIAL_PLEASANTRY = "SOCIAL_PLEASANTRY"
-    QUALITY_INQUIRY = "QUALITY_INQUIRY"
+    SERVICE_INQUIRY = "SERVICE_INQUIRY"
     QUANTITY_INQUIRY = "QUANTITY_INQUIRY"
-    QUANTITY_PROVIDED = "QUANTITY_PROVIDED"
-    PRODUCT_INQUIRY = "PRODUCT_INQUIRY"
-    PACKAGE_INQUIRY = "PACKAGE_INQUIRY"
-    PACKAGE_SELECTION = "PACKAGE_SELECTION"
     PRICE_INQUIRY = "PRICE_INQUIRY"
-    PER_PIECE_PRICE = "PER_PIECE_PRICE"
-    SPECIFIC_ITEM_PRICE = "SPECIFIC_ITEM_PRICE"
-    NEGOTIATION = "NEGOTIATION"
-    DISCOUNT_REQUEST = "DISCOUNT_REQUEST"
+    PACKAGE_INQUIRY = "PACKAGE_INQUIRY"
+    PRODUCT_INQUIRY = "PRODUCT_INQUIRY"
+    SAMPLE_REQUEST = "SAMPLE_REQUEST"
+    GOOGLE_FORM_SUBMISSION_HELP = "GOOGLE_FORM_SUBMISSION_HELP"
+    GOOGLE_FORM_CORRECTION_HELP = "GOOGLE_FORM_CORRECTION_HELP"
+    CARD_FEATURES = "CARD_FEATURES"
+    RIBBON_FEATURES = "RIBBON_FEATURES"
+    COVER_FEATURES = "COVER_FEATURES"
     DELIVERY_INQUIRY = "DELIVERY_INQUIRY"
     DELIVERY_TIME_INQUIRY = "DELIVERY_TIME_INQUIRY"
     PAYMENT_INQUIRY = "PAYMENT_INQUIRY"
     ADVANCE_INQUIRY = "ADVANCE_INQUIRY"
-    COD_INQUIRY = "COD_INQUIRY"
-    PHOTO_SERVICE = "PHOTO_SERVICE"
-    PHOTO_SUBMISSION = "PHOTO_SUBMISSION"
-    SAMPLE_REQUEST = "SAMPLE_REQUEST"
-    SAMPLE_CONFIRMATION = "SAMPLE_CONFIRMATION"
-    RESAMPLE_REQUEST = "RESAMPLE_REQUEST"
-    MEDIA_REQUEST = "MEDIA_REQUEST"
-    GOOGLE_FORM_HELP = "GOOGLE_FORM_HELP"
-    GOOGLE_FORM_CORRECTION_HELP = "GOOGLE_FORM_CORRECTION_HELP"
     ORDER_CONFIRMATION = "ORDER_CONFIRMATION"
-    ORDER_MODIFICATION = "ORDER_MODIFICATION"
-    ORDER_CANCELLATION = "ORDER_CANCELLATION"
-    HUMAN_REQUEST = "HUMAN_REQUEST"
+    NEGOTIATION = "NEGOTIATION"
     OWNER_REQUEST = "OWNER_REQUEST"
-    AGENT_IDENTITY_INQUIRY = "AGENT_IDENTITY_INQUIRY"
-    AGENT_CAPABILITY_INQUIRY = "AGENT_CAPABILITY_INQUIRY"
-    COMPLAINT = "COMPLAINT"
-    TOPIC_CHANGE = "TOPIC_CHANGE"
+    GREETING = "GREETING"
     MOQ_REJECTED = "MOQ_REJECTED"
     UNKNOWN = "UNKNOWN"
 
 
-# Priority ranking for authoritative semantic intent resolution
-INTENT_PRIORITY_ORDER = [
-    CustomerIntent.AGENT_IDENTITY_INQUIRY,
-    CustomerIntent.AGENT_CAPABILITY_INQUIRY,
-    CustomerIntent.OWNER_REQUEST,
-    CustomerIntent.SOCIAL_PLEASANTRY,
-    CustomerIntent.GREETING,
-    CustomerIntent.GOOGLE_FORM_CORRECTION_HELP,
-    CustomerIntent.MEDIA_REQUEST,
-    CustomerIntent.PHOTO_SERVICE,
-    CustomerIntent.ADVANCE_INQUIRY,
-    CustomerIntent.COD_INQUIRY,
-    CustomerIntent.DELIVERY_INQUIRY,
-    CustomerIntent.DELIVERY_TIME_INQUIRY,
-    CustomerIntent.QUALITY_INQUIRY,
-    CustomerIntent.NEGOTIATION,
-    CustomerIntent.DISCOUNT_REQUEST,
-    CustomerIntent.SPECIFIC_ITEM_PRICE,
-    CustomerIntent.PER_PIECE_PRICE,
-    CustomerIntent.PRICE_INQUIRY,
-    CustomerIntent.RESAMPLE_REQUEST,
-    CustomerIntent.SAMPLE_REQUEST,
-    CustomerIntent.TOPIC_CHANGE,
-    CustomerIntent.MOQ_REJECTED,
-    CustomerIntent.QUANTITY_PROVIDED,
-    CustomerIntent.SAMPLE_CONFIRMATION,
-    CustomerIntent.PACKAGE_SELECTION,
-    CustomerIntent.PRODUCT_INQUIRY,
-    CustomerIntent.UNKNOWN
-]
-
-
 class MasterOrchestrator:
     """
-    Central Intelligent Decision Pipeline coordinating all business engines,
+    Master Brain Orchestrator coordinating all deterministic business engines,
     data persistence, and language synthesis pipelines.
     """
 
@@ -121,8 +92,7 @@ class MasterOrchestrator:
         conversation_state: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Extracts structured contextual intent and entities from customer message.
-        Follows semantic prioritization: Current Customer Intent > Stale Pending State.
+        Extracts structured intent and entities from customer message.
         """
         raw_msg = (message or "").strip()
         norm_msg = raw_msg.lower()
@@ -133,326 +103,134 @@ class MasterOrchestrator:
         for b, d in bn_digits.items():
             digits_norm_msg = digits_norm_msg.replace(b, d)
 
-        detected_intents: List[CustomerIntent] = []
+        intents = []
         entities: Dict[str, Any] = {
             "quantity": None,
             "package_id": None,
             "demanded_price": None,
             "location": None,
-            "topic": "id_card",
-            "is_negotiating": False,
-            "is_affirmative": False,
-            "is_resample_request": False,
-            "is_specific_item": False,
-            "item_name": ""
+            "is_negotiating": False
         }
 
-        # -------------------------------------------------------------
-        # 1. ENTITY EXTRACTION
-        # -------------------------------------------------------------
-        # Specific item pricing (protect item model numbers like T-014 from quantity parsing)
-        if any(k in norm_msg for k in ["t-014", "t014", "dx", "t-065", "t065", "t-994", "t994", "reap", "মেটাল কভার", "শুধু কার্ড", "শুধু ফিতা", "শুধু কভার"]):
-            entities["is_specific_item"] = True
+        # 1. Entity: Quantity extraction
+        # Use battle-tested safe quantity extractor from gemini_brain if available
+        try:
+            from app.ai_agent.gemini_brain import extract_order_quantity_number
+            extracted_q = extract_order_quantity_number(raw_msg)
+            if extracted_q:
+                entities["quantity"] = extracted_q
+        except Exception:
+            pass
 
-        if not entities["is_specific_item"]:
-            try:
-                from app.ai_agent.gemini_brain import extract_order_quantity_number
-                extracted_q = extract_order_quantity_number(raw_msg)
-                if extracted_q:
-                    entities["quantity"] = extracted_q
-            except Exception:
-                pass
+        if entities["quantity"] is None:
+            q_match = re.search(r'(\d{1,5})\s*(?:পিস|pcs|টা|টি|কপি|বানাবো|cards?|id\s*cards?)', digits_norm_msg)
+            if q_match:
+                try:
+                    entities["quantity"] = int(q_match.group(1))
+                except Exception:
+                    pass
 
-            # Robust local regex fallback for quantity (strictly avoiding prices like '৭৫ টাকা')
-            if entities["quantity"] is None:
-                clean_for_qty = re.sub(r't-?\d+[a-z]?', '', digits_norm_msg, flags=re.IGNORECASE)
-                clean_for_qty = re.sub(r'\b\d+\s*(?:টাকা|টাকায়|টাকাতে|tk|taka|৳)', '', clean_for_qty, flags=re.IGNORECASE)
-                m_q = re.search(r'(\d+)\s*(?:টা|টি|পিস|কার্ড|কপি|id\s*cards?|cards?|pieces?|pcs?|items?)', clean_for_qty)
-                if not m_q:
-                    m_q = re.search(r'(?:প্যাকেজ|package|pkg)\s*[১-৭1-7]\s*(\d+)', clean_for_qty)
-                if not m_q and not any(k in norm_msg for k in ["টাকা", "টাকায়", "টাকাতে", "tk", "taka", "৳", "রেট", "মূল্য", "price", "cost"]):
-                    m_q = re.search(r'\b(\d{2,4})\b', clean_for_qty)
-                if m_q:
-                    try:
-                        entities["quantity"] = int(m_q.group(1))
-                    except Exception:
-                        pass
-
-        # Quantity from existing conversation state as context
+        # If quantity not in current message, inherit from saved conversation state
         if entities["quantity"] is None and conversation_state:
             entities["quantity"] = conversation_state.get("quantity")
 
+        # 2. Entity: Package ID extraction
         pkg_match = re.search(r'(?:প্যাকেজ|package|pkg)\s*([১-৭1-7])', norm_msg)
         if pkg_match:
             entities["package_id"] = normalize_package_id(pkg_match.group(1))
-        elif any(kw in norm_msg for kw in ["সবচেয়ে প্রিমিয়াম", "সবচেয়ে প্রিমিয়াম", "প্রিমিয়াম প্যাকেজ", "সেরা প্যাকেজ", "টপ প্যাকেজ", "সবচেয়ে ভালো প্যাকেজ"]):
-            entities["package_id"] = 7
-            entities["is_premium_inquiry"] = True
         elif conversation_state and conversation_state.get("package_id"):
             entities["package_id"] = conversation_state.get("package_id")
 
+        # 3. Entity: Demanded Price extraction (e.g. '৮০ টাকা করে দেন', '75 tk rakhen', '৮০ টাকা হবে?')
         dem_match = re.search(r'(\d{2,4})\s*(?:টাকা|টাকায়|টাকাতে|tk|taka|৳)\s*(?:করে\s*)?(?:রাখ|দেন|দিবেন|হবে|নেব|রাখবেন|করেন|কইরেন|হবেনা)?', digits_norm_msg)
         if dem_match:
             try:
                 p_val = float(dem_match.group(1))
+                # Check if it's a price inquiry vs negotiation vs package id
                 if p_val not in [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]:
-                    if any(kw in norm_msg for kw in ["রাখ", "দেন", "দিবেন", "হবে", "নেব", "রাখবেন", "করেন", "কইরেন", "সম্মতি", "অনুমতি", "কমান", "ছাড়", "যাবে"]):
+                    if any(kw in norm_msg for kw in ["রাখ", "দেন", "দিবেন", "হবে", "নেব", "রাখবেন", "করেন", "কইরেন", "সম্মতি", "অনুমতি", "কমান", "ছাড়"]):
                         entities["demanded_price"] = p_val
                         entities["is_negotiating"] = True
             except Exception:
                 pass
 
+        # 4. Entity: Location (inside vs outside Dhaka)
         if any(kw in norm_msg for kw in ["ঢাকা", "ঢাকার ভেতরে", "মিরপুর", "ধানমন্ডি", "উত্তরা", "গুলশান", "inside dhaka"]):
             entities["location"] = "inside_dhaka"
         elif any(kw in norm_msg for kw in ["ঢাকার বাইরে", "চট্টগ্রাম", "সিলেট", "রাজশাহী", "খুলনা", "বরিশাল", "রংপুর", "outside dhaka", "গ্রাম"]):
             entities["location"] = "outside_dhaka"
 
-        is_query = any(q in norm_msg for q in ["কত", "দাম", "রেট", "কী", "কি", "কেমন", "কবে", "কোথায়", "কেন", "price", "cost", "koto", "dam"])
-        affirmative_words = ["জি", "হ্যাঁ", "হুম", "hm", "yes", "jee", "ji", "আচ্ছা", "ঠিক আছে", "ok", "sure", "haa", "ha"]
-        if not is_query and (norm_msg in affirmative_words or any(norm_msg == w or (len(norm_msg.split()) <= 3 and (norm_msg.startswith(w + " ") or norm_msg.endswith(" " + w))) for w in affirmative_words)):
-            entities["is_affirmative"] = True
-
-        if any(kw in norm_msg for kw in ["আবার পাঠান", "পুনরায় পাঠান", "আগের ছবিটা আবার", "ছবি আবার দিন", "আবার দেখান", "আবার ছবি"]):
-            entities["is_resample_request"] = True
-
         # -------------------------------------------------------------
-        # 2. CONTEXTUAL REASONING FROM HISTORY
+        # Intent Classification
         # -------------------------------------------------------------
-        last_bot_msg = ""
-        pending_question = conversation_state.get("pending_question") if conversation_state else ""
-        if conversation_history:
-            for h in reversed(conversation_history):
-                r = str(h.get("sender") or h.get("sender_role") or h.get("role") or "").lower()
-                if r in ("bot", "assistant", "ai"):
-                    last_bot_msg = str(h.get("text") or h.get("content") or "").lower()
-                    break
+        # Greeting Intent
+        if any(kw in norm_msg for kw in ["সালাম", "salam", "assalam", "হাই", "হ্যালো", "hello", "hi"]):
+            intents.append(CustomerIntent.GREETING)
 
-        # -------------------------------------------------------------
-        # 3. SEMANTIC INTENT CLASSIFICATION
-        # -------------------------------------------------------------
-        # A. Agent Identity Inquiry (Bangla + Banglish)
-        agent_identity_words = [
-            "তোমার নাম", "আপনার নাম", "who are you", "what is your name", "who is this",
-            "কার সাথে কথা বলছি", "কার সাথে কথা বলতেছি", "কার সাথে কথা বলতেছেন",
-            "কে কথা বলছেন", "কে কথা বলতেছেন", "কে বলছেন", "কে বলছ",
-            "apni ke", "apni k", "tumi ke", "apnar nam ki", "tomar nam ki", "ke bolchen"
-        ]
-        if any(kw in norm_msg for kw in agent_identity_words) or re.search(r'(?:^|[\s,।!?])(?:আপনি|তুমি)\s*কে(?:[\s,।!?]|$)', norm_msg):
-            detected_intents.append(CustomerIntent.AGENT_IDENTITY_INQUIRY)
+        # MOQ Check
+        if entities["quantity"] is not None and entities["quantity"] < 30:
+            intents.append(CustomerIntent.MOQ_REJECTED)
 
-        # B. Agent Capability & Service Inquiry
-        agent_capability_words = [
-            "আপনি কি কি জানেন", "আপনি কি জানেন", "কি কি জানেন", "কি জানেন", "আপনার কাজ কি", "আপনার কাজ কী",
-            "আপনি কি কি পারেন", "কি করতে পারেন", "কি কি পারেন", "কি সেবা দেন", "কি সেবা পাওয়া যাবে",
-            "কি কাজ করেন", "সেবা কি", "কী সেবা", "আপনার কাজ", "what can you do", "what do you do", "your service", "কি সুবিধা"
-        ]
-        if any(kw in norm_msg for kw in agent_capability_words):
-            detected_intents.append(CustomerIntent.AGENT_CAPABILITY_INQUIRY)
-
-        # C. Owner Identity & Human Talk Request
-        owner_words = [
-            "owner এর নাম", "owner-এর নাম", "মালিকের নাম", "ওনারের নাম", "বসের নাম",
-            "owner কে", "মালিক কে", "ওনার কে", "who is the owner", "owner name",
-            "বসের সাথে", "মালিকের সাথে", "কথা বলব", "স্যার এর সাথে", "রাশেদ", "rashed", "রাশেদুল",
-            "তাকে দরকার", "তাকে একটু দরকার", "উনাকে দরকার", "উনাকে একটু দরকার", "তাকে চাই", "উনাকে চাই",
-            "তার সাথে কথা", "উনার সাথে কথা", "তার সাথে জরুরি", "উনার সাথে জরুরি",
-            "মানুষের সাথে কথা", "মানুষের সাথে", "অ্যাডমিনের সাথে", "অ্যাডমিনকে দরকার", "লাইভ এজেন্ট",
-            "কথা বলতে চাই", "কল দেন", "কল দিন", "ফোন দিন", "ফোন দেন", "নাম্বার দিন", "নম্বর দিন"
-        ]
-        if any(kw in norm_msg for kw in owner_words) or re.search(r'(?:owner|ওনার|মালিক|বস)[-\s]*(?:এর)?\s*(?:নাম|কে)', norm_msg):
-            detected_intents.append(CustomerIntent.OWNER_REQUEST)
-            detected_intents.append(CustomerIntent.HUMAN_REQUEST)
-
-        # D. Social Pleasantry & Casual Chit-Chat (Bangla + Banglish)
-        pleasantry_phrases = [
-            "কেমন আছেন", "কেমন আছ", "কেমন আছো", "কি খবর", "কী খবর", "ভালো আছেন",
-            "ভাল আছেন", "ভালো আছো", "ভালো আছ", "কেমন চলছে", "how are you",
-            "আপনি কেমন আছেন", "তুমি কেমন আছো", "আপনি ভালো", "ভালো তো", "সুস্থ আছেন", "মজায় আছেন",
-            "খাবার", "ভাত খেয়েছেন", "ভাত খাইছেন", "ভাত খেয়েছেন নাকি", "ভাত খাইছেন নাকি",
-            "নাস্তা করেছেন", "নাস্তা খাইছেন", "খাওয়া দাওয়া", "চা খেয়েছেন", "চা খাইছেন", "কফি খেয়েছেন",
-            "রাতের খাবার", "দুপুরের খাবার", "সকালের নাস্তা",
-            "গোসল", "গোসল করতে", "গোসল কাকে বলে", "গোসল কি", "গোসল কী", "গোসল করবেন", "গোসল করতে যাবে",
-            "চা খাবেন", "কফি খাবেন", "চা খাইবেন", "কফি খাইবেন", "চা খাবা", "কফি খাবা",
-            "আপনার বয়স কত", "বয়স কত", "তোমার বয়স কত", "আপনার বাড়ি কোথায়", "বাড়ি কোথায়", "কোথায় থাকেন",
-            "কোথায় থাকো", "আপনার ঠিকানা", "ঘুমাবেন না", "ঘুমান না", "ঘুমাইছেন",
-            "কৌতুক", "জোকস", "গান শোনাও", "গান গাও",
-            "bhalo achen", "kemon achen", "ki khobor", "bhalo asen", "kemon asen", "valo achen",
-            "apni kemon achen", "khabar kheyechen", "bhat kheyechen"
-        ]
-        if any(kw in norm_msg for kw in pleasantry_phrases):
-            detected_intents.append(CustomerIntent.SOCIAL_PLEASANTRY)
-
-        # D. Greeting (Bangla + Banglish)
-        if any(kw in norm_msg for kw in ["সালাম", "salam", "assalam", "হাই", "হ্যালো", "hello", "hi", "hey"]):
-            detected_intents.append(CustomerIntent.GREETING)
-
-        # E. Google Form Correction Help / Media Request
-        if any(kw in norm_msg for kw in ["তথ্য সংশোধন", "সংশোধনের নিয়ম", "সংশোধন করার নিয়ম", "সংশোধন করার ভিডিও", "সংশোধনের ভিডিও", "ফর্ম ভিডিও", "ভিডিও দেন", "ভিডিও দিন", "কীভাবে পূরণ", "ভিডিও", "সংশোধন"]):
-            detected_intents.append(CustomerIntent.GOOGLE_FORM_CORRECTION_HELP)
-            detected_intents.append(CustomerIntent.MEDIA_REQUEST)
-
-        # F. Photo Taking Service Policy
-        if any(kw in norm_msg for kw in [
-            "ছবি কি আপনারা তুলে", "ছবি কি আপনারা তোলেন", "ছবি কি আপনারা তুলে দেন", "ছবি তুলে দেন", "ছবি কি তুলে দেন",
-            "ছবি তোলার ব্যবস্থা", "ফটোগ্রাফার", "ছবি কি তুলবেন", "ছবি তুলে দেবেন", "ছবি তুলে দিবেন", "ছবি কি তোলেন", "ছবি তোলেন"
-        ]) or ("ছবি" in norm_msg and any(kw in norm_msg for kw in ["তুলে দেন", "তুলে দিবেন", "তুলে দেবেন", "তোলার ব্যবস্থা", "তুলে নেন", "তোলেন কি"])):
-            detected_intents.append(CustomerIntent.PHOTO_SERVICE)
-            entities["topic"] = "photo_service"
-
-        # G. Specific Item Pricing
-        if entities["is_specific_item"]:
-            detected_intents.append(CustomerIntent.SPECIFIC_ITEM_PRICE)
-
-        # H. Price Inquiry vs Per Piece Rate
-        price_keywords = [
-            "প্রতি পিস কত", "প্রতি পিস কত টাকা", "প্রতি পিস কত রাখা যাবে", "দাম কত", "রেট কত",
-            "কত টাকা", "খরচ কত", "মূল্য কত", "কত পড়বে", "কত পরবে", "হিসাব কত", "price", "cost",
-            "প্যাকেজের দাম", "প্যাকেজের রেট", "প্যাকেজ কত", "প্যাকেজ মূল্য", "প্যাকেজগুলোর দাম",
-            "per piece koto", "dam koto", "rate koto", "koto tk"
-        ]
-        has_visual_demand = any(w in norm_msg for w in ["দেখান", "দ্যাখান", "দেখতে", "দেখব", "ছবি", "পিক", "pic", "image", "স্যাম্পল", "নমুনা"])
-        if any(kw in norm_msg for kw in price_keywords) or (pkg_match and not has_visual_demand):
-            if any(kw in norm_msg for kw in ["প্রতি পিস", "per piece", "এক পিস", "প্রতিটি"]):
-                detected_intents.append(CustomerIntent.PER_PIECE_PRICE)
-            else:
-                detected_intents.append(CustomerIntent.PRICE_INQUIRY)
-        elif entities["package_id"] and any(kw in norm_msg for kw in ["এটা কত", "দাম কত", "রেট কত", "কত", "মূল্য"]):
-            detected_intents.append(CustomerIntent.PRICE_INQUIRY)
-
-        # I. Negotiation / Discount Request
-        _neg_regex = re.search(
-            r'কম\s*(?:রাখা|করা|হওয়া|হবে|রাখবেন|দেওয়া|যাবে|যায়|করবেন|করেন|কইরেন|রাখেন|হবেনা|রাখা যাবে না)'
-            r'|একটু\s*কম|কিছু\s*কম|কমায়\s*দেন|কম\s*দেন|কম\s*রাখেন'
-            r'|ডিসকাউন্ট|ছাড়\s*(?:দেন|হবে|দিবেন)?|বেশি\s*রাখছেন|সম্মান\s*করবেন'
-            r'|অনুমতি\s*দিয়েছে|সম্মতি\s*আছে',
-            norm_msg
-        )
-        if entities["is_negotiating"] or _neg_regex or any(kw in norm_msg for kw in [
-            "কম রাখা যায় না", "কম রাখবেন", "কম হবে না", "কম করা যাবে না", "কম রাখা যাবে না",
-            "কম হবে?", "কম রাখা যাবে", "কম রাখা যাবে কি", "কম রাখবেন কি", "কিছু কম", "একটু কম",
-            "ডিসকাউন্ট দেন", "ডিসকাউন্ট", "ছাড় দেন", "ছাড় হবে", "কিছু কম রাখেন", "কিছু কম হবে",
-            "সম্মান করবেন", "একটু কম রাখেন", "বেশি রাখছেন", "কমায় দেন", "অনুমতি দিয়েছে", "সম্মতি আছে"
+        # Negotiation Intent
+        if entities["demanded_price"] is not None or any(kw in norm_msg for kw in [
+            "কম রাখা যায় না", "কম রাখবেন", "কম হবে না", "ডিসকাউন্ট দেন", "ছাড় দেন", "কিছু কম রাখেন",
+            "কিছু কম হবে", "সম্মান করবেন", "একটু কম রাখেন", "বেশি রাখছেন", "কমায় দেন", "অনুমতি দিয়েছে", "সম্মতি আছে"
         ]):
-            detected_intents.append(CustomerIntent.NEGOTIATION)
+            intents.append(CustomerIntent.NEGOTIATION)
             entities["is_negotiating"] = True
 
-        # J. Delivery Fee / Delivery Time
-        if any(kw in norm_msg for kw in ["ডেলিভারি চার্জ", "কুরিয়ার চার্জ", "ডেলিভারি", "কুরিয়ার", "delivery", "delivery charge"]):
-            detected_intents.append(CustomerIntent.DELIVERY_INQUIRY)
-        if any(kw in norm_msg for kw in ["কবে পাব", "কয়দিন লাগবে", "কতদিন লাগবে", "ডেলিভারি সময়", "কত সময় লাগবে", "সময় কত"]):
-            detected_intents.append(CustomerIntent.DELIVERY_TIME_INQUIRY)
+        # Owner Request Intent
+        if any(kw in norm_msg for kw in ["ওনার", "মালিক", "owner", "বসের সাথে", "কথা বলব", "স্যার এর সাথে", "রাশেদ", "rashed"]):
+            intents.append(CustomerIntent.OWNER_REQUEST)
 
-        # K. Advance / COD Policy
-        if any(kw in norm_msg for kw in ["অগ্রিম", "এডভান্স", "advance", "ক্যাশ অন ডেলিভারি", "cod", "পেমেন্ট", "বিকাশ"]):
-            detected_intents.append(CustomerIntent.ADVANCE_INQUIRY)
+        # Price Inquiry Intent
+        if any(kw in norm_msg for kw in ["দাম কত", "রেট কত", "কত টাকা", "খরচ কত", "price", "cost", "মূল্য কত", "কত পড়বে", "কত পরবে", "হিসাব কত"]) or re.search(r'(?:প্যাকেজ|package|pkg)\s*[১-৭1-7]\s*(?:কত|দাম|রেট|মূল্য)', norm_msg):
+            intents.append(CustomerIntent.PRICE_INQUIRY)
 
-        # L. Quality Inquiry
-        quality_phrases = [
-            "কোয়ালিটি কেমন", "কোয়ালিটি কেমন হবে", "মান কেমন", "কোয়ালিটি সম্পর্কে",
-            "কোয়ালিটি জানতে চাই", "কার্ড ও ফিতার কোয়ালিটি", "কোয়ালিটি", "quality kemon"
-        ]
-        quality_not = ["প্যাকেজ", "দাম কত", "কত করে", "খরচ কত"]
-        if any(kw in norm_msg for kw in quality_phrases) and not any(kw in norm_msg for kw in quality_not):
-            detected_intents.append(CustomerIntent.QUALITY_INQUIRY)
+        # Package Inquiry Intent
+        if any(kw in norm_msg for kw in ["প্যাকেজ", "package", "কম্বো", "combo"]) and CustomerIntent.PRICE_INQUIRY not in intents:
+            intents.append(CustomerIntent.PACKAGE_INQUIRY)
 
-        # M. Sample, Resample & Package Showcase Requests
-        if entities["is_resample_request"]:
-            detected_intents.append(CustomerIntent.RESAMPLE_REQUEST)
-        sample_keywords = [
-            "স্যাম্পল", "ছবি পাঠান", "ছবি দেন", "নমুনা পাঠান", "প্যাকেজের ছবি", "প্যাকেজ দেখতে চাই",
-            "স্যাম্পল দেখতে চাই", "প্যাকেজটি দেখান", "প্যাকেজ দেখান", "প্যাকেজগুলো দেখান", "প্যাকেজ দেখতে",
-            "সবচেয়ে প্রিমিয়াম", "সবচেয়ে প্রিমিয়াম", "প্রিমিয়াম প্যাকেজ", "সেরা প্যাকেজ", "ভালো প্যাকেজ",
-            "ছবি দেখান", "নমুনা দেখান", "স্যাম্পল দেখান", "দ্যাখান", "দেখান", "ছবিগুলা দেখান", "ছবিগুলো দেখান",
-            "স্যাম্পল দিন", "স্যাম্পল দেন", "নমুনা দেন", "নমুনা দিন", "ছবি দিন", "ছবি দেন", "দেখব", "দেখতে চাই",
-            "sample", "samples", "photo", "photos", "picture"
-        ]
-        if any(kw in norm_msg for kw in sample_keywords) or (("প্যাকেজ" in norm_msg or "কার্ড" in norm_msg) and any(w in norm_msg for w in ["দেখান", "দ্যাখান", "দেখতে", "দেখব", "ছবি", "পিক", "pic", "image"])):
-            detected_intents.append(CustomerIntent.SAMPLE_REQUEST)
+        # Delivery & Delivery Time Intent
+        if any(kw in norm_msg for kw in ["কবে পাব", "কয়দিন লাগবে", "কতদিন লাগবে", "ডেলিভারি সময়", "কত সময় লাগবে"]):
+            intents.append(CustomerIntent.DELIVERY_TIME_INQUIRY)
+        elif any(kw in norm_msg for kw in ["ডেলিভারি", "কুরিয়ার", "delivery", "হোম ডেলিভারি", "কুরিয়ার চার্জ"]):
+            intents.append(CustomerIntent.DELIVERY_INQUIRY)
 
-        # N. Non-ID Products / Topic Change
-        non_id_products = ["ব্যানার", "মগ", "টি-শার্ট", "টি শার্ট", "ভিজিটিং কার্ড", "ক্যালেন্ডার", "সিল", "পোস্টার", "লিফলেট", "রশিদ", "ডোনেশন", "বই", "প্যাড", "ফ্লাইয়ার"]
-        if "মসজিদ" in norm_msg and any(kw in norm_msg for kw in ["বানাবো না", "বানাব না", "লাগবে না", "লাগবে", "জন্য"]):
-            detected_intents.append(CustomerIntent.TOPIC_CHANGE)
-            entities["topic"] = "mosque_requirement"
-        elif any(p in norm_msg for p in non_id_products) and not any(kw in norm_msg for kw in ["আইডি কার্ড", "id card"]):
-            detected_intents.append(CustomerIntent.TOPIC_CHANGE)
-            entities["topic"] = "non_id_product_inquiry"
+        # Advance / Payment Intent
+        if any(kw in norm_msg for kw in ["অগ্রিম", "এডভান্স", "advance", "ক্যাশ অন ডেলিভারি", "cod", "পেমেন্ট"]):
+            intents.append(CustomerIntent.ADVANCE_INQUIRY)
 
-        # O. MOQ Rejection
-        if entities["quantity"] is not None and entities["quantity"] < 30 and not entities["is_specific_item"]:
-            detected_intents.append(CustomerIntent.MOQ_REJECTED)
+        # Sample Request Intent
+        if any(kw in norm_msg for kw in ["স্যাম্পল", "ছবি", "নমুনা", "sample", "photo", "picture", "ছবি পাঠান"]):
+            intents.append(CustomerIntent.SAMPLE_REQUEST)
 
-        # P. Quantity Provided (Explicit quantity in current message without higher intent override)
-        # Check if quantity was explicitly stated in current message text
-        current_msg_has_qty = False
-        try:
-            from app.ai_agent.gemini_brain import extract_order_quantity_number
-            if extract_order_quantity_number(raw_msg):
-                current_msg_has_qty = True
-        except Exception:
-            pass
-        if current_msg_has_qty and entities["quantity"] is not None and entities["quantity"] >= 30 and not entities["is_specific_item"]:
-            if not any(i in detected_intents for i in (CustomerIntent.PRICE_INQUIRY, CustomerIntent.NEGOTIATION, CustomerIntent.DELIVERY_INQUIRY, CustomerIntent.GREETING, CustomerIntent.SAMPLE_REQUEST)):
-                detected_intents.append(CustomerIntent.QUANTITY_PROVIDED)
+        # Media Intents (Routing to MediaRouter)
+        media_intent_res = MediaRouter.classify_media_intent(raw_msg, conversation_history, conversation_state)
+        if media_intent_res["intent"] == MediaIntent.GOOGLE_FORM_CORRECTION_HELP:
+            intents.append(CustomerIntent.GOOGLE_FORM_CORRECTION_HELP)
+        elif media_intent_res["intent"] == MediaIntent.GOOGLE_FORM_SUBMISSION_HELP:
+            intents.append(CustomerIntent.GOOGLE_FORM_SUBMISSION_HELP)
+        elif media_intent_res["intent"] == MediaIntent.CARD_FEATURES:
+            intents.append(CustomerIntent.CARD_FEATURES)
+        elif media_intent_res["intent"] == MediaIntent.RIBBON_FEATURES:
+            intents.append(CustomerIntent.RIBBON_FEATURES)
+        elif media_intent_res["intent"] == MediaIntent.COVER_FEATURES:
+            intents.append(CustomerIntent.COVER_FEATURES)
 
-        # Q. Contextual Affirmation (Only consumed if no higher-priority direct intent was expressed)
-        if entities["is_affirmative"] and not any(i in detected_intents for i in (CustomerIntent.AGENT_IDENTITY_INQUIRY, CustomerIntent.OWNER_REQUEST, CustomerIntent.SOCIAL_PLEASANTRY, CustomerIntent.PRICE_INQUIRY, CustomerIntent.DELIVERY_INQUIRY)):
-            if pending_question == "SAMPLE_PERMISSION_PROMPT" or "স্যাম্পল পাঠাবো কি" in last_bot_msg or "স্যাম্পলগুলো পাঠাবো কি" in last_bot_msg:
-                detected_intents.append(CustomerIntent.SAMPLE_CONFIRMATION)
-            elif pending_question == "PACKAGE_SELECTION_PROMPT" or "প্যাকেজটি পছন্দ" in last_bot_msg:
-                detected_intents.append(CustomerIntent.PACKAGE_SELECTION)
-            elif pending_question == "QUANTITY_PROMPT" or "কত পিস" in last_bot_msg:
-                detected_intents.append(CustomerIntent.QUANTITY_INQUIRY)
-            else:
-                detected_intents.append(CustomerIntent.SAMPLE_CONFIRMATION)
+        # General Product / Quantity Inquiry
+        if entities["quantity"] is not None and not intents:
+            intents.append(CustomerIntent.QUANTITY_INQUIRY)
+        elif not intents:
+            intents.append(CustomerIntent.UNKNOWN)
 
-        # R. General ID Card & Printing Product Interest
-        product_intent_words = [
-            "আইডি কার্ড", "id card", "কার্ড বানাবো", "কার্ড বানাতে", "কার্ড করতে চাই", "কার্ডের কাজ",
-            "কার্ড লাগবে", "কার্ড তৈরি", "বানানো দরকার", "বানাতে চাই", "বানাবো", "বানাতে হবে",
-            "কিছু বানাবো", "কিছু বানানো দরকার", "কিছু করতে চাই", "কিছু প্রিন্ট", "প্রিন্ট করব",
-            "প্রিন্ট করাতে চাই", "অর্ডার দিতে চাই", "অর্ডার করব", "তৈরি করতে চাই", "বানানো যাবে",
-            "বানানো যাবে কি", "বানাতে পারবো", "প্রিন্টিং", "কার্ড প্রিন্ট", "ফিতা প্রিন্ট", "বানাইতে চাই",
-            "কিছু বানাব", "বানানো লাগবে", "কাজ করাবো", "কাজ করাতে চাই", "তৈরি করব", "তৈরি করা যাবে"
-        ]
-        if any(kw in norm_msg for kw in product_intent_words) or ("বানানো" in norm_msg and any(w in norm_msg for w in ["দরকার", "চাই", "হবে", "যাবে", "লাগবে"])):
-            if entities["quantity"] is None and not entities["package_id"] and not any(i in detected_intents for i in (CustomerIntent.PRICE_INQUIRY, CustomerIntent.GREETING, CustomerIntent.TOPIC_CHANGE, CustomerIntent.SOCIAL_PLEASANTRY, CustomerIntent.SAMPLE_REQUEST)):
-                detected_intents.append(CustomerIntent.PRODUCT_INQUIRY)
-
-        # Deduplicate preserving strict priority order
-        dedup_intents: List[CustomerIntent] = []
-        for it in INTENT_PRIORITY_ORDER:
-            if it in detected_intents and it not in dedup_intents:
-                dedup_intents.append(it)
-
-        # Append any unranked intents
-        for it in detected_intents:
-            if it not in dedup_intents:
-                dedup_intents.append(it)
-
-        if not dedup_intents:
-            dedup_intents.append(CustomerIntent.UNKNOWN)
-
-        primary_intent = dedup_intents[0]
-
-        requires_state_continuation = primary_intent in (
-            CustomerIntent.SAMPLE_CONFIRMATION,
-            CustomerIntent.PACKAGE_SELECTION,
-            CustomerIntent.QUANTITY_PROVIDED
-        )
-        requires_knowledge_lookup = primary_intent in (
-            CustomerIntent.UNKNOWN,
-            CustomerIntent.TOPIC_CHANGE,
-            CustomerIntent.QUALITY_INQUIRY
-        )
+        primary_intent = intents[0] if intents else CustomerIntent.UNKNOWN
 
         return {
             "primary_intent": primary_intent,
-            "intents": dedup_intents,
-            "confidence": 0.98 if primary_intent != CustomerIntent.UNKNOWN else 0.40,
-            "entities": entities,
-            "requires_state_continuation": requires_state_continuation,
-            "requires_knowledge_lookup": requires_knowledge_lookup
+            "intents": intents,
+            "confidence": 0.95 if primary_intent != CustomerIntent.UNKNOWN else 0.40,
+            "entities": entities
         }
 
     @classmethod
@@ -462,714 +240,284 @@ class MasterOrchestrator:
         sender_id: Optional[str] = None,
         customer_name: str = "Customer",
         workspace_id: int = 1,
-        conversation_history: Optional[List[Dict[str, Any]]] = None,
-        channel: str = "facebook",
-        image_bytes: bytes = None,
-        image_mime: str = "image/jpeg",
-        image_list: list = None,
-        audio_bytes: bytes = None,
-        audio_mime: str = "audio/mp4",
-        generate_voice_reply: bool = False,
-        page_id: str = None
+        conversation_history: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """
-        Executes central decision orchestration across authoritative tools and returns validated payload.
-        Guarantees EXACTLY ONE authoritative response decision per customer message.
+        Executes decision orchestration across authoritative tools and generates validated response payload.
         """
         ws_id = int(workspace_id or 1)
         honorific = detect_customer_gender_title(customer_name)
-        s_id = str(sender_id or "web_user").strip()
+        start_time = time.time()
 
-        try:
-            # 0. FALL THROUGH TO GEMINI IF WORKSPACE != 1
-            if ws_id != 1:
-                return {
-                    "reply_text": "",
-                    "matched_images": [],
-                    "media_sequence": [],
-                    "voice_url": "",
-                    "video_url": "",
-                    "order_created": None,
-                    "response_source": "gemini_fallthrough",
-                    "ai_reply_allowed": True,
-                    "orchestrator_log": {
-                        "primary_intent": CustomerIntent.UNKNOWN,
-                        "intents": [],
-                        "entities": {},
-                        "selected_tools": ["gemini_brain_delegate"],
-                        "requires_owner_approval": False
-                    }
-                }
-
-            # -------------------------------------------------------------
-            # STEP 1: HUMAN / ADMIN TAKEOVER CHECK (Absolute Silence Guard)
-            # -------------------------------------------------------------
-            if sender_id and not is_conversation_ai_active(sender_id=s_id, workspace_id=ws_id):
-                return {
-                    "reply_text": "",
-                    "matched_images": [],
-                    "media_sequence": [],
-                    "voice_url": "",
-                    "video_url": "",
-                    "order_created": None,
-                    "is_blocked": True,
-                    "block_reason": "admin_takeover_active",
-                    "ai_reply_allowed": False,
-                    "response_source": "admin_takeover_silence",
-                    "orchestrator_log": {
-                        "primary_intent": CustomerIntent.UNKNOWN,
-                        "intents": [],
-                        "entities": {},
-                        "selected_tools": ["admin_takeover_silence"],
-                        "requires_owner_approval": False
-                    }
-                }
-
-            # -------------------------------------------------------------
-            # STEP 1.5: MULTIMODAL DELEGATION (Images / Voice Notes)
-            # -------------------------------------------------------------
-            if image_bytes or audio_bytes or (image_list and len(image_list) > 0):
-                return {
-                    "reply_text": "",
-                    "matched_images": [],
-                    "media_sequence": [],
-                    "voice_url": "",
-                    "video_url": "",
-                    "order_created": None,
-                    "response_source": "multimodal_delegate",
-                    "ai_reply_allowed": True,
-                    "orchestrator_log": {
-                        "primary_intent": CustomerIntent.UNKNOWN,
-                        "intents": [],
-                        "entities": {},
-                        "selected_tools": ["gemini_multimodal_delegate"],
-                        "requires_owner_approval": False
-                    }
-                }
-
-            # -------------------------------------------------------------
-            # STEP 2: CONVERSATION MEMORY & PERSISTED STATE
-            # -------------------------------------------------------------
-            conversation_state = get_structured_conversation_state(s_id, ws_id)
-            samples_already_sent = is_media_already_sent(s_id, "samples", ws_id)
-            memory_dict = get_conversation_memory(s_id, ws_id)
-
-            # -------------------------------------------------------------
-            # STEP 3: INTENT & TOPIC UNDERSTANDING
-            # -------------------------------------------------------------
-            intent_data = cls.detect_intents_and_entities(
-                message=customer_message,
-                conversation_history=conversation_history,
-                conversation_state=conversation_state
-            )
-            primary_intent = intent_data["primary_intent"]
-            all_intents = intent_data["intents"]
-            entities = intent_data["entities"]
-            effective_qty = entities.get("quantity")
-
-            selected_tools = []
-            requires_owner_approval = False
-            response_source = "orchestrator"
-            draft_reply = ""
-            matched_images = []
-            media_sequence = []
-            voice_url = ""
-            video_url = ""
-
-            # -------------------------------------------------------------
-            # STEP 3.5: GOOGLE FORM WORKFLOW (Highest Priority for Form Inquiries)
-            # -------------------------------------------------------------
-            if not (CustomerIntent.GOOGLE_FORM_CORRECTION_HELP in all_intents or CustomerIntent.MEDIA_REQUEST in all_intents):
-                try:
-                    from app.ai_agent.gemini_brain import resolve_google_form_workflow
-                    gf_res = resolve_google_form_workflow(
-                        user_message=customer_message,
-                        conversation_history=conversation_history,
-                        customer_phone=s_id,
-                        customer_name=customer_name,
-                        workspace_id=ws_id
-                    )
-                    if gf_res and gf_res.get("reply"):
-                        draft_reply = gf_res["reply"]
-                        voice_url = gf_res.get("voice_url", "")
-                        video_url = gf_res.get("video_url", "")
-                        response_source = "deterministic_google_form"
-                        selected_tools.append("google_form_workflow")
-
-                        return {
-                            "reply_text": draft_reply,
-                            "matched_images": [],
-                            "media_sequence": [],
-                            "voice_url": voice_url,
-                            "video_url": video_url,
-                            "order_created": None,
-                            "response_source": response_source,
-                            "ai_reply_allowed": True,
-                            "google_form_workflow": gf_res,
-                            "orchestrator_log": {
-                                "primary_intent": primary_intent,
-                                "intents": all_intents,
-                                "entities": entities,
-                                "selected_tools": selected_tools,
-                                "requires_owner_approval": False,
-                                "response_source": response_source
-                            }
-                        }
-                except Exception as gf_err:
-                    print(f"[Orchestrator Google Form Workflow Error]: {gf_err}")
-
-            # -------------------------------------------------------------
-            # STEP 4: AUTHORITATIVE INTENT DISPATCH PIPELINE
-            # -------------------------------------------------------------
-            # A. AGENT IDENTITY INQUIRY ("আপনি কে", "তোমার নাম কী")
-            # A. AGENT IDENTITY ("আপনার নাম কি", "আপনি কে?")
-            if primary_intent == CustomerIntent.AGENT_IDENTITY_INQUIRY:
-                selected_tools.append("knowledge_engine")
-                draft_reply = f"জি {honorific}, আমার নাম নাদিম, আমি RS Graphics-এর পক্ষ থেকে আপনাকে সহযোগিতা করছি। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
-                response_source = "agent_identity_inquiry"
-
-            # B. AGENT CAPABILITY / SERVICE INQUIRY ("আপনি কি কি জানেন?", "আপনার কাজ কি?")
-            elif primary_intent == CustomerIntent.AGENT_CAPABILITY_INQUIRY:
-                selected_tools.append("knowledge_engine")
-                draft_reply = f"জি {honorific}, আমি আরএস গ্রাফিক্সের সেলস সহকারী নাদিম। আমি আপনাকে আমাদের আইডি কার্ড, ফিতা ও কভারের বিভিন্ন প্যাকেজ, প্রাইসিং, কোয়ালিটি, অর্ডার প্রক্রিয়া এবং ডেলিভারি সংক্রান্ত যেকোনো তথ্যে সহযোগিতা করতে পারি। আপনার কি কোনো আইডি কার্ড বা ফিতার প্রয়োজন রয়েছে জানাবেন প্লিজ?"
-                response_source = "agent_capability_inquiry"
-
-            # C. OWNER IDENTITY / RASHED / HUMAN ASSISTANCE REQUEST
-            elif primary_intent in (CustomerIntent.OWNER_REQUEST, CustomerIntent.HUMAN_REQUEST):
-                selected_tools.append("knowledge_engine")
-                raw_msg_lower = (customer_message or "").strip().lower()
-                is_rashed_inquiry = any(p in raw_msg_lower for p in ["রাশেদ", "rashed", "রাশেদুল"])
-                is_talk_demand = any(p in raw_msg_lower for p in [
-                    "তাকে দরকার", "উনাকে দরকার", "দরকার", "কথা বলতে চাই", "কথা বলব", "জরুরি", "ফোন", "কল", "চাই", "মানুষ", "অ্যাডমিন"
-                ])
-                if s_id:
-                    esc_topic = "human_agent_request" if is_talk_demand else "owner_identity_inquiry"
-                    create_team_escalation(
-                        sender_id=str(s_id),
-                        customer_message=customer_message,
-                        detected_unknown_topic=esc_topic,
-                        workspace_id=ws_id,
-                        source_channel=channel
-                    )
-
-                if is_rashed_inquiry:
-                    draft_reply = f"জি {honorific}, রাশেদ স্যার আমাদের ওনার স্যার। আপনার বিষয়টি ওনার স্যারকে জানিয়ে দিচ্ছি।"
-                    response_source = "owner_mention_rule_13"
-                elif is_talk_demand:
-                    draft_reply = f"জি {honorific}, আপনার বিষয়টি আমি রাশেদ স্যার ও আমাদের মূল টিমকে জানিয়ে দিয়েছি। ওনার টিম থেকে শীঘ্রই আপনার সাথে যোগাযোগ করা হবে। আপনার কোনো জরুরি মেসেজ বা মোবাইল নম্বর থাকলে এখানে লিখে রাখতে পারেন।"
-                    response_source = "human_request_acknowledgement"
-                else:
-                    draft_reply = f"জি {honorific}, Owner স্যারের নামের তথ্যটি এই মুহূর্তে আমার কাছে সংরক্ষিত নেই। বিষয়টি আমাদের টিমকে জানাচ্ছি। আমাদের টিম আপনাকে জানাবে।"
-                    response_source = "owner_identity_escalation"
-
-            # D. SOCIAL PLEASANTRY & CASUAL CHIT-CHAT ("ভালো আছেন?", "কেমন আছেন?", "খাবার খেয়েছেন?", "গোসল করতে যাবে?")
-            elif primary_intent == CustomerIntent.SOCIAL_PLEASANTRY:
-                selected_tools.append("conversation_engine")
-                norm_msg = (customer_message or "").strip().lower()
-                has_salam = any(kw in norm_msg for kw in ["সালাম", "salam", "assalam"])
-
-                # 1. Gosol / Bathing
-                if any(kw in norm_msg for kw in ["গোসল কাকে বলে", "গোসল কি", "গোসল কী"]):
-                    draft_reply = f"গোসল হলো পানি দিয়ে শরীর ধৌত ও পরিচ্ছন্ন করার প্রক্রিয়া। 😊 যাই হোক {honorific}, আরএস গ্রাফিক্সের আইডি কার্ড বা ফিতার কোনো তথ্য প্রয়োজন হলে জানাতে পারেন!"
-                elif any(kw in norm_msg for kw in ["গোসল", "গোসল করতে"]):
-                    draft_reply = f"জি {honorific}, আমি তো আরএস গ্রাফিক্সের ডিজিটাল সহকারী, তাই আমার গোসল করার প্রয়োজন হয় না! 😊 তবে আপনাকে আইডি কার্ড বা প্রিন্টিংয়ের বিষয়ে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-
-                # 2. Tea / Coffee
-                elif any(kw in norm_msg for kw in ["চা খাবেন", "কফি খাবেন", "চা খাইবেন", "কফি খাইবেন", "চা খাবা", "কফি খাবা"]):
-                    draft_reply = f"অনেক ধন্যবাদ {honorific}! আমি তো ডিজিটাল সহকারী, তাই ভার্চুয়ালি এক কাপ উপভোগ করতে পারি! 😊 আপনাকে আইডি কার্ড বা প্রিন্টিংয়ের বিষয়ে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
-
-                # 3. Location / Address
-                elif any(kw in norm_msg for kw in ["বাড়ি কোথায়", "কোথায় থাকেন", "কোথায় থাকো", "আপনার ঠিকানা"]):
-                    draft_reply = f"জি {honorific}, আমি আরএস গ্রাফিক্সের অনলাইন ডিজিটাল সহকারী। আমাদের মূল অফিস ও প্রিন্টিং কারখানা ঢাকায় অবস্থিত। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
-
-                # 4. Age
-                elif any(kw in norm_msg for kw in ["বয়স কত", "তোমার বয়স"]):
-                    draft_reply = f"জি {honorific}, আমি আরএস গ্রাফিক্সের তৈরি এআই সেলস সহকারী নাদিম! 😊 আপনাকে আমাদের আইডি কার্ড বা ফিতার বিষয়ে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
-
-                # 5. Sleep
-                elif any(kw in norm_msg for kw in ["ঘুমাবেন না", "ঘুমান না", "ঘুমাইছেন", "ঘুম আসেনা"]):
-                    draft_reply = f"জি {honorific}, আমি তো ডিজিটাল সহকারী, তাই আপনাদের সহায়তার জন্য সবসময় ২৪ ঘণ্টাই অনলাইনে প্রস্তুত আছি! 😊 আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
-
-                # 6. Humor / Jokes / Song
-                elif any(kw in norm_msg for kw in ["কৌতুক", "জোকস", "গান শোনাও", "গান গাও"]):
-                    draft_reply = f"হাসিখুশি থাকা ভালো! 😊 তবে আমি আরএস গ্রাফিক্সের সেলস সহকারী নাদিম, আপনাকে প্রিমিয়াম আইডি কার্ড ও ফিতার সেরা কোয়ালিটি ও রেট দিয়ে খুশি করতে প্রস্তুত! আপনার কি কোনো আইডি কার্ডের প্রয়োজন রয়েছে জানাবেন প্লিজ?"
-
-                # 7. Food / Meals
-                elif any(kw in norm_msg for kw in ["খাবার", "ভাত", "নাস্তা", "খাওয়া", "খাইছেন", "খেয়েছেন", "khabar", "bhat", "nasta"]):
-                    if "রাতের খাবার" in norm_msg:
-                        item_label = "রাতের খাবার"
-                    elif "দুপুরের খাবার" in norm_msg:
-                        item_label = "দুপুরের খাবার"
-                    elif "নাস্তা" in norm_msg:
-                        item_label = "নাস্তা"
-                    else:
-                        item_label = "খাওয়া"
-
-                    if item_label == "খাওয়া":
-                        if has_salam:
-                            draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, খাওয়া হয়েছে। আপনি খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                        else:
-                            draft_reply = f"আলহামদুলিল্লাহ {honorific}, খাওয়া হয়েছে। আপনি খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                    elif item_label == "নাস্তা":
-                        if has_salam:
-                            draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, নাস্তা করা হয়েছে। আপনি নাস্তা করেছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                        else:
-                            draft_reply = f"আলহামদুলিল্লাহ {honorific}, নাস্তা করা হয়েছে। আপনি নাস্তা করেছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                    else:
-                        if has_salam:
-                            draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, {item_label} খাওয়া হয়েছে। আপনি খাবার খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                        else:
-                            draft_reply = f"আলহামদুলিল্লাহ {honorific}, {item_label} খাওয়া হয়েছে। আপনি খাবার খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                # 8. General well-being
-                else:
-                    if has_salam:
-                        draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                    else:
-                        draft_reply = f"আলহামদুলিল্লাহ {honorific}, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                response_source = "social_pleasantry_response"
-
-            # D. GOOGLE FORM HELP / MEDIA VIDEO REQUEST
-            elif CustomerIntent.GOOGLE_FORM_CORRECTION_HELP in all_intents or CustomerIntent.MEDIA_REQUEST in all_intents:
-                selected_tools.append("media_router")
-                m_res = MediaRouter.route_media(
-                    message=customer_message,
-                    workspace_id=ws_id,
-                    conversation_state=conversation_state
-                )
-                video_url = m_res.get("video_url") or "/static/uploads/media/google_form_edit_correction_guide.mp4"
-                draft_reply = f"জি {honorific}, গুগল ফর্মে তথ্য সাবমিট করার পর ভুল হলে তা সংশোধন করার নিয়মের ভিডিও গাইড নিচে দেওয়া হলো:"
-                response_source = "media_router_video_dispatch"
-
-            # E. PHOTO TAKING SERVICE POLICY
-            elif primary_intent == CustomerIntent.PHOTO_SERVICE:
-                selected_tools.append("knowledge_engine")
-                draft_reply = (
-                    f"জি {honorific}, আমরা ছবি তোলার সার্ভিস প্রদান করি না। ছবি ও তথ্য আপনাকেই তুলে দিতে হবে। "
-                    f"আমরা সম্পূর্ণ কাজ তৈরি করে, প্রিমিয়াম প্রিন্ট ও ডেলিভারি সম্পন্ন করে দেব।"
-                )
-                response_source = "photo_service_policy"
-
-            # F. TOPIC CHANGE / OTHER PRODUCTS
-            elif primary_intent == CustomerIntent.TOPIC_CHANGE:
-                selected_tools.append("knowledge_engine")
-                if entities.get("topic") == "mosque_requirement":
-                    draft_reply = f"জি {honorific}, আপনার মসজিদের কী ধরণের কাজ প্রয়োজন জানাবেন প্লিজ (যেমন: আইডি কার্ড, ডোনেশন রশিদ, ব্যানার বা সিল)? আমরা আপনার প্রয়োজন অনুযায়ী সহায়তা করতে পারব।"
-                    response_source = "topic_switch_clarification"
-                else:
-                    k_res = KnowledgeEngine.retrieve_relevant_knowledge(customer_message, workspace_id=ws_id)
-                    if k_res.get("has_authoritative_answer") and k_res.get("direct_answers"):
-                        r_rule = k_res["direct_answers"][0]
-                        draft_reply = f"জি {honorific}, {r_rule.get('response_or_rule', '')}"
-                        response_source = "training_rule_answer"
-                    else:
-                        unk = KnowledgeEngine.handle_unknown_inquiry(
-                            customer_message=customer_message,
-                            sender_id=s_id,
-                            detected_topic=entities.get("topic") or "other_product",
-                            workspace_id=ws_id,
-                            customer_name=customer_name,
-                            channel=channel
-                        )
-                        draft_reply = unk["reply_text"]
-                        response_source = "no_guess_team_escalation"
-
-            # G. MOQ POLICY REJECTION (< 30 pcs)
-            elif primary_intent == CustomerIntent.MOQ_REJECTED or (effective_qty is not None and effective_qty < 30 and not entities.get("is_specific_item")):
-                selected_tools.append("pricing_engine")
-                draft_reply = f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
-                response_source = "moq_rejected_policy"
-
-            # H. SAMPLE DELIVERY & RESAMPLE
-            elif primary_intent in (CustomerIntent.SAMPLE_REQUEST, CustomerIntent.SAMPLE_CONFIRMATION, CustomerIntent.RESAMPLE_REQUEST):
-                selected_tools.append("media_router")
-                p_num = entities.get("package_id")
-                norm_m = (customer_message or "").strip().lower()
-
-                if samples_already_sent and not entities.get("is_resample_request") and not p_num and not entities.get("is_premium_inquiry"):
-                    draft_reply = f"জি {honorific}, পূর্বের পাঠানো স্যাম্পল ও প্যাকেজগুলো দেখে আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন প্লিজ, অথবা আপনার আর কোনো কিছু জানার থাকলে বলুন {honorific}।"
-                    response_source = "samples_already_sent_acknowledged"
-                else:
-                    from app.ai_agent.gemini_brain import detect_sample_photos_to_send, generate_sample_delivery_sequence, get_package_sample_images
-                    seq = generate_sample_delivery_sequence(workspace_id=ws_id)
-                    matched_imgs = detect_sample_photos_to_send(customer_message, conversation_history, "স্যাম্পলগুলো নিচে পাঠানো হলো", workspace_id=ws_id)
-                    if not matched_imgs:
-                        matched_imgs = get_package_sample_images(workspace_id=ws_id)
-
-                    try:
-                        record_media_dispatched(s_id, "samples", matched_imgs, ws_id)
-                        record_question_asked(s_id, "PACKAGE_SELECTION_PROMPT", ws_id)
-                    except Exception:
-                        pass
-
-                    if p_num == 7 or entities.get("is_premium_inquiry") or "প্রিমিয়াম" in norm_m or "প্রিমিয়াম" in norm_m:
-                        draft_reply = f"জি {honorific}, আমাদের সবচেয়ে প্রিমিয়াম ও আকর্ষণীয় প্যাকেজ হলো 'প্যাকেজ ৭'। এতে থাকছে প্রিমিয়াম ডিজিটাল সাটিন মাল্টিকালার ফিতা, জাপানি মেশিনে প্রিন্ট করা ১০০% ওয়াটারপ্রুফ এইচডি আইডি কার্ড এবং প্রিমিয়াম কভার/হোল্ডার। এর নিয়মিত মূল্য প্রতি সেট ৯১ টাকা (৮০+ পিসে ৮৭ টাকা)। নিচে প্যাকেজের ছবি ও স্যাম্পল দেওয়া হলো:"
-                    elif p_num:
-                        draft_reply = f"জি {honorific}, প্যাকেজ {p_num}-এর ছবি ও স্যাম্পল নিচে দেওয়া হলো:"
-                    else:
-                        draft_reply = f"জি {honorific}, অবশ্যই দিচ্ছি। আমাদের আইডি কার্ড ও ফিতার প্যাকেজগুলোর স্যাম্পল ছবি নিচে দেওয়া হলো:"
-                    matched_images = matched_imgs
-                    media_sequence = seq
-                    response_source = "sample_dispatch_pipeline"
-
-            # I. QUALITY INQUIRY VOICE DISPATCH
-            elif primary_intent == CustomerIntent.QUALITY_INQUIRY:
-                selected_tools.append("knowledge_engine")
-                draft_reply = f"জি {honorific}, আমাদের কার্ড ও ফিতার কোয়ালিটি ও বৈশিষ্ট্য কেমন হবে সে সম্পর্কে বিস্তারিত জানতে নিচের ভয়েস বার্তাটি শুনুন:"
-                voice_url = "/static/uploads/media/id_card_and_fita_quality.aac"
-                response_source = "id_card_quality_voice_dispatch"
-
-            # J. PURE GREETING ("আসসালামু আলাইকুম", "Hi", "Hello")
-            elif primary_intent == CustomerIntent.GREETING:
-                norm_msg = (customer_message or "").strip().lower()
-                has_salam = any(kw in norm_msg for kw in ["সালাম", "salam", "assalam"])
-                has_product_ref = any(kw in norm_msg for kw in ["আইডি কার্ড", "id card", "কার্ড", "ফিতা", "কভার", "প্যাকেজ", "বানাবো", "বানাতে", "লাগবে"])
-
-                if has_salam:
-                    prefix = f"ওয়ালাইকুমুস সালাম {honorific}!"
-                elif any(kw in norm_msg for kw in ["হ্যালো", "hello"]):
-                    prefix = f"হ্যালো {honorific}!"
-                else:
-                    prefix = f"জি {honorific},"
-
-                if has_product_ref and effective_qty is not None and effective_qty >= 30:
-                    draft_reply = f"{prefix} আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনার {effective_qty} পিস আইডি কার্ডের অর্ডারের জন্য কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
-                elif has_product_ref:
-                    draft_reply = f"{prefix} আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনি কত পিস আইডি কার্ড বানাতে চান জানাবেন প্লিজ?"
-                else:
-                    draft_reply = f"{prefix} আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                response_source = "standard_greeting"
-
-            # K. QUANTITY PROVIDED
-            elif primary_intent == CustomerIntent.QUANTITY_PROVIDED:
-                selected_tools.append("pricing_engine")
-                try:
-                    update_conversation_state(s_id, {"quantity": effective_qty, "current_sales_stage": SalesStage.QUANTITY_IDENTIFIED}, reason="quantity_acknowledged", workspace_id=ws_id)
-                    record_fact_confirmed(s_id, "quantity", effective_qty, ws_id)
-                except Exception:
-                    pass
-
-                tier = get_quantity_tier(effective_qty) if effective_qty else None
-                if not samples_already_sent:
-                    if tier == QuantityTier.SMALL_ORDER:
-                        draft_reply = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য (৩০-৪৯ পিস টিয়ারে) প্যাকেজ রেট প্রতি সেট ৮০ টাকা থেকে ১০১ টাকা (80 Tk - 101 Tk) (প্রতি সেটে ১০ টাকা অতিরিক্ত চার্জ প্রযোজ্য)। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
-                    else:
-                        draft_reply = f"জি {honorific}, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
-                    record_question_asked(s_id, "SAMPLE_PERMISSION_PROMPT", ws_id)
-                    response_source = "sample_permission_prompt"
-                else:
-                    draft_reply = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের তথ্য পেয়েছি। কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ {honorific}।"
-                    response_source = "quantity_acknowledged_package_prompt"
-
-            # L. SPECIFIC ITEM PRICING
-            elif primary_intent == CustomerIntent.SPECIFIC_ITEM_PRICE:
-                selected_tools.append("pricing_engine")
-                norm_msg = customer_message.lower()
-                if "t-014" in norm_msg or "t014" in norm_msg:
-                    if "কভার" in norm_msg or "cover" in norm_msg:
-                        draft_reply = f"জি {honorific}, T-014 কভার ১০০+ পিস অর্ডারে প্রতি পিস ১০ টাকা (10 Tk)। ৫০-৭৯ পিসে ১২ টাকা এবং ৩০-৪৯ পিসে ১৫ টাকা।"
-                    else:
-                        draft_reply = f"জি {honorific}, T-014 ফিতা ১০০+ পিস অর্ডারে প্রতি পিস ১৫ টাকা (রেগুলার রেট)। ৩০-৪৯ পিসে প্রতি পিস ২৫ টাকা এবং ৫০-৭৯ পিসে প্রতি পিস ২০ টাকা।"
-                elif "dx" in norm_msg:
-                    draft_reply = f"জি {honorific}, DX কভার ১০০+ পিস অর্ডারে প্রতি পিস ১২ টাকা (12 Tk)। ৫০-৭৯ পিসে ১৫ টাকা এবং ৩০-৪৯ পিসে ১৮ টাকা।"
-                elif "মেটাল কভার" in norm_msg or "metal cover" in norm_msg:
-                    draft_reply = f"জি {honorific}, মেটাল কভার ১০০+ পিস অর্ডারে প্রতি পিস ৩৫ টাকা। ৫০-৭৯ পিসে প্রতি পিস ৪০ টাকা এবং ৩০-৪৯ পিসে প্রতি পিস ৪৫ টাকা।"
-                elif "শুধু ফিতা" in norm_msg:
-                    draft_reply = f"জি {honorific}, শুধু ফিতা (ডিজিটাল প্রিন্ট) ১০০+ পিস অর্ডারে প্রতি পিস ১৫ টাকা। ৩০-৪৯ পিসে ২৫ টাকা এবং ৫০-৭৯ পিসে ২০ টাকা।"
-                elif "শুধু কার্ড" in norm_msg:
-                    draft_reply = f"জি {honorific}, শুধু আইডি কার্ড (UV প্রিন্ট) ১০০+ পিস অর্ডারে প্রতি পিস ১৫ টাকা। ৩০-৪৯ পিসে ২৫ টাকা এবং ৫০-৭৯ পিসে ২০ টাকা।"
-                elif "শুধু কভার" in norm_msg:
-                    draft_reply = f"জি {honorific}, শুধু নরমাল কভার ১০০+ পিস অর্ডারে প্রতি পিস ৮ টাকা। ৫০-৭৯ পিসে ১০ টাকা এবং ৩০-৪৯ পিসে ১২ টাকা।"
-                else:
-                    draft_reply = f"জি {honorific}, আমাদের শুধু কার্ড ১৫ টাকা, ডিজিটাল ফিতা ১৫ টাকা এবং মেটাল কভার ৩৫ টাকা (১০০+ পিস অর্ডারের রেগুলার রেট)। আপনার কত পিস প্রয়োজন জানাবেন প্লিজ।"
-                response_source = "specific_item_pricing"
-
-            # M. PER PIECE PRICE INQUIRY
-            elif primary_intent == CustomerIntent.PER_PIECE_PRICE:
-                selected_tools.append("pricing_engine")
-                p_num = entities.get("package_id")
-                if p_num and effective_qty is not None and effective_qty >= 30:
-                    tier = get_quantity_tier(effective_qty)
-                    p_info = calculate_package_price(package_id=p_num, quantity=effective_qty)
-                    p_price = int(p_info["effective_unit_price"])
-
-                    if tier == QuantityTier.BULK:
-                        draft_reply = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য প্যাকেজ {p_num}-এর রেগুলার রেট প্রতি সেট {p_price} টাকা।"
-                    elif tier == QuantityTier.REGULAR:
-                        draft_reply = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য প্যাকেজ {p_num}-এর ফিক্সড রেট প্রতি সেট {p_price} টাকা।"
-                    else:
-                        draft_reply = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য (৩০-৪৯ পিস টিয়ারে) প্যাকেজ {p_num}-এর রেট প্রতি সেট {p_price} টাকা (প্রতি সেটে ১০ টাকা অতিরিক্ত চার্জ প্রযোজ্য)।"
-                    response_source = "per_piece_known_quantity"
-                elif effective_qty is not None and effective_qty >= 30:
-                    pkg_lines = []
-                    for pid in range(1, 8):
-                        p_info = calculate_package_price(package_id=pid, quantity=effective_qty)
-                        u_p = int(p_info['effective_unit_price'])
-                        bn_p = str(u_p).replace('0','০').replace('1','১').replace('2','২').replace('3','৩').replace('4','৪').replace('5','৫').replace('6','৬').replace('7','৭').replace('8','৮').replace('9','৯')
-                        bn_pid = str(pid).replace('1','১').replace('2','২').replace('3','৩').replace('4','৪').replace('5','৫').replace('6','৬').replace('7','৭')
-                        pkg_lines.append(f"• প্যাকেজ {bn_pid}: {bn_p} টাকা ({u_p} Tk)")
-                    breakdown_str = "\n".join(pkg_lines)
-                    draft_reply = (
-                        f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য প্যাকেজগুলোর রেট নিচে দেওয়া হলো:\n"
-                        f"{breakdown_str}\n"
-                        f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন প্লিজ {honorific}।"
-                    )
-                    response_source = "per_piece_known_quantity"
-                else:
-                    if entities.get("package_id"):
-                        p_num = entities.get("package_id")
-                        p_info = calculate_package_price(package_id=p_num, quantity=100)
-                        p_price = int(p_info["effective_unit_price"])
-                        draft_reply = f"জি {honorific}, প্যাকেজ {p_num}-এর রেগুলার রেট হলো প্রতি সেট {p_price} টাকা (সর্বনিম্ন ৩০ পিস)। আপনার কত পিস প্রয়োজন জানাবেন প্লিজ {honorific}?"
-                    else:
-                        draft_reply = (
-                            f"জি {honorific}, আমাদের আইডি কার্ডের প্যাকেজ রেট প্রতি সেট ৭০ টাকা থেকে ৯১ টাকা (70 Tk - 91 Tk) পর্যন্ত "
-                            f"(সর্বনিম্ন ৩০ পিস)। আপনার কত পিস প্রয়োজন জানালে আপনার জন্য প্রযোজ্য সঠিক রেট বলতে পারব {honorific}।"
-                        )
-                    response_source = "per_piece_unknown_quantity"
-
-            # N. GENERAL PRICE INQUIRY / PACKAGE BREAKDOWN
-            elif primary_intent == CustomerIntent.PRICE_INQUIRY:
-                selected_tools.append("pricing_engine")
-                p_num = entities.get("package_id")
-                if p_num:
-                    p_info = calculate_package_price(package_id=p_num, quantity=effective_qty or 100)
-                    p_price = int(p_info["effective_unit_price"])
-                    if effective_qty is not None and effective_qty >= 30:
-                        tier = get_quantity_tier(effective_qty)
-                        if tier == QuantityTier.BULK:
-                            draft_reply = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য প্যাকেজ {p_num}-এর রেগুলার রেট প্রতি সেট {p_price} টাকা।"
-                        elif tier == QuantityTier.REGULAR:
-                            draft_reply = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য প্যাকেজ {p_num}-এর ফিক্সড রেট প্রতি সেট {p_price} টাকা।"
-                        else:
-                            draft_reply = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য (৩০-৪৯ পিস টিয়ারে) প্যাকেজ {p_num}-এর রেট প্রতি সেট {p_price} টাকা (প্রতি সেটে ১০ টাকা অতিরিক্ত চার্জ প্রযোজ্য)।"
-                    else:
-                        draft_reply = f"জি {honorific}, প্যাকেজ {p_num}-এর রেগুলার রেট হলো প্রতি সেট {p_price} টাকা (সর্বনিম্ন ৩০ পিস)। আপনার কত পিস প্রয়োজন জানাবেন প্লিজ {honorific}?"
-                    response_source = "package_price_known_quantity"
-                elif effective_qty is not None and effective_qty >= 30:
-                    pkg_lines = []
-                    for pid in range(1, 8):
-                        p_info = calculate_package_price(package_id=pid, quantity=effective_qty)
-                        u_p = int(p_info['effective_unit_price'])
-                        bn_p = str(u_p).replace('0','০').replace('1','১').replace('2','২').replace('3','৩').replace('4','৪').replace('5','৫').replace('6','৬').replace('7','৭').replace('8','৮').replace('9','৯')
-                        bn_pid = str(pid).replace('1','১').replace('2','২').replace('3','৩').replace('4','৪').replace('5','৫').replace('6','৬').replace('7','৭')
-                        pkg_lines.append(f"• প্যাকেজ {bn_pid}: {bn_p} টাকা ({u_p} Tk)")
-                    breakdown_str = "\n".join(pkg_lines)
-                    draft_reply = (
-                        f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য প্রতিটি প্যাকেজের রেগুলার রেট নিচে দেওয়া হলো:\n"
-                        f"{breakdown_str}\n"
-                        f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন প্লিজ {honorific}।"
-                    )
-                    response_source = "package_breakdown_known_quantity"
-                else:
-                    draft_reply = (
-                        f"জি {honorific}, আমাদের আইডি কার্ডের প্যাকেজ রেট প্রতি সেট ৭০ টাকা থেকে ৯১ টাকা (70 Tk - 91 Tk) পর্যন্ত "
-                        f"(সর্বনিম্ন ৩০ পিস)। আপনার কত পিস প্রয়োজন জানালে আপনার জন্য প্রযোজ্য সঠিক রেট বলতে পারব {honorific}।"
-                    )
-                    response_source = "id_card_package_pricing_breakdown"
-
-                if CustomerIntent.DELIVERY_INQUIRY in all_intents:
-                    selected_tools.append("delivery_calculator")
-                    draft_reply = f"{draft_reply} আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে ৮০ টাকা (80 Tk) এবং ঢাকার বাইরে ১৩০ টাকা (130 Tk)।"
-
-            # O. NEGOTIATION & DISCOUNT REQUEST
-            elif primary_intent in (CustomerIntent.NEGOTIATION, CustomerIntent.DISCOUNT_REQUEST):
-                selected_tools.append("pricing_engine")
-                p_num = entities.get("package_id") or 7
-                demanded = entities.get("demanded_price")
-
-                if effective_qty is None or effective_qty < 30:
-                    draft_reply = f"জি {honorific}, আপনার কত পিস প্রয়োজন জানাবেন প্লিজ? আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস।"
-                    response_source = "negotiation_missing_quantity"
-                else:
-                    tier = get_quantity_tier(effective_qty)
-                    if tier == QuantityTier.SMALL_ORDER:
-                        draft_reply = f"দুঃখিত {honorific}, {effective_qty} পিস অর্ডারের ক্ষেত্রে (৩০-৪৯ পিস টিয়ারে) ফিক্সড রেট প্রযোজ্য—প্রতি সেটে ১০ টাকা অতিরিক্ত চার্জ রয়েছে এবং কোনো ডিসকাউন্ট প্রযোজ্য নয়।"
-                        response_source = "discount_negotiation_response"
-                    elif tier == QuantityTier.REGULAR:
-                        draft_reply = f"দুঃখিত {honorific}, {effective_qty} পিস অর্ডারের ক্ষেত্রে আমাদের এই রেটটি ফিক্সড রেগুলার রেট। ১০০+ বাল্ক অর্ডারের ক্ষেত্রে স্পেশাল ডিসকাউন্ট পলিসি প্রযোজ্য হয়।"
-                        response_source = "discount_negotiation_response"
-                    else:
-                        # 80+ Bulk Tier Step Negotiation
-                        current_disc = memory_dict.get("current_discount", 0.0)
-                        neg_res = negotiate_step(
-                            package_id=p_num,
-                            quantity=effective_qty,
-                            current_discount=current_disc,
-                            customer_demanded_price=demanded
-                        )
-                        draft_reply = neg_res["reply_text"]
-                        offered_p = neg_res.get("offered_unit_price")
-                        requires_owner_approval = neg_res.get("requires_owner_approval", False)
-
-                        if offered_p is not None:
-                            try:
-                                update_conversation_state(s_id, {"quoted_price": offered_p}, reason="discount_negotiation", workspace_id=ws_id)
-                                record_fact_confirmed(s_id, "offered_price", offered_p, ws_id)
-                            except Exception:
-                                pass
-                        response_source = "discount_negotiation_response"
-
-            # P. DELIVERY CHARGE & TIME
-            elif primary_intent in (CustomerIntent.DELIVERY_INQUIRY, CustomerIntent.DELIVERY_TIME_INQUIRY):
-                selected_tools.append("delivery_calculator")
-                loc = entities.get("location")
-                del_info = calculate_delivery_and_cod(subtotal=0.0, is_inside_dhaka=(loc != "outside_dhaka"))
-                if primary_intent == CustomerIntent.DELIVERY_TIME_INQUIRY:
-                    draft_reply = f"জি {honorific}, তথ্য ও ডিজাইন চূড়ান্ত হওয়ার পর সাধারণত ৩-৫ কার্যদিবসের মধ্যে ডেলিভারি সম্পন্ন হয়। ডেলিভারি চার্জ ঢাকার ভেতরে ৮০ টাকা (80 Tk) এবং ঢাকার বাইরে ১৩০ টাকা (130 Tk)।"
-                else:
-                    if loc == "outside_dhaka":
-                        draft_reply = f"জি {honorific}, ঢাকার বাইরে আমাদের ডেলিভারি চার্জ ১৩০ টাকা (130 Tk) এবং ঢাকার ভেতরে ৮০ টাকা (80 Tk)।"
-                    elif loc == "inside_dhaka":
-                        draft_reply = f"জি {honorific}, ঢাকার ভেতরে আমাদের ডেলিভারি চার্জ ৮০ টাকা (80 Tk) এবং ঢাকার বাইরে ১৩০ টাকা (130 Tk)।"
-                    else:
-                        draft_reply = f"জি {honorific}, আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে ৮০ টাকা (80 Tk) এবং ঢাকার বাইরে ১৩০ টাকা (130 Tk)।"
-
-                if CustomerIntent.PRICE_INQUIRY in all_intents or entities.get("package_id"):
-                    selected_tools.append("pricing_engine")
-                    p_num = entities.get("package_id") or 7
-                    p_info = calculate_package_price(package_id=p_num, quantity=effective_qty or 100)
-                    p_price = int(p_info["effective_unit_price"])
-                    draft_reply = f"জি {honorific}, আপনার {effective_qty or 100} পিস অর্ডারের জন্য প্যাকেজ {p_num}-এর রেগুলার রেট প্রতি সেট {p_price} টাকা (91 Tk)। {draft_reply}"
-
-                response_source = "delivery_inquiry_response"
-
-            # Q. ADVANCE & COD POLICY
-            elif primary_intent in (CustomerIntent.ADVANCE_INQUIRY, CustomerIntent.COD_INQUIRY, CustomerIntent.PAYMENT_INQUIRY):
-                selected_tools.append("pricing_engine")
-                draft_reply = f"জি {honorific}, অর্ডার কনফার্ম করতে ৫০% অগ্রিম পেমেন্ট করতে হয় (অগ্রিম পেমেন্ট বাধ্যতামূলক)। বাকি টাকা প্রোডাক্ট হাতে পেয়ে ক্যাশ অন ডেলিভারিতে দিতে পারবেন (ফুল ক্যাশ অন ডেলিভারি প্রযোজ্য নয়)।"
-                response_source = "advance_payment_policy"
-
-            # R. GENERAL PRODUCT INQUIRY ("আমার তো কিছু বানানো দরকার", "আইডি কার্ড বানাবো")
-            elif primary_intent == CustomerIntent.PRODUCT_INQUIRY:
-                selected_tools.append("pricing_engine")
-                if effective_qty is not None and effective_qty >= 30:
-                    draft_reply = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য অবশ্যই করতে পারব। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
-                else:
-                    draft_reply = f"জি {honorific}, অবশ্যই বানাতে পারবেন! আপনি কত পিস আইডি কার্ড বা ফিতা করতে চান এবং কার্ডের সঙ্গে ফিতা ও কভারও নিতে চান কি?"
-                response_source = "product_inquiry_quantity_prompt"
-
-            # S. UNKNOWN / KNOWLEDGE ENGINE RETRIEVAL / CONVERSATIONAL BRAIN / TEAM ESCALATION
-            else:
-                selected_tools.append("knowledge_engine")
-                k_res = KnowledgeEngine.retrieve_relevant_knowledge(customer_message, workspace_id=ws_id)
-                if k_res.get("has_authoritative_answer") and k_res.get("direct_answers"):
-                    r_rule = k_res["direct_answers"][0]
-                    draft_reply = f"জি {honorific}, {r_rule.get('response_or_rule', '')}"
-                    response_source = "training_rule_answer"
-                elif k_res.get("has_authoritative_answer") and k_res.get("matched_faqs"):
-                    r_faq = k_res["matched_faqs"][0]
-                    draft_reply = f"জি {honorific}, {r_faq.get('answer', '')}"
-                    response_source = "faq_answer"
-                else:
-                    norm_unhandled = (customer_message or "").strip().lower()
-                    is_business_inquiry = any(kw in norm_unhandled for kw in [
-                        "শাখা", "branch", "শোরুম", "দোকান", "অর্ডার", "টাকা", "বিল", "ইনভয়েস",
-                        "অভিযোগ", "সমস্যা", "কাস্টম", "মালিক", "টাকা ফেরত", "রিফান্ড", "ওয়ারেন্টি",
-                        "গ্যারান্টি", "চুক্তি"
-                    ])
-
-                    gen_reply = ""
-                    if not is_business_inquiry:
-                        try:
-                            from app.database import get_setting
-                            from app.config import settings
-                            from google import genai
-                            from google.genai import types
-
-                            api_key = get_setting("gemini_api_key", settings.GEMINI_API_KEY)
-                            if api_key:
-                                client = genai.Client(api_key=api_key)
-                                prompt = (
-                                    f"Customer ({customer_name}): {customer_message}\n\n"
-                                    f"Respond as Nadim (নাদিম), a smart, polite, and helpful sales assistant at RS Graphics (আরএস গ্রাফিক্স).\n"
-                                    f"Guidelines:\n"
-                                    f"1. Respond in polite, friendly Bengali using '{honorific}' (never 'ভাইয়া/আপু').\n"
-                                    f"2. Answer general questions, curiosity, chit-chat, or knowledge questions warmly, concisely, and intelligently (1-2 sentences).\n"
-                                    f"3. STRICT BUSINESS RULE: Do NOT make up new prices, discounts, delivery fees, or commit to unsupported products.\n"
-                                    f"4. After answering warmly, politely ask if they need help with RS Graphics ID cards, lanyards, or printing services."
-                                )
-                                response = client.models.generate_content(
-                                    model="gemini-2.5-flash",
-                                    contents=prompt,
-                                    config=types.GenerateContentConfig(temperature=0.7)
-                                )
-                                if response and response.text:
-                                    gen_reply = response.text.strip()
-                        except Exception as e:
-                            print(f"[Conversational Gemini Brain Note]: {e}")
-
-                    if gen_reply:
-                        draft_reply = gen_reply
-                        response_source = "conversational_ai_brain"
-                    elif is_business_inquiry:
-                        unk = KnowledgeEngine.handle_unknown_inquiry(
-                            customer_message=customer_message,
-                            sender_id=s_id,
-                            detected_topic="unknown_business_inquiry",
-                            workspace_id=ws_id,
-                            customer_name=customer_name,
-                            channel=channel
-                        )
-                        draft_reply = unk["reply_text"]
-                        response_source = "no_guess_team_escalation"
-                    else:
-                        draft_reply = f"জি {honorific}, আপনার আইডি কার্ড, ফিতা বা প্রিন্টিং সংক্রান্ত যেকোনো প্রশ্ন থাকলে আমাকে জানাতে পারেন, আমি বিস্তারিত জানিয়ে সহযোগিতা করছি।"
-                        response_source = "conversational_friendly_fallback"
-
-            # -------------------------------------------------------------
-            # STEP 5: UNIVERSAL RESPONSE VALIDATION & POLICY GUARD
-            # -------------------------------------------------------------
-            draft_payload = {
-                "reply_text": draft_reply,
-                "matched_images": matched_images,
-                "media_sequence": media_sequence,
-                "voice_url": voice_url,
-                "video_url": video_url,
-                "order_created": None,
-                "response_source": response_source
-            }
-
-            try:
-                validated_res = ResponseValidator.validate_and_sanitize(
-                    draft_response=draft_payload,
-                    customer_message=customer_message,
-                    conversation_history=conversation_history,
-                    sender_id=s_id,
-                    customer_name=customer_name,
-                    workspace_id=ws_id,
-                    channel=channel
-                )
-            except Exception as val_err:
-                print(f"[Orchestrator Validator Fallback]: {val_err}")
-                validated_res = draft_payload
-
-            validated_res["orchestrator_log"] = {
-                "primary_intent": primary_intent,
-                "intents": all_intents,
-                "entities": entities,
-                "selected_tools": selected_tools,
-                "requires_owner_approval": requires_owner_approval,
-                "response_source": response_source
-            }
-
-            return validated_res
-
-        except Exception as top_err:
-            print(f"[Orchestrator Top-Level Fallback Error]: {top_err}")
+        # -------------------------------------------------------------
+        # STEP 1: HUMAN / ADMIN TAKEOVER CHECK (Absolute Silence Guard)
+        # -------------------------------------------------------------
+        if sender_id and not is_conversation_ai_active(sender_id=str(sender_id), workspace_id=ws_id):
             return {
-                "reply_text": f"জি {honorific}, আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনি কত পিস আইডি কার্ড বানাতে চান জানাবেন প্লিজ? আমাদের হেল্পলাইন: 01816504097।",
+                "reply_text": "",
                 "matched_images": [],
                 "media_sequence": [],
                 "voice_url": "",
                 "video_url": "",
                 "order_created": None,
-                "response_source": "top_level_safe_fallback",
+                "is_blocked": True,
+                "block_reason": "admin_takeover_active",
+                "ai_reply_allowed": False,
                 "orchestrator_log": {
-                    "primary_intent": CustomerIntent.UNKNOWN,
-                    "intents": [CustomerIntent.UNKNOWN],
-                    "entities": {},
-                    "selected_tools": ["safe_fallback"],
-                    "requires_owner_approval": False,
-                    "error": str(top_err)
+                    "sender_id": sender_id,
+                    "workspace_id": ws_id,
+                    "status": "blocked_by_human_takeover",
+                    "requires_owner_approval": False
                 }
             }
+
+        # -------------------------------------------------------------
+        # STEP 2: LOAD PERSISTENT CONVERSATION STATE
+        # -------------------------------------------------------------
+        conversation_state = {}
+        if sender_id:
+            try:
+                conversation_state = get_structured_conversation_state(str(sender_id), ws_id)
+            except Exception:
+                pass
+
+        # -------------------------------------------------------------
+        # STEP 3: INTENT & ENTITY DETECTION
+        # -------------------------------------------------------------
+        try:
+            intent_data = cls.detect_intents_and_entities(
+                message=customer_message,
+                conversation_history=conversation_history,
+                conversation_state=conversation_state
+            )
+        except Exception as e:
+            intent_data = {
+                "primary_intent": CustomerIntent.UNKNOWN,
+                "intents": [CustomerIntent.UNKNOWN],
+                "confidence": 0.4,
+                "entities": {"quantity": None, "package_id": None, "demanded_price": None, "location": None, "is_negotiating": False}
+            }
+        intents = intent_data["intents"]
+        entities = intent_data["entities"]
+        selected_tools = []
+        verified_context: Dict[str, Any] = {}
+        requires_owner_approval = False
+        owner_approval_reason = ""
+
+        # -------------------------------------------------------------
+        # STEP 4: AUTHORITATIVE TOOL EXECUTION
+        # -------------------------------------------------------------
+        # A. PRICING & NEGOTIATION TOOL
+        if entities.get("quantity") is not None or entities.get("package_id") is not None or CustomerIntent.NEGOTIATION in intents:
+            selected_tools.append("pricing_engine")
+            pkg_id = entities.get("package_id") or "1"
+            qty = entities.get("quantity") or 100
+
+            # Check if customer has an existing approved/modified exception
+            approved_exception = None
+            if sender_id:
+                from app.ai_agent.owner_approval import OwnerApprovalEngine, ApprovalRequestType
+                approved_exception = OwnerApprovalEngine.get_active_approved_exception(
+                    customer_id=str(sender_id),
+                    workspace_id=ws_id,
+                    package_id=str(pkg_id),
+                    quantity=int(qty)
+                )
+
+            if approved_exception:
+                # Use owner-approved price exception
+                appr_val = float(approved_exception["approved_value"])
+                verified_context["pricing"] = {
+                    "package_id": str(pkg_id),
+                    "quantity": int(qty),
+                    "upfront_unit_price": appr_val,
+                    "offered_unit_price": appr_val,
+                    "total_amount": appr_val * int(qty),
+                    "is_approved_exception": True,
+                    "approved_by": approved_exception.get("resolved_by", "owner")
+                }
+            elif CustomerIntent.NEGOTIATION in intents:
+                current_disc = float(conversation_state.get("applied_discount") or 0.0)
+                dem_price = entities.get("demanded_price")
+                neg_res = negotiate_step(
+                    package_id=str(pkg_id),
+                    quantity=int(qty),
+                    current_discount=current_disc,
+                    customer_demanded_price=dem_price
+                )
+                verified_context["pricing"] = neg_res
+                if neg_res.get("requires_owner_approval"):
+                    requires_owner_approval = True
+                    owner_approval_reason = "Customer requested price below minimum authorized floor"
+                    if sender_id:
+                        from app.ai_agent.owner_approval import OwnerApprovalEngine, ApprovalRequestType
+                        pkg_floor = PACKAGE_CATALOG.get(str(pkg_id), {}).get("min_price", 82.0)
+                        OwnerApprovalEngine.create_or_get_pending_approval(
+                            customer_id=str(sender_id),
+                            conversation_id=str(conversation_state.get("conversation_id") or f"conv_{ws_id}_{sender_id}"),
+                            request_type=ApprovalRequestType.PRICE_EXCEPTION,
+                            requested_value=float(dem_price or 0.0),
+                            authorized_value=float(pkg_floor),
+                            package_id=str(pkg_id),
+                            quantity=int(qty),
+                            reason="Customer requested price below authorized floor",
+                            workspace_id=ws_id
+                        )
+            else:
+                price_res = calculate_package_price(
+                    package_id=str(pkg_id),
+                    quantity=int(qty)
+                )
+                verified_context["pricing"] = price_res
+
+        # B. DELIVERY CALCULATOR TOOL
+        if CustomerIntent.DELIVERY_INQUIRY in intents or CustomerIntent.DELIVERY_TIME_INQUIRY in intents:
+            selected_tools.append("delivery_calculator")
+            is_inside = entities.get("location") == "inside_dhaka" if entities.get("location") else True
+            subtotal = float(verified_context.get("pricing", {}).get("total_amount") or 5000.0)
+            try:
+                del_res = calculate_delivery_and_cod(
+                    subtotal=subtotal,
+                    is_inside_dhaka=is_inside
+                )
+                verified_context["delivery"] = del_res
+            except Exception as e:
+                verified_context["delivery"] = {
+                    "base_delivery": 80.0 if is_inside else 130.0,
+                    "cod_charge": 0.0,
+                    "total_delivery_charge": 80.0 if is_inside else 130.0
+                }
+
+        # C. MEDIA ROUTER TOOL
+        routed_media = MediaRouter.route_media(
+            message=customer_message,
+            conversation_history=conversation_history,
+            conversation_state=conversation_state,
+            workspace_id=ws_id
+        )
+        if routed_media.get("video_url") or routed_media.get("voice_url") or routed_media.get("requires_clarification"):
+            selected_tools.append("media_router")
+            verified_context["media"] = routed_media
+
+        # -------------------------------------------------------------
+        # STEP 5: CONTROLLED RESPONSE SYNTHESIS (DRAFT GENERATION)
+        # -------------------------------------------------------------
+        draft_reply_text = ""
+        matched_images: List[str] = []
+        voice_url = routed_media.get("voice_url", "")
+        video_url = routed_media.get("video_url", "")
+
+        # 1. Ambiguous media request clarification
+        if routed_media.get("requires_clarification"):
+            draft_reply_text = routed_media.get("clarification_prompt", "")
+
+        # 2. MOQ rejection (< 30 pcs)
+        elif CustomerIntent.MOQ_REJECTED in intents or (entities.get("quantity") and entities["quantity"] < 30):
+            draft_reply_text = f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
+
+        # 3. Price / Negotiation response synthesis from verified context
+        elif "pricing" in verified_context:
+            p_data = verified_context["pricing"]
+            if requires_owner_approval:
+                from app.ai_agent.owner_approval import OwnerApprovalEngine
+                draft_reply_text = OwnerApprovalEngine.get_pending_customer_response(honorific)
+            elif p_data.get("is_approved_exception"):
+                pkg_id_str = p_data.get("package_id", "7")
+                unit_p = int(p_data.get("upfront_unit_price", 0))
+                draft_reply_text = f"জি {honorific}, Owner স্যারের বিশেষ অনুমতিতে প্যাকেজ {pkg_id_str} এর জন্য প্রতি সেট {unit_p} টাকা রাখা যাবে।"
+            elif CustomerIntent.NEGOTIATION in intents:
+                draft_reply_text = p_data.get("reply_text") or (
+                    f"জি {honorific}, আমাদের প্যাকেজ {p_data.get('package_id')} এর জন্য বিশেষ অফারে "
+                    f"প্রতি সেট {int(p_data.get('offered_unit_price', 0))} টাকা করে রাখা যাবে।"
+                )
+            else:
+                pkg_title = p_data.get("title", f"প্যাকেজ {p_data.get('package_id')}")
+                unit_p = int(p_data.get("upfront_unit_price", 0))
+                draft_reply_text = f"জি {honorific}, {pkg_title}-এর রেগুলার রেট প্রতি সেট {unit_p} টাকা।"
+
+        # 3. Delivery response synthesis from verified context
+        elif "delivery" in verified_context:
+            if CustomerIntent.DELIVERY_TIME_INQUIRY in intents:
+                draft_reply_text = (
+                    f"জি {honorific}, আমাদের কাজ সম্পন্ন করতে ৫-৬ দিন সময় লাগে "
+                    f"এবং কুরিয়ারে পৌঁছাতে ২৪-৪৮ ঘণ্টা সময় লাগে।"
+                )
+            else:
+                d_data = verified_context["delivery"]
+                base_fee = int(d_data.get("base_delivery", 80.0))
+                draft_reply_text = (
+                    f"জি {honorific}, আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে {base_fee} টাকা "
+                    f"এবং ঢাকার বাইরে ১৩০ টাকা। কাজ শুরুর পূর্বে ডেলিভারি চার্জ অগ্রিম পেমেন্ট বাধ্যতামূলক।"
+                )
+
+        # 4. Media response synthesis from verified context
+        elif "media" in verified_context and (video_url or voice_url):
+            if video_url:
+                draft_reply_text = f"জি {honorific}, নিচে নির্দেশিকা ডেমো ভিডিওটি পাঠানো হলো।"
+            else:
+                draft_reply_text = f"জি {honorific}, নিচে আমাদের বিস্তারিত ভয়েস বার্তাটি শুনুন।"
+
+        # 5. Owner request response synthesis
+        elif CustomerIntent.OWNER_REQUEST in intents:
+            draft_reply_text = f"জি {honorific}, রাশেদ স্যার আমাদের ওনার স্যার। ওনার স্যারের সাথে জরুরি প্রয়োজনে অফিশিয়াল নম্বরে যোগাযোগ করতে পারেন।"
+
+        # 6. Greeting response synthesis
+        elif CustomerIntent.GREETING in intents:
+            draft_reply_text = f"ওয়ালাইকুমুস সালাম {honorific}, আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনি কত পিস আইডি কার্ড তৈরি করতে চাচ্ছেন জানাবেন প্লিজ?"
+
+        # 7. Price inquiry without quantity synthesis
+        elif CustomerIntent.PRICE_INQUIRY in intents and entities.get("quantity") is None:
+            draft_reply_text = f"জি {honorific}, আমাদের আইডি কার্ডের রেট অর্ডারের পরিমাণের ওপর নির্ভর করে (সর্বনিম্ন ৩০ পিস)। আপনার কত পিস কার্ড প্রয়োজন জানাবেন প্লিজ?"
+
+        # 8. Unknown / Safe Fallback
+        if not draft_reply_text:
+            draft_reply_text = f"জি {honorific}, আমাদের আইডি কার্ড, ফিতা ও কভারের যেকোনো তথ্য বা অর্ডার সম্পর্কে সহযোগিতা করতে পেরে আনন্দিত। আপনার কত পিস কার্ড প্রয়োজন জানাবেন প্লিজ?"
+
+        # -------------------------------------------------------------
+        # STEP 6: RESPONSE VALIDATOR & POLICY GUARD (Mandatory Inspection)
+        # -------------------------------------------------------------
+        draft_payload = {
+            "reply_text": draft_reply_text,
+            "matched_images": matched_images,
+            "media_sequence": [],
+            "voice_url": voice_url,
+            "video_url": video_url,
+            "order_created": None,
+            "response_source": "master_orchestrator"
+        }
+
+        try:
+            validated_payload = ResponseValidator.validate_and_sanitize(
+                draft_response=draft_payload,
+                customer_message=customer_message,
+                conversation_history=conversation_history,
+                sender_id=sender_id,
+                customer_name=customer_name,
+                workspace_id=ws_id
+            )
+        except Exception as ex:
+            print(f"[MasterOrchestrator Validator Fallback Error]: {ex}")
+            validated_payload = {
+                "reply_text": draft_reply_text or f"জি {honorific}, আরএস গ্রাফিক্সের পক্ষ থেকে আপনাকে স্বাগতম। আপনার অর্ডার বা তথ্যের বিষয়ে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।",
+                "matched_images": matched_images,
+                "media_sequence": [],
+                "voice_url": voice_url,
+                "video_url": video_url,
+                "order_created": None,
+                "response_source": "master_orchestrator_safe_fallback"
+            }
+
+        # Append structured orchestrator log
+        validated_payload["orchestrator_log"] = {
+            "conversation_id": sender_id,
+            "primary_intent": intent_data["primary_intent"],
+            "all_intents": [i.value if hasattr(i, "value") else str(i) for i in intents],
+            "confidence": intent_data["confidence"],
+            "selected_tools": selected_tools,
+            "entities": entities,
+            "requires_owner_approval": requires_owner_approval,
+            "owner_approval_reason": owner_approval_reason,
+            "duration_ms": round((time.time() - start_time) * 1000, 2)
+        }
+
+        return validated_payload

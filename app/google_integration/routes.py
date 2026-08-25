@@ -91,9 +91,9 @@ def get_credentials_info(request: Request, workspace_id: int = Query(1)):
     client_id, client_secret, default_redirect = get_client_config()
     conn_data = get_google_connection(workspace_id=workspace_id) or {}
     has_token = bool(
-        conn_data.get("access_token_encrypted") 
-        or conn_data.get("refresh_token_encrypted") 
-        or get_setting(f"google_refresh_token_ws_{workspace_id}") 
+        conn_data.get("access_token_encrypted")
+        or conn_data.get("refresh_token_encrypted")
+        or get_setting(f"google_refresh_token_ws_{workspace_id}")
         or get_setting("google_refresh_token")
     )
 
@@ -296,7 +296,7 @@ def get_standard_fields():
 def preview_fields(payload: PreviewFieldsRequest):
     """Extracts standard fields from natural language text or field keys for preview."""
     from app.google_integration.ai_tool import detect_fields_from_natural_language, get_standard_fields_catalog, STANDARD_ID_CARD_FIELDS
-    
+
     if payload.text and payload.text.strip():
         detected = detect_fields_from_natural_language(payload.text)
     elif payload.selected_field_keys:
@@ -308,7 +308,7 @@ def preview_fields(payload: PreviewFieldsRequest):
     else:
         default_keys = ["student_name", "father_name", "class_name", "roll", "student_photo"]
         detected = [f for f in get_standard_fields_catalog() if f["key"] in default_keys]
-        
+
     return {
         "success": True,
         "fields": detected,

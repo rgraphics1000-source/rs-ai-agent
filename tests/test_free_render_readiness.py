@@ -54,7 +54,7 @@ class FreeRenderReadinessTests(unittest.TestCase):
         # Ensure canonical media is seeded
         c.execute("""
             INSERT OR REPLACE INTO saved_media (id, workspace_id, media_key, media_type, intent, file_url, title, is_active)
-            VALUES 
+            VALUES
             (1, 1, 'package_special_offer', 'audio', 'SPECIAL_OFFER', '/static/uploads/voice/PTT-20260119-WA0105.mp3', 'Special Offer Voice', 1),
             (2, 1, 'google_form_submission_tutorial', 'video', 'GOOGLE_FORM_SUBMISSION_HELP', '/static/uploads/media/google_form_submission_guide.mp4', 'Submission Guide', 1),
             (3, 1, 'google_form_correction_tutorial', 'video', 'GOOGLE_FORM_CORRECTION_HELP', '/static/uploads/media/google_form_edit_correction_guide.mp4', 'Correction Guide', 1),
@@ -159,7 +159,7 @@ class FreeRenderReadinessTests(unittest.TestCase):
         )
         appr_id = appr.get("approval_id")
         OwnerApprovalEngine.resolve_approval(appr_id, decision=ApprovalStatus.APPROVED, actor="owner_rased")
-        
+
         # Cust B should NOT inherit Cust A's approved price
         out_b = MasterOrchestrator.execute_decision("১০০টা প্যাকেজ ৭ এর দাম কত?", sender_id=cust_b, workspace_id=1)
         reply_b = out_b.get("reply_text", "")
@@ -251,7 +251,7 @@ class FreeRenderReadinessTests(unittest.TestCase):
     def test_19_human_takeover_persistence(self):
         sender = "render_takeover_cust_05"
         set_admin_takeover(sender_id=sender, workspace_id=1, takeover_by="human_admin", takeover_reason="render_test")
-        
+
         # Inquire
         out = MasterOrchestrator.execute_decision("১০০টা কার্ড নিব", sender_id=sender, workspace_id=1)
         self.assertTrue(out.get("is_blocked"))
@@ -278,7 +278,7 @@ class FreeRenderReadinessTests(unittest.TestCase):
         export_dict = export_database_to_dict(db_path=self.test_db_path)
         self.assertIn("tables", export_dict)
         self.assertIn("workspaces", export_dict["tables"])
-        
+
         # Test importing to temporary DB
         new_temp_db = Path(self.temp_dir.name) / "imported_render_test.db"
         n_conn = sqlite3.connect(str(new_temp_db))
@@ -304,7 +304,7 @@ class FreeRenderReadinessTests(unittest.TestCase):
             conn.commit()
         except sqlite3.IntegrityError:
             conn.rollback()
-        
+
         cur.execute("SELECT 1 FROM workspaces WHERE id = 99999")
         row = cur.fetchone()
         conn.close()

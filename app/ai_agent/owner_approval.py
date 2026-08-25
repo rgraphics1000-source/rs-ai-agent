@@ -74,8 +74,8 @@ class OwnerApprovalEngine:
         try:
             # Check for existing PENDING request for same customer & package
             cursor.execute("""
-                SELECT * FROM owner_approvals 
-                WHERE customer_id = ? AND workspace_id = ? AND request_type = ? 
+                SELECT * FROM owner_approvals
+                WHERE customer_id = ? AND workspace_id = ? AND request_type = ?
                   AND (package_id = ? OR (package_id IS NULL AND ? IS NULL))
                   AND status = 'PENDING'
                 ORDER BY id DESC LIMIT 1
@@ -149,8 +149,8 @@ class OwnerApprovalEngine:
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                SELECT * FROM owner_approvals 
-                WHERE customer_id = ? AND workspace_id = ? 
+                SELECT * FROM owner_approvals
+                WHERE customer_id = ? AND workspace_id = ?
                   AND status IN ('APPROVED', 'MODIFIED')
                   AND (package_id = ? OR (package_id IS NULL AND ? IS NULL))
                 ORDER BY id DESC LIMIT 1
@@ -214,7 +214,7 @@ class OwnerApprovalEngine:
             now_iso = datetime.now(timezone.utc).isoformat()
 
             cursor.execute("""
-                UPDATE owner_approvals 
+                UPDATE owner_approvals
                 SET status = ?,
                     approved_value = ?,
                     resolved_by = ?,
@@ -259,13 +259,13 @@ class OwnerApprovalEngine:
         try:
             if status_filter:
                 cursor.execute("""
-                    SELECT * FROM owner_approvals 
+                    SELECT * FROM owner_approvals
                     WHERE workspace_id = ? AND status = ?
                     ORDER BY id DESC
                 """, (ws_id, str(status_filter).upper()))
             else:
                 cursor.execute("""
-                    SELECT * FROM owner_approvals 
+                    SELECT * FROM owner_approvals
                     WHERE workspace_id = ?
                     ORDER BY id DESC
                 """, (ws_id,))

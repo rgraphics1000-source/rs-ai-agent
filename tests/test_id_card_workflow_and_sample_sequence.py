@@ -14,7 +14,7 @@ from app.ai_agent.gemini_brain import (
 )
 
 class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
-    
+
     def test_01_extract_order_quantity_number(self):
         """Test Bengali and English quantity extraction."""
         self.assertEqual(extract_order_quantity_number("আমি ৫০ পিস বানাবো"), 50)
@@ -32,7 +32,7 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         fita_imgs = get_fita_sample_images()
         cover_imgs = get_cover_sample_images()
         pkg_imgs = get_package_sample_images()
-        
+
         self.assertGreaterEqual(len(card_imgs), 15, "Must have at least 15 ID card images.")
         self.assertGreaterEqual(len(fita_imgs), 8, "Must have at least 8 Fita images.")
         self.assertGreaterEqual(len(cover_imgs), 8, "Must have at least 8 Cover images.")
@@ -87,24 +87,24 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(res)
         self.assertIn("স্যাম্পলগুলো পাঠিয়ে দিচ্ছি", res["reply_text"])
         seq = res["media_sequence"]
-        
+
         # Verify sequence components
         types = [s["type"] for s in seq]
         self.assertIn("images", types)
         self.assertIn("text", types)
         self.assertIn("voice", types)
-        
+
         # Verify review link presence
         text_contents = [s.get("text", "") for s in seq if s["type"] == "text"]
         self.assertTrue(any(REVIEW_FACEBOOK_POST_URL in t for t in text_contents))
         self.assertTrue(any("এগুলো আমাদের কার্ড" in t for t in text_contents))
         self.assertTrue(any("এগুলো আমাদের প্রিন্ট করা ফিতা" in t for t in text_contents))
-        
+
         # Verify card, fita, cover, package images in sequence
         pkg_seq = [s for s in seq if s.get("category") == "package"]
         self.assertEqual(len(pkg_seq), 1)
         self.assertEqual(len(pkg_seq[0]["urls"]), 7)
-        
+
         card_seq = [s for s in seq if s.get("category") == "id_card"]
         self.assertEqual(len(card_seq), 1)
         self.assertGreaterEqual(len(card_seq[0]["urls"]), 15)
@@ -116,7 +116,7 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         cover_seq = [s for s in seq if s.get("category") == "cover"]
         self.assertEqual(len(cover_seq), 1)
         self.assertGreaterEqual(len(cover_seq[0]["urls"]), 8)
-        
+
         # Verify voice note in sequence
         voice_seq = [s for s in seq if s["type"] == "voice"]
         self.assertEqual(len(voice_seq), 1)
@@ -158,12 +158,12 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         """Verify Nadim persona, Owner Sir addressing protocol, and Step-by-step negotiation."""
         from app.ai_agent.gemini_brain import build_system_instruction
         prompt = build_system_instruction(workspace_id=1)
-        
+
         # Agent name Nadim and Owner Md Rashedul Islam
         self.assertIn("নাদিম", prompt)
         self.assertIn("মোহাম্মদ রাশেদুল ইসলাম", prompt)
         self.assertIn("ওনার স্যার", prompt)
-        
+
         # Step-by-step negotiation rules
         self.assertIn("ধাপে ধাপে", prompt)
         self.assertIn("শুরুতে সবসময় প্যাকেজের নির্ধারিত রেগুলার রেট", prompt)

@@ -25,7 +25,7 @@ def get_all_conversations(workspace_id: Optional[int] = None, page_id: str = Non
         if channel:
             query += " AND c.channel = ?"
             params.append(str(channel))
-            
+
         query += " ORDER BY c.updated_at DESC"
         cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
@@ -90,7 +90,7 @@ def record_conversation_message(
         cursor = conn.cursor()
         ws_id = int(workspace_id or 1)
         normalized_sender_type = str(sender_type or "user").strip().lower()
-        
+
         if normalized_sender_type in ["admin", "owner", "main_admin", "seller"]:
             normalized_sender_type = "admin"
             actual_sender_role = sender_role or "ADMIN"
@@ -107,11 +107,11 @@ def record_conversation_message(
             normalized_sender_type = "user"
             actual_sender_role = sender_role or "CUSTOMER"
             actual_direction = direction or "INBOUND"
-            
+
         is_admin_msg = (actual_sender_role == "ADMIN" or normalized_sender_type == "admin")
         is_customer_msg = (actual_sender_role == "CUSTOMER" and actual_direction == "INBOUND")
         actual_source = source or channel.upper()
-        
+
         # Check if conversation exists scoped to this workspace
         cursor.execute("""
             SELECT id, customer_name, page_id, workspace_id, conversation_version, customer_turn_version
@@ -120,7 +120,7 @@ def record_conversation_message(
             ORDER BY id DESC LIMIT 1
         """, (sender_id, ws_id))
         row = cursor.fetchone()
-        
+
         preview_text = content if content else ("[Image]" if media_url else "")
         current_turn_version = 1
 
@@ -129,28 +129,28 @@ def record_conversation_message(
             cust_name = row["customer_name"] if row["customer_name"] and row["customer_name"] not in ["Facebook User", "Customer", ""] else customer_name
             if is_admin_msg:
                 cursor.execute("""
-                    UPDATE conversations 
+                    UPDATE conversations
                     SET last_message = ?, customer_name = ?, page_id = COALESCE(NULLIF(?, ''), page_id),
                         admin_takeover = 1, human_takeover = 1, ai_enabled = 0,
                         takeover_at = CURRENT_TIMESTAMP, takeover_by = 'main_admin', takeover_reason = 'human_admin_message',
                         conversation_version = COALESCE(conversation_version, 1) + 1,
-                        updated_at = CURRENT_TIMESTAMP 
+                        updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
                 current_turn_version = row["customer_turn_version"] or 1
             elif is_customer_msg:
                 cursor.execute("""
-                    UPDATE conversations 
+                    UPDATE conversations
                     SET last_message = ?, customer_name = ?, page_id = COALESCE(NULLIF(?, ''), page_id),
                         customer_turn_version = COALESCE(customer_turn_version, 1) + 1,
-                        updated_at = CURRENT_TIMESTAMP 
+                        updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
                 current_turn_version = (row["customer_turn_version"] or 1) + 1
             else:
                 cursor.execute("""
-                    UPDATE conversations 
-                    SET last_message = ?, customer_name = ?, page_id = COALESCE(NULLIF(?, ''), page_id), updated_at = CURRENT_TIMESTAMP 
+                    UPDATE conversations
+                    SET last_message = ?, customer_name = ?, page_id = COALESCE(NULLIF(?, ''), page_id), updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
                 current_turn_version = row["customer_turn_version"] or 1
@@ -181,7 +181,7 @@ def record_conversation_message(
                 """, (ws_id, channel, sender_id, customer_name, preview_text, str(page_id) if page_id else ""))
                 current_turn_version = 1
             conv_id = cursor.lastrowid
-            
+
         # Insert message with full role, direction, source, and processing status
         msg_type = "image" if media_url else "text"
         proc_status = "RECEIVED" if is_customer_msg else "PROCESSED"
@@ -196,9 +196,9 @@ def record_conversation_message(
             actual_sender_role, actual_direction, actual_source, proc_status,
             str(external_message_id or ""), current_turn_version
         ))
-        
+
         conn.commit()
-        
+
         # If admin message, also add to muted numbers & cancel pending batches
         if is_admin_msg and sender_id:
             from app.database import add_muted_number
@@ -208,7 +208,7 @@ def record_conversation_message(
                 message_debouncer.cancel_batch(channel, ws_id, sender_id)
             except Exception:
                 pass
-                
+
         return conv_id
     except Exception as e:
         print(f"[Omnichat Record Error]: {e}")
@@ -223,13 +223,13 @@ def get_conversation_history(channel: str = "all", sender_id: str = "", limit: i
     if sender_id == "" and channel:
         sender_id = channel
         channel = "all"
-        
+
     conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         ws_id = int(workspace_id or 1)
-        
+
         cursor.execute("""
             SELECT m.sender_type, m.content, m.media_url, m.created_at,
                    m.direction, m.sender_role, m.source, m.external_message_id, m.turn_version
@@ -238,7 +238,7 @@ def get_conversation_history(channel: str = "all", sender_id: str = "", limit: i
             WHERE c.sender_id = ? AND c.workspace_id = ?
             ORDER BY m.id DESC LIMIT ?
         """, (sender_id, ws_id, limit))
-            
+
         rows = cursor.fetchall()
         history = [dict(r) for r in reversed(rows)]
         return history

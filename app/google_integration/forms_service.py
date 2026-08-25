@@ -41,12 +41,12 @@ def update_form_title_and_description(
     Updates the Form's public title and instructions description via batchUpdate.
     """
     forms_service = get_forms_client(workspace_id=workspace_id)
-    
+
     info_update = {
         "title": title
     }
     update_mask = "title"
-    
+
     if description is not None:
         info_update["description"] = description
         update_mask = "title,description"
@@ -87,7 +87,7 @@ def customize_cloned_institution_form(
     6. Verifies that the File Upload question exists after modification
     """
     forms_service = get_forms_client(workspace_id=workspace_id)
-    
+
     # 1. Update Title and Description
     default_desc = (
         "এই ফর্মটি সঠিকভাবে পূরণ করুন।\n"
@@ -95,14 +95,14 @@ def customize_cloned_institution_form(
         "ছবি পরিষ্কার এবং নির্ধারিত নিয়ম অনুযায়ী আপলোড করুন।"
     )
     final_desc = custom_description or default_desc
-    
+
     if institution_mobile:
         from app.database import normalize_bd_mobile
         canonical = normalize_bd_mobile(institution_mobile)
         form_title = f"{institution_name} - {canonical} - ID Card Form" if canonical else f"{institution_name} - ID Card Form"
     else:
         form_title = f"{institution_name} - ID Card Form"
-    
+
     update_form_title_and_description(
         workspace_id=workspace_id,
         form_id=form_id,
@@ -113,7 +113,7 @@ def customize_cloned_institution_form(
     # 2. Inspect existing form items
     form_meta = get_form_details(workspace_id, form_id)
     existing_items = form_meta.get("items", [])
-    
+
     # Check which items are File Upload questions - MUST BE PRESERVED
     file_upload_item_ids = set()
     for itm in existing_items:
@@ -124,10 +124,10 @@ def customize_cloned_institution_form(
 
     # 3. Resolve selected fields catalog
     from app.google_integration.ai_tool import STANDARD_ID_CARD_FIELDS, get_standard_fields_catalog
-    
+
     target_fields: List[dict] = []
     target_keys: set = set()
-    
+
     if selected_fields:
         standard_map = {f["key"]: f for f in STANDARD_ID_CARD_FIELDS}
         for sf in selected_fields:
@@ -194,11 +194,11 @@ def customize_cloned_institution_form(
             itm = existing_items[idx]
             itm_id = itm.get("itemId")
             itm_title = itm.get("title", "")
-            
+
             # NEVER delete File Upload questions (student photo)
             if itm_id in file_upload_item_ids:
                 continue
-                
+
             if not is_item_matched_to_targets(itm_title):
                 delete_requests.append({
                     "deleteItem": {
@@ -225,7 +225,7 @@ def customize_cloned_institution_form(
         current_items = existing_items
 
     existing_titles = {
-        itm.get("title", "").strip().lower(): itm 
+        itm.get("title", "").strip().lower(): itm
         for itm in current_items
     }
 
@@ -237,7 +237,7 @@ def customize_cloned_institution_form(
         f_type = f.get("type") or f.get("field_type", "short_answer")
         f_label = f.get("label") or f.get("field_label", "")
         f_req = bool(f.get("required", 1))
-        
+
         # If this is file_upload, it is already preserved from Master Form
         if f_type == "file_upload":
             continue
@@ -250,7 +250,7 @@ def customize_cloned_institution_form(
         question_payload = {
             "required": f_req
         }
-        
+
         if f_type == "paragraph":
             question_payload["textQuestion"] = {"paragraph": True}
         elif f_type == "date":
@@ -263,7 +263,7 @@ def customize_cloned_institution_form(
                 options = [{"value": str(o)} for o in opt_list]
             except Exception:
                 options = [{"value": "Option 1"}]
-                
+
             choice_type = "DROP_DOWN" if f_type == "dropdown" else ("CHECKBOX" if f_type == "checkbox" else "RADIO")
             question_payload["choiceQuestion"] = {
                 "type": choice_type,
@@ -362,7 +362,7 @@ def create_base_master_form_template(
 
     # 3. Update description and standard questions
     desc_text = description or "এই ফর্মের মাধ্যমে আপনার প্রতিষ্ঠানের ID Card তৈরির জন্য প্রয়োজনীয় তথ্য প্রদান করুন। অনুগ্রহ করে সকল তথ্য সঠিকভাবে পূরণ করুন এবং নির্ধারিত স্থানে পরিষ্কার ছবি আপলোড করুন।"
-    
+
     # Standard questions list
     standard_questions = [
         ("প্রতিষ্ঠানের নাম (Institution Name)", "textQuestion", False),
@@ -394,7 +394,7 @@ def create_base_master_form_template(
     for idx, q_info in enumerate(standard_questions):
         q_label = q_info[0]
         q_kind = q_info[1]
-        
+
         if q_kind == "choiceQuestion":
             q_payload = {
                 "choiceQuestion": {
@@ -692,7 +692,7 @@ def verify_generated_form(
         q_item = itm.get("questionItem", {}) if isinstance(itm, dict) else {}
         q = q_item.get("question", {}) if isinstance(q_item, dict) else {}
         fuq = q.get("fileUploadQuestion") if isinstance(q, dict) else None
-        
+
         if fuq is not None:
             has_file_upload = True
             file_upload_item = itm
@@ -829,14 +829,14 @@ def create_direct_institution_form(
     from app.google_integration.drive_service import get_drive_client
     from app.database import normalize_bd_mobile, get_google_form_fields
     from app.google_integration.ai_tool import STANDARD_ID_CARD_FIELDS, get_standard_fields_catalog
-    
+
     ws_id = int(workspace_id or 1)
     forms_service = get_forms_client(workspace_id=ws_id)
     drive_client = get_drive_client(workspace_id=ws_id)
 
     canonical = normalize_bd_mobile(institution_mobile) if institution_mobile else None
     form_title = f"{institution_name} - {canonical} - ID Card Form" if canonical else f"{institution_name} - ID Card Form"
-    
+
     # 1. Create Form via Forms API
     create_body = {
         "info": {

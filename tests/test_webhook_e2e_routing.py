@@ -44,7 +44,7 @@ async def test_facebook_messenger_routing():
 
     with patch("app.channels.facebook.send_fb_text_message") as mock_fb_send, \
          patch("app.channels.facebook.process_customer_message") as mock_ai:
-        
+
         mock_ai.return_value = {"reply_text": "Hello from AI on Page 1!", "matched_images": []}
         mock_fb_send.return_value = True
 
@@ -69,7 +69,7 @@ async def test_facebook_messenger_routing():
 
     with patch("app.channels.facebook.send_fb_text_message") as mock_fb_send, \
          patch("app.channels.facebook.process_customer_message") as mock_ai:
-        
+
         mock_ai.return_value = {"reply_text": "Hello from AI on Page 2!", "matched_images": []}
         mock_fb_send.return_value = True
 
@@ -125,7 +125,7 @@ async def test_whatsapp_multi_account_routing():
 
     with patch("app.channels.whatsapp.send_whatsapp_message") as mock_wa_send, \
          patch("app.channels.whatsapp.process_customer_message") as mock_ai:
-        
+
         mock_ai.return_value = {"reply_text": "Price is 500 BDT", "matched_images": []}
         mock_wa_send.return_value = True
 

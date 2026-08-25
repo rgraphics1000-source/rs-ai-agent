@@ -27,7 +27,6 @@ from app.database import (
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.ai_agent.gemini_brain import process_customer_message, detect_customer_gender_title
-from app.ai_agent.orchestrator import MasterOrchestrator
 
 GRAPH_API_URL = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}"
 PROCESSED_WA_MESSAGE_IDS = set()
@@ -187,13 +186,13 @@ def resolve_whatsapp_token_info(wa_account: Optional[dict] = None, workspace_id:
     5. settings.whatsapp_access_token / settings.whatsapp_token (Settings table)
     6. settings.meta_access_token (Settings table)
     7. settings.meta_system_user_access_token (Settings table)
-    
+
     A candidate is usable ONLY after Meta live validation confirms access to the Phone Number ID.
     If no candidate is valid, returns is_valid=False and token="" with full rejection diagnostics.
     Guarantees that Facebook Page tokens (fb_page_access_token / FB_PAGE_ACCESS_TOKEN) are NEVER used.
     """
     canonical_phone_id = (
-        phone_number_id 
+        phone_number_id
         or (wa_account.get("phone_number_id") if wa_account else None)
         or get_setting("whatsapp_phone_number_id")
         or "4184514263660680"
@@ -324,18 +323,18 @@ def resolve_whatsapp_token(wa_account: Optional[dict] = None, workspace_id: int 
         return acc_tok
 
     setting_tok = str(
-        get_setting("whatsapp_access_token") 
+        get_setting("whatsapp_access_token")
         or get_setting("meta_system_user_access_token")
     ).strip()
     if is_valid_meta_token(setting_tok):
         return setting_tok
 
     env_tok = str(
-        os.getenv("WHATSAPP_ACCESS_TOKEN") 
-        or os.getenv("META_SYSTEM_USER_ACCESS_TOKEN") 
-        or os.getenv("WHATSAPP_TOKEN") 
+        os.getenv("WHATSAPP_ACCESS_TOKEN")
+        or os.getenv("META_SYSTEM_USER_ACCESS_TOKEN")
+        or os.getenv("WHATSAPP_TOKEN")
         or os.getenv("META_ACCESS_TOKEN")
-        or settings.WHATSAPP_ACCESS_TOKEN 
+        or settings.WHATSAPP_ACCESS_TOKEN
         or settings.META_SYSTEM_USER_ACCESS_TOKEN
         or ""
     ).strip()
@@ -848,7 +847,7 @@ async def process_whatsapp_batch(batch: PendingBatch):
 
     text_parts = [m.get("text", "") for m in batch.messages if m.get("text")]
     combined_text = "\n".join([t for t in text_parts if t.strip()]).strip()
-    
+
     images = [m for m in batch.messages if m.get("image_bytes")]
     audios = [m for m in batch.messages if m.get("audio_bytes")]
 
@@ -880,41 +879,22 @@ async def process_whatsapp_batch(batch: PendingBatch):
     products = get_all_products(workspace_id=workspace_id)
     print(f"[WhatsApp AI] workspace_id={workspace_id} training_rules_loaded={len(training_rules)} faqs_loaded={len(faqs)} products_loaded={len(products)}")
 
-    # Process with MasterOrchestrator (Central Intelligent Decision Pipeline)
-    ai_result = MasterOrchestrator.execute_decision(
-        customer_message=combined_text,
-        sender_id=sender_phone,
-        customer_name=customer_name,
-        workspace_id=workspace_id,
-        conversation_history=history,
-        channel="whatsapp",
+    # Process with Gemini AI Brain with Workspace isolation & full multi-image list
+    ai_result = await process_customer_message(
+        message_text=combined_text,
         image_bytes=image_bytes,
         image_mime=image_mime,
         image_list=image_list,
         audio_bytes=audio_bytes,
         audio_mime=audio_mime,
+        conversation_history=history,
+        channel="whatsapp",
+        sender_id=sender_phone,
+        customer_name=customer_name,
         generate_voice_reply=bool(audio_bytes),
+        workspace_id=workspace_id,
         page_id=page_id
     )
-
-    # Sentinel: If orchestrator delegates to Gemini brain (non-primary workspace or multimodal)
-    _rs = ai_result.get("response_source", "")
-    if _rs in ("gemini_fallthrough", "multimodal_delegate"):
-        ai_result = await process_customer_message(
-            message_text=combined_text,
-            image_bytes=image_bytes,
-            image_mime=image_mime,
-            image_list=image_list,
-            audio_bytes=audio_bytes,
-            audio_mime=audio_mime,
-            conversation_history=history,
-            channel="whatsapp",
-            sender_id=sender_phone,
-            customer_name=customer_name,
-            generate_voice_reply=bool(audio_bytes),
-            workspace_id=workspace_id,
-            page_id=page_id
-        )
 
     # Pre-Send Safety Guard: Double-check takeover state & version before delivering to customer
     state = get_conversation_state(sender_id=sender_phone, workspace_id=workspace_id)
@@ -923,7 +903,7 @@ async def process_whatsapp_batch(batch: PendingBatch):
         return
 
     reply_text = ai_result.get("reply_text", "")
-    
+
     # Structured Production Transition Logging (Google Form & AI routing tracking)
     gw = ai_result.get("google_form_workflow") or {}
     gw_status = gw.get("status", "none")
@@ -1085,7 +1065,7 @@ async def handle_whatsapp_webhook_event(data: dict):
         for entry in entries:
             for change in entry.get("changes", []):
                 value = change.get("value", {})
-                
+
                 # Identify exact recipient WhatsApp Phone Number ID from metadata
                 metadata = value.get("metadata", {})
                 meta_phone_id = str(metadata.get("phone_number_id", "")).strip()
@@ -1120,7 +1100,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                     st_status = str(st.get("status", "")).strip()
                     st_rec_raw = str(st.get("recipient_id", "")).strip()
                     st_rec_phone = normalize_whatsapp_phone_number(st_rec_raw)
-                    
+
                     if st_rec_phone and not is_own_whatsapp_number(st_rec_phone):
                         # If this status callback is for a message NOT sent by our AI engine:
                         # It was sent by the Shop Owner / Main Admin (মুহা. রাশেদুল ইসলাম / রাশেদ) from the WhatsApp Business mobile app or WhatsApp Web!
@@ -1143,7 +1123,7 @@ async def handle_whatsapp_webhook_event(data: dict):
 
                 messages = value.get("messages", [])
                 contacts = value.get("contacts", [])
-                
+
                 raw_customer_name = contacts[0].get("profile", {}).get("name", "") if contacts else ""
 
                 for msg in messages:

@@ -48,7 +48,7 @@ class TestDebouncerDeduplication(unittest.IsolatedAsyncioTestCase):
         record_conversation_message('whatsapp', '8801899990002', 'Customer', 'customer', 'এই কলম গুলো আছে??', workspace_id=1)
         await debouncer.add_message('whatsapp', 1, '8801899990002', 'Customer', msg_id='m11', text='এই কলম গুলো আছে??', callback=callback)
         await asyncio.sleep(0.35)
-        
+
         # Second identical turn must NOT trigger a second generation / reply
         self.assertEqual(processed_count, 1)
 

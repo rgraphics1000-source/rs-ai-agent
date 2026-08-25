@@ -206,7 +206,7 @@ class TestFacebookCommentAutoReply(unittest.TestCase):
         for gratitude_text in ["মাশাল্লাহ অনেক সুন্দর", "শুক্রিয়া ভাইয়া", "ধন্যবাদ", "Very nice work ❤️"]:
             mock_public_reply.reset_mock()
             mock_private_reply.reset_mock()
-            
+
             c_id = f"105116472071659_gratitude_{uuid.uuid4().hex[:6]}"
             payload = {
                 "object": "page",

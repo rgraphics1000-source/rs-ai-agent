@@ -10,7 +10,7 @@ def _get_fernet_instance() -> Fernet:
     raw_key = os.getenv("GOOGLE_ENCRYPTION_KEY", "") or settings.GOOGLE_ENCRYPTION_KEY
     if not raw_key:
         raw_key = os.getenv("META_APP_ID", "") + "-rs-ai-secret-encryption-salt-2026"
-    
+
     # SHA-256 hash yields 32 bytes, which Fernet requires
     key_bytes = hashlib.sha256(raw_key.encode("utf-8")).digest()
     b64_key = base64.urlsafe_b64encode(key_bytes)

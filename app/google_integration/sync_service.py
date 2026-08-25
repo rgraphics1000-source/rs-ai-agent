@@ -146,12 +146,12 @@ def sync_form_responses(workspace_id: int, form_id: str) -> dict:
                     fileId=file_id,
                     fields="id, name, mimeType, webViewLink, thumbnailLink"
                 ).execute()
-                
+
                 f_name = f_meta.get("name")
                 f_url = f_meta.get("webViewLink")
                 f_thumb = f_meta.get("thumbnailLink")
                 f_mime = f_meta.get("mimeType")
-                
+
                 if not first_photo_url and f_url:
                     first_photo_url = f_url
 

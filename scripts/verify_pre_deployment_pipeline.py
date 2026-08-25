@@ -128,7 +128,7 @@ class PreDeploymentVerificationSuite:
 
         with patch("app.channels.whatsapp.process_customer_message", side_effect=mock_gemini), \
              patch("app.channels.whatsapp.send_whatsapp_message", side_effect=mock_send):
-            
+
             # Webhook arrival
             await handle_whatsapp_webhook_event(payload)
             # Flush debouncer
@@ -326,10 +326,10 @@ class PreDeploymentVerificationSuite:
             return True
 
         burst_ids = [f"pre_deploy_burst_{i}_{uuid.uuid4().hex[:6]}" for i in range(1, 4)]
-        
+
         with patch("app.channels.whatsapp.process_customer_message", side_effect=mock_gemini), \
              patch("app.channels.whatsapp.send_whatsapp_message", side_effect=mock_send):
-            
+
             # Send 3 rapid messages
             for i, bid in enumerate(burst_ids, start=1):
                 p = {
@@ -475,7 +475,7 @@ class PreDeploymentVerificationSuite:
 
         with patch("app.channels.whatsapp.process_customer_message", side_effect=slow_gemini), \
              patch("app.channels.whatsapp.send_whatsapp_message", side_effect=mock_send):
-            
+
             # Customer message enqueued
             await handle_whatsapp_webhook_event(payload)
 
@@ -532,7 +532,7 @@ class PreDeploymentVerificationSuite:
 
         with patch("app.channels.facebook.process_customer_message", side_effect=mock_fb_gemini), \
              patch("app.channels.facebook.send_fb_text_message", side_effect=mock_fb_send):
-            
+
             # 1. Single Customer Turn
             await handle_facebook_webhook_event(fb_customer_payload)
             await message_debouncer.flush("facebook", 1, self.test_fb_customer)
@@ -615,7 +615,7 @@ class PreDeploymentVerificationSuite:
         )
 
         history = get_conversation_history("whatsapp", self.test_wa_customer, workspace_id=self.workspace_id, limit=10)
-        
+
         inbound_cust = [m for m in history if m.get("direction") == "INBOUND" and m.get("sender_role") == "CUSTOMER"]
         outbound_ai = [m for m in history if m.get("direction") == "OUTBOUND" and m.get("sender_role") == "AI"]
         admin_msgs = [m for m in history if m.get("sender_role") == "ADMIN"]

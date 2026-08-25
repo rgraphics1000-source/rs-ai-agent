@@ -310,7 +310,7 @@ class TestMultiTurnQuantityState(unittest.TestCase):
         self.assertIsNotNone(res)
         entities = res.get("orchestrator_log", {}).get("entities", {})
         self.assertEqual(entities.get("quantity"), 100)
-        self.assertTrue("70 টাকা" in res.get("reply_text", "") or "স্যাম্পল" in res.get("reply_text", "") or "প্যাকেজ" in res.get("reply_text", ""))
+        self.assertIn("70 টাকা", res.get("reply_text", ""))
 
     def test_human_takeover_still_silent(self):
         sender = f"{self.sender_id}_takeover_silent"

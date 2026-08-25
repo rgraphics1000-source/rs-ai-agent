@@ -38,7 +38,7 @@ def create_institution_form(
     ws_id = int(workspace_id or 1)
     clean_inst_name = str(institution_name or "").strip()
     raw_mobile = str(institution_mobile or institution_phone or "").strip()
-    
+
     if not clean_inst_name:
         raise ValueError("প্রতিষ্ঠানের নাম প্রদান করা বাধ্যতামূলক।")
     if not raw_mobile:
@@ -164,12 +164,12 @@ def create_institution_form(
     sheet_data = {}
     try:
         from app.google_integration.ai_tool import STANDARD_ID_CARD_FIELDS
-        
+
         sheet_headers = ["Submission ID", "Timestamp"]
         for sf in final_selected_fields:
             sf_key = sf.get("key") if isinstance(sf, dict) else str(sf)
             sf_label = sf.get("label") if isinstance(sf, dict) else ""
-            
+
             if not sf_label:
                 for std_f in STANDARD_ID_CARD_FIELDS:
                     if std_f["key"] == sf_key:
@@ -177,12 +177,12 @@ def create_institution_form(
                         break
             if not sf_label:
                 sf_label = sf_key
-                
+
             if sf_key == "student_photo" or "photo" in sf_key or "ছবি" in sf_label:
                 header_name = "ছবি (Google Drive Upload)"
             else:
                 header_name = sf_label
-                
+
             if header_name not in sheet_headers:
                 sheet_headers.append(header_name)
 

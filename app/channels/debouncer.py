@@ -231,7 +231,7 @@ class MessageDebouncer:
             turn_info = get_conversation_turn_versions(batch.channel, batch.sender_id, batch.workspace_id)
             customer_turn_ver = turn_info.get("customer_turn_version", 1)
             last_resp_ver = turn_info.get("last_responded_turn_version", 0)
-            
+
             if customer_turn_ver <= last_resp_ver:
                 batch.status = "PROCESSED"
                 print(f"[GENERATION_BLOCKED] conversation_id={batch.conversation_id} batch_id={batch.batch_id} reason=turn_already_responded customer_turn_version={customer_turn_ver} last_responded_version={last_resp_ver}")

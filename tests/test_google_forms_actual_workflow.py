@@ -33,7 +33,7 @@ class TestGoogleFormsActualWorkflow(unittest.TestCase):
             "guardian_phone", "address", "student_photo", "student_signature"
         ]
         self.assertEqual(keys, expected_keys)
-        
+
         # Verify student photo is file_upload
         photo_field = next(f for f in catalog if f["key"] == "student_photo")
         self.assertEqual(photo_field["type"], "file_upload")
@@ -42,7 +42,7 @@ class TestGoogleFormsActualWorkflow(unittest.TestCase):
         prompt = "আমাদের প্রতিষ্ঠানের জন্য নাম, বাবার নাম, শ্রেণি, রোল এবং ছবি লাগবে"
         detected = detect_fields_from_natural_language(prompt)
         detected_keys = [f["key"] for f in detected]
-        
+
         self.assertIn("student_name", detected_keys)
         self.assertIn("father_name", detected_keys)
         self.assertIn("class_name", detected_keys)
@@ -56,7 +56,7 @@ class TestGoogleFormsActualWorkflow(unittest.TestCase):
         prompt = "আমাদের শুধু রক্তের গ্রুপ আর অভিভাবকের ফোন নম্বর দরকার সাথে ছবি"
         detected = detect_fields_from_natural_language(prompt)
         detected_keys = [f["key"] for f in detected]
-        
+
         self.assertIn("blood_group", detected_keys)
         self.assertIn("guardian_phone", detected_keys)
         self.assertIn("student_photo", detected_keys)
@@ -102,7 +102,7 @@ class TestGoogleFormsActualWorkflow(unittest.TestCase):
         mock_forms = MagicMock()
         mock_get_client.return_value = mock_forms
         mock_forms.forms().batchUpdate().execute.return_value = {"status": "ok"}
-        
+
         # Mock existing items in Master Form: Name, Father Name, Mother Name, Blood Group, File Upload (Photo)
         mock_get_details.return_value = {
             "formId": "cloned-form-123",
@@ -127,7 +127,7 @@ class TestGoogleFormsActualWorkflow(unittest.TestCase):
         self.assertTrue(res.get("success"))
         self.assertIn("01712345678", res.get("title"))
         self.assertIn("আল-আমিন মাদরাসা", res.get("title"))
-        
+
         # Verify batchUpdate was called
         self.assertTrue(mock_forms.forms().batchUpdate.called)
 

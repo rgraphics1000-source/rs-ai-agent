@@ -238,7 +238,7 @@ class TestProductionGoogleFormHardGuarantees(unittest.TestCase):
         """Integration test: resolve_google_form_workflow -> create_institution_form -> real result -> WhatsApp."""
         remove_muted_number("8801929770001")
         remove_muted_number("01929770001")
-        
+
         mock_create.return_value = {
             "success": True,
             "form_id": "form_wa_e2e",
@@ -282,7 +282,7 @@ class TestProductionGoogleFormHardGuarantees(unittest.TestCase):
             await message_debouncer.flush("whatsapp", 1, "8801929770001")
 
         asyncio.run(_run())
-        
+
         mock_create.assert_called_once()
         mock_send.assert_called_once()
         args, kwargs = mock_send.call_args

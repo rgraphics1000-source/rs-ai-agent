@@ -176,7 +176,7 @@ class TestConversationStateMachine(unittest.TestCase):
 
         # Trigger admin takeover
         set_admin_takeover(sender_id=self.cust_id, workspace_id=self.ws_id, takeover_by="human_admin")
-        
+
         state = get_conversation_state(self.cust_id, self.ws_id)
         self.assertEqual(state["human_takeover"], 1)
         self.assertEqual(state["current_sales_stage"], SalesStage.OWNER_TAKEOVER)

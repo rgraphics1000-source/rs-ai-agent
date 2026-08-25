@@ -332,7 +332,7 @@ class TestNoAIReplyLoop(unittest.TestCase):
         # Initial turn versions
         init_turns = get_conversation_turn_versions(channel, self.test_phone, self.workspace_id)
         c_ver_init = init_turns["customer_turn_version"]
-        
+
         increment_customer_turn_version(channel, self.test_phone, self.workspace_id)
         turns = get_conversation_turn_versions(channel, self.test_phone, self.workspace_id)
         self.assertEqual(turns["customer_turn_version"], c_ver_init + 1)

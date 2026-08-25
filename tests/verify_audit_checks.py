@@ -22,16 +22,16 @@ def run_import_checks():
 def run_route_checks():
     print("\n--- [AUDIT CHECK 5 & 6] FastAPI Routes Verification ---")
     from app.main import app
-    
+
     routes = []
     for route in app.routes:
         methods = getattr(route, "methods", None)
         path = getattr(route, "path", None)
         if path and methods:
             routes.append((path, sorted(list(methods))))
-    
+
     print(f"Total registered FastAPI routes: {len(routes)}")
-    
+
     required_routes = [
         ("GET", "/webhook/facebook"),
         ("POST", "/webhook/facebook"),
@@ -44,7 +44,7 @@ def run_route_checks():
         ("GET", "/api/omnichat/conversations"),
         ("GET", "/api/omnichat/messages/{conversation_id}")
     ]
-    
+
     for method, path in required_routes:
         found = False
         for r_path, r_methods in routes:

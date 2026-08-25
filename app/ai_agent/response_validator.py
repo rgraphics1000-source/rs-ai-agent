@@ -153,16 +153,13 @@ class ResponseValidator:
         # 3. ADVANCE & PROHIBITED 100% COD GUARD
         # -------------------------------------------------------------
         unauthorized_cod_phrases = [
-            "কোনো অগ্রিম লাগবে না", "অগ্রিম ছাড়াই", "সম্পূর্ণ ক্যাশ অন ডেলিভারিতে পাবেন",
-            "ফুল ক্যাশ অন ডেলিভারিতে দেওয়া হবে", "টাকা দেওয়া লাগবে না ডেলিভারির আগে",
-            "সব টাকা ডেলিভারির সময়", "১০০% ক্যাশ অন ডেলিভারিতে", "এডভান্স ছাড়াই"
+            "কোনো অগ্রিম লাগবে না", "অগ্রিম ছাড়াই", "সম্পূর্ণ ক্যাশ অন ডেলিভারি",
+            "ফুল ক্যাশ অন ডেলিভারি", "টাকা দেওয়া লাগবে না ডেলিভারির আগে",
+            "সব টাকা ডেলিভারির সময়", "১০০% ক্যাশ অন ডেলিভারি", "এডভান্স ছাড়া"
         ]
-        if any(p in reply_text for p in unauthorized_cod_phrases) or (
-            any(p in reply_text for p in ["সম্পূর্ণ ক্যাশ অন ডেলিভারি", "ফুল ক্যাশ অন ডেলিভারি", "১০০% ক্যাশ অন ডেলিভারি"])
-            and "প্রযোজ্য নয়" not in reply_text and "সম্ভব নয়" not in reply_text
-        ):
+        if any(p in reply_text for p in unauthorized_cod_phrases):
             reply_text = re.sub(
-                r'(কোনো\s+অগ্রিম\s+লাগবে\s+না|অগ্রিম\s+ছাড়া[^\s,।]*|সম্পূর্ণ\s+ক্যাশ\s+অন\s+ডেলিভারি[^\s,।]*|ফুল\s+ক্যাশ\s+অন\s+ডেলিভারি[^\s,।]*|এডভান্স\s+ছাড়া[^\s,।]*|১০০%\s+ক্যাশ\s+অন\s+ডেলিভারি[^\s,।]*)',
+                r'(কোনো\s+অগ্রিম\s+লাগবে\s+না|অগ্রিম\s+ছাড়া[^\s,।]*|সম্পূর্ণ\s+ক্যাশ\s+অন\s+ডেলিভারি|ফুল\s+ক্যাশ\s+অন\s+ডেলিভারি|এডভান্স\s+ছাড়া[^\s,।]*|১০০%\s+ক্যাশ\s+অন\s+ডেলিভারি)',
                 f'কাজের মান ও কাস্টমাইজেশনের কারণে কাজ শুরুর পূর্বে ডেলিভারি চার্জ বা আংশিক অগ্রিম পেমেন্ট বাধ্যতামূলক',
                 reply_text,
                 flags=re.IGNORECASE
@@ -245,86 +242,25 @@ class ResponseValidator:
                     validation_flags.append("REGULAR_TIER_DISCOUNT_STRIPPED")
 
         # -------------------------------------------------------------
-        # 8. HARD REPETITION & DUPLICATE MEDIA GUARDS (Phase 9)
+        # 8. PERSONA & CLEANLINESS SANITIZATION
         # -------------------------------------------------------------
-        samples_already_sent = False
-        if sender_id:
-            try:
-                from app.ai_agent.conversation_state import is_media_already_sent
-                samples_already_sent = is_media_already_sent(str(sender_id), "samples", ws_id)
-            except Exception:
-                pass
+        # Replace informal ভাইয়া / আপু with formal honorific
+        clean_text = reply_text
+        for word in ["ভাইয়া", "ভাই", "আপু", "আপা", "আপু/ভাইয়া", "ভাইয়া/আপু", "স্যার/ম্যাম"]:
+            clean_text = clean_text.replace(word, honorific)
 
-        # Intercept asking quantity if quantity is already known
-        if effective_qty is not None and effective_qty >= 30:
-            quantity_questions = [
-                "কত পিস বানাবেন", "কত পিস আইডি কার্ড", "কত পিস প্রয়োজন", "কত পিস কার্ড করতে চান",
-                "কত পিস লাগবে", "কত পিস অর্ডার", "কত পিস করতে চান"
-            ]
-            if any(q in reply_text for q in quantity_questions) and not any(k in reply_text for k in ["প্যাকেজ ১", "প্যাকেজ ২", "রেট নিচে দেওয়া হলো"]):
-                if not samples_already_sent:
-                    reply_text = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
-                else:
-                    reply_text = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ {honorific}।"
-                validation_flags.append("REPEATED_QUANTITY_QUESTION_INTERCEPTED")
-
-        # Intercept re-asking sample permission if samples were already sent
-        if samples_already_sent:
-            sample_perm_questions = [
-                "আমাদের স্যাম্পলগুলো পাঠাবো কি", "আমাদের স্যাম্পল পাঠাবো কি", "স্যাম্পল পাঠাবো কি",
-                "স্যাম্পলগুলো পাঠাবো কি", "স্যাম্পল ছবি পাঠাবো কি", "ছবি পাঠাবো কি", "স্যাম্পল পাঠাতে পারি কি"
-            ]
-            if any(sq in reply_text for sq in sample_perm_questions):
-                reply_text = f"জি {honorific}, পূর্বের পাঠানো স্যাম্পল ও প্যাকেজগুলো দেখে আপনার কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ {honorific}।"
-                matched_images = []
-                media_sequence = []
-                validation_flags.append("REPEATED_SAMPLE_PERMISSION_INTERCEPTED")
-
-        # -------------------------------------------------------------
-        # 9. PERSONA & CLEANLINESS SANITIZATION & PROMPT LEAK GUARD
-        # -------------------------------------------------------------
-        # Intercept internal developer instructions, system prompts, or leaked rule texts
-        instruction_leak_patterns = [
-            r'কাস্টমার\s*প্রথমে\s*মেসেজ\s*দিলে',
-            r'সরাসরি\s*প্রথম\s*মেসেজেই\s*দাম\s*বলা\s*যাবে\s*না',
-            r'প্রথম\s*মেসেজেই\s*দাম',
-            r'প্রথমে\s*নম্রভাবে\s*শুভেচ্ছা\s*জানিয়ে',
-            r'Sales\s*Protocol',
-            r'Pricing\s*&\s*MOQ',
-            r'Minimum\s*Order\s*Quantity\s*হলো',
-            r'system[_\s]*prompt',
-            r'system[_\s]*instruction',
-            r'developer\s*note',
-            r'internal\s*rule',
-            r'rule_type',
-            r'def\s+\w+\(',
-            r'import\s+\w+',
-            r'return\s+["\']',
-            r'```(?:json|python|bash)?',
-            r'\{[\s\n]*["\'](?:intent|reply|reply_text|response_source)["\']\s*:'
-        ]
-        is_leaked = any(re.search(p, reply_text, flags=re.IGNORECASE) for p in instruction_leak_patterns)
-        if is_leaked:
-            clean_text = f"জি {honorific}, আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-            validation_flags.append("INTERNAL_INSTRUCTION_LEAK_REJECTED")
-        else:
-            # Replace informal ভাইয়া / আপু with formal honorific
-            clean_text = reply_text
-            for word in ["ভাইয়া", "ভাই", "আপু", "আপা", "আপু/ভাইয়া", "ভাইয়া/আপু", "স্যার/ম্যাম"]:
-                clean_text = clean_text.replace(word, honorific)
-
-            # Remove HTML tags and script tags
-            clean_text = re.sub(r'<[^>]+>', '', clean_text)
-            # Remove markdown image syntax and raw file paths from chat text
-            clean_text = re.sub(r'!\[[^\]]*\]\([^)]+\)', '', clean_text)
-            clean_text = re.sub(r'\[Image[s]?:\s*[^\]]+\]', '', clean_text, flags=re.IGNORECASE)
-            clean_text = re.sub(r'/static/uploads/\S+', '', clean_text)
-            clean_text = re.sub(r'[ \t]+', ' ', clean_text)
-            clean_text = re.sub(r'\n{3,}', '\n\n', clean_text).strip()
+        # Remove HTML tags and script tags
+        clean_text = re.sub(r'<[^>]+>', '', clean_text)
+        # Remove markdown image syntax and raw file paths from chat text
+        clean_text = re.sub(r'!\[[^\]]*\]\([^)]+\)', '', clean_text)
+        clean_text = re.sub(r'\[Image[s]?:\s*[^\]]+\]', '', clean_text, flags=re.IGNORECASE)
+        clean_text = re.sub(r'/static/uploads/\S+', '', clean_text)
+        clean_text = re.sub(r'[ \t]+', ' ', clean_text)
+        clean_text = re.sub(r'\n{3,}', '\n\n', clean_text).strip()
 
         # Fallback for empty text
         if not clean_text:
-            clean_text = f"জি {honorific}, আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনার অর্ডার বা তথ্যের বিষয়ে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+            clean_text = f"জি {honorific}, আরএস গ্রাফিক্সের পক্ষ থেকে আপনাকে স্বাগতম। আপনার অর্ডার বা তথ্যের বিষয়ে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
 
         # Deduplicate matched images and cap at 3 (unless full package sequence)
         unique_images = []

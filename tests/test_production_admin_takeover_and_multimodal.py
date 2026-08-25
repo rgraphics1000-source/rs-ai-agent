@@ -69,7 +69,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
         gemini_calls = 0
         ai_replies = 0
 
-        def mock_brain(*args, **kwargs):
+        async def mock_brain(*args, **kwargs):
             nonlocal gemini_calls
             gemini_calls += 1
             return {"reply_text": "জি স্যার, আইডি কার্ডের মূল্য ৩০ টাকা।"}
@@ -98,7 +98,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
             }]
         }
 
-        with patch("app.channels.whatsapp.MasterOrchestrator.execute_decision", side_effect=mock_brain), \
+        with patch("app.channels.whatsapp.process_customer_message", side_effect=mock_brain), \
              patch("app.channels.whatsapp.send_whatsapp_message", side_effect=mock_send):
             await handle_whatsapp_webhook_event(msg_payload)
             await message_debouncer.flush("whatsapp", 1, self.cust_a)
@@ -119,7 +119,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
         gemini_calls = 0
         ai_replies = 0
 
-        def mock_brain(*args, **kwargs):
+        async def mock_brain(*args, **kwargs):
             nonlocal gemini_calls
             gemini_calls += 1
             return {"reply_text": "Should never be called after takeover"}
@@ -149,7 +149,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
             }]
         }
 
-        with patch("app.channels.whatsapp.MasterOrchestrator.execute_decision", side_effect=mock_brain), \
+        with patch("app.channels.whatsapp.process_customer_message", side_effect=mock_brain), \
              patch("app.channels.whatsapp.send_whatsapp_message", side_effect=mock_send):
             # Process Admin message
             await handle_whatsapp_webhook_event(admin_payload)
@@ -237,7 +237,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
             }]
         }
 
-        with patch("app.channels.whatsapp.MasterOrchestrator.execute_decision", side_effect=mock_brain):
+        with patch("app.channels.whatsapp.process_customer_message", side_effect=mock_brain):
             await handle_whatsapp_webhook_event(photo_payload)
             await handle_whatsapp_webhook_event(audio_payload)
             await message_debouncer.flush("whatsapp", 1, self.cust_a)
@@ -250,7 +250,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
     async def test_04_admin_reply_during_generation_discards_result(self):
         ai_replies_sent = 0
 
-        def slow_brain(*args, **kwargs):
+        async def slow_brain(*args, **kwargs):
             # Admin takeover happens mid-flight
             set_admin_takeover(sender_id=self.cust_a, workspace_id=1, takeover_by="admin_in_flight", takeover_reason="mid_generation")
             return {"reply_text": "Late generation response"}
@@ -278,7 +278,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
             }]
         }
 
-        with patch("app.channels.whatsapp.MasterOrchestrator.execute_decision", side_effect=slow_brain), \
+        with patch("app.channels.whatsapp.process_customer_message", side_effect=slow_brain), \
              patch("app.channels.whatsapp.send_whatsapp_message", side_effect=mock_send):
             await handle_whatsapp_webhook_event(cust_msg)
             await message_debouncer.flush("whatsapp", 1, self.cust_a)
@@ -291,7 +291,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
     async def test_05_and_06_status_and_echo_immunity(self):
         gemini_called = False
 
-        def mock_brain(*args, **kwargs):
+        async def mock_brain(*args, **kwargs):
             nonlocal gemini_called
             gemini_called = True
             return {}
@@ -329,7 +329,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
             }]
         }
 
-        with patch("app.channels.whatsapp.MasterOrchestrator.execute_decision", side_effect=mock_brain):
+        with patch("app.channels.whatsapp.process_customer_message", side_effect=mock_brain):
             await handle_whatsapp_webhook_event(status_payload)
             await handle_whatsapp_webhook_event(echo_payload)
             await message_debouncer.flush("whatsapp", 1, self.cust_a)
@@ -377,7 +377,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
     async def test_08_takeover_isolation_between_customers(self):
         cust_b_replies = 0
 
-        def mock_brain(*args, **kwargs):
+        async def mock_brain(*args, **kwargs):
             return {"reply_text": "Customer B reply"}
 
         def mock_send(to, *args, **kwargs):
@@ -408,7 +408,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
             }]
         }
 
-        with patch("app.channels.whatsapp.MasterOrchestrator.execute_decision", side_effect=mock_brain), \
+        with patch("app.channels.whatsapp.process_customer_message", side_effect=mock_brain), \
              patch("app.channels.whatsapp.send_whatsapp_message", side_effect=mock_send):
             await handle_whatsapp_webhook_event(cust_b_payload)
             await message_debouncer.flush("whatsapp", 1, self.cust_b)
@@ -423,7 +423,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
     async def test_09_enable_ai_resumes_only_new_turns(self):
         gemini_calls = 0
 
-        def mock_brain(*args, **kwargs):
+        async def mock_brain(*args, **kwargs):
             nonlocal gemini_calls
             gemini_calls += 1
             return {"reply_text": "New turn answered"}
@@ -438,7 +438,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
         enable_conversation_ai(sender_id=self.cust_a, workspace_id=1)
 
         # Flush debouncer -> Backlog must NOT trigger AI
-        with patch("app.channels.whatsapp.MasterOrchestrator.execute_decision", side_effect=mock_brain):
+        with patch("app.channels.whatsapp.process_customer_message", side_effect=mock_brain):
             await message_debouncer.flush("whatsapp", 1, self.cust_a)
             self.assertEqual(gemini_calls, 0)
 
@@ -600,7 +600,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
                     }]
                 }]
             }
-            with patch("app.channels.whatsapp.MasterOrchestrator.execute_decision", gemini_mock):
+            with patch("app.channels.whatsapp.process_customer_message", gemini_mock):
                 await handle_whatsapp_webhook_event(cust_payload)
                 await message_debouncer.flush("whatsapp", 1, self.cust_a)
 
@@ -724,7 +724,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
         and override authority with zero delay.
         """
         from app.database import create_training_rule, delete_training_rule
-        
+
         # Add a unique new training rule
         unique_token = uuid.uuid4().hex[:6]
         rule_title = f"স্পেশাল ইমার্জেন্সি অফার {unique_token}"

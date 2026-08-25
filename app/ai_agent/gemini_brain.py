@@ -9,7 +9,7 @@ from google.genai import types
 
 from app.config import settings
 from app.database import (
-    get_db_connection, get_setting, set_setting, get_all_settings, 
+    get_db_connection, get_setting, set_setting, get_all_settings,
     get_active_training_rules, get_saved_media
 )
 from app.ai_agent.voice_engine import generate_bangla_voice
@@ -27,9 +27,9 @@ def detect_customer_gender_title(customer_name: str) -> str:
     """
     if not customer_name:
         return "স্যার"
-    
+
     name_lower = customer_name.lower().strip()
-    
+
     # Female indicators
     female_patterns = [
         "mst", "mosammat", "most", "mowsumi", "akter", "akteri", "begum", "khatun", "sultana",
@@ -44,7 +44,7 @@ def detect_customer_gender_title(customer_name: str) -> str:
     ]
     if any(fp in name_lower for fp in female_patterns):
         return "ম্যাম"
-        
+
     return "স্যার"
 
 def is_affirmative_response(text: str) -> bool:
@@ -117,9 +117,9 @@ def get_product_catalog_context(workspace_id: int = 1) -> str:
         price = p["discount_price"] if p["discount_price"] and p["discount_price"] < p["price"] else p["price"]
         old_price = f" (আগের দাম: {p['price']}৳)" if p["discount_price"] and p["discount_price"] < p["price"] else ""
         stock_status = f"স্টক: {p['stock']} টি" if p['stock'] > 0 else "স্টক আউট"
-        
+
         lines.append(f"\n• [{p['code']}] {p['name']} (বেস রেট: {price}৳{old_price} | {stock_status}):\n  বিবরণ: {p['description']}")
-        
+
         try:
             raw_gallery = json.loads(p["gallery_images"] or "[]")
             if raw_gallery:
@@ -442,7 +442,7 @@ def extract_order_quantity_number(text: str) -> Optional[int]:
     """
     if not text:
         return None
-        
+
     # Ignore if text is or contains a phone number (e.g., 01929778281, 01816504097, +8801...)
     cleaned_digits_only = re.sub(r'\D', '', text)
     if len(cleaned_digits_only) >= 10:
@@ -455,14 +455,9 @@ def extract_order_quantity_number(text: str) -> Optional[int]:
     for ch in text:
         cleaned += bengali_digits.get(ch, ch)
     cleaned_lower = cleaned.lower().strip()
-    
+
     # Ignore if talking about money/prices without explicit quantity words
-    has_price_kw = any(k in cleaned_lower for k in ["টাকা", "টাকার", "টাকায়", "টাকাতে", "tk", "taka", "৳", "রেট", "মূল্য", "খরচ"])
-    has_explicit_qty = (
-        any(k in cleaned_lower for k in ["পিস", "pcs", "কপি", "বানাবো", "বানাতে চাই", "প্রয়োজন", "অর্ডার", "জন", "সেট", "set", "কার্ড"]) or
-        bool(re.search(r'\d+\s*(?:টা|টি)(?!ক)', cleaned_lower))
-    )
-    if has_price_kw and not has_explicit_qty:
+    if any(k in cleaned_lower for k in ["টাকা", "টাকার", "tk", "taka", "৳", "রেট", "মূল্য", "খরচ"]) and not any(k in cleaned_lower for k in ["পিস", "pcs", "টা", "টি", "কপি", "বানাবো"]):
         return None
 
     # Range pattern: e.g. "2-3 শত", "2-3 sho", "2-3শ", "200-300 পিস", "৫০-১০০ পিস"
@@ -505,7 +500,7 @@ def extract_order_quantity_number(text: str) -> Optional[int]:
             return val
 
     # Match explicit quantity units: e.g. "50 পিস", "100 pcs", "30 টা", "80 টি", "100 জন", "50 কপি", "100 card", "১০০ কার্ড"
-    m_unit = re.search(r'(\d+)\s*(?:পিস|পিসেস|pcs|pc|pieces|piece|জন|কপি|set|সেট|কার্ড|কার্ডের|card|cards|(?:টা|টি)(?!ক))', cleaned_lower)
+    m_unit = re.search(r'(\d+)\s*(?:পিস|পিসেস|টা|টি|pcs|pc|pieces|piece|জন|কপি|set|সেট|কার্ড|কার্ডের|card|cards)', cleaned_lower)
     if m_unit:
         try:
             val = int(m_unit.group(1))
@@ -656,7 +651,7 @@ def build_full_sample_sequence(quantity: int = None, customer_name: str = "Custo
     """
     honorific = detect_customer_gender_title(customer_name)
     seq = []
-    
+
     # 1. Cards (15 photos) + Text
     id_card_imgs = get_id_card_sample_images(workspace_id=workspace_id)
     if id_card_imgs:
@@ -715,7 +710,7 @@ def build_full_sample_sequence(quantity: int = None, customer_name: str = "Custo
             "type": "text",
             "text": f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
         })
-        
+
     return seq
 
 def evaluate_id_card_workflow(
@@ -738,94 +733,20 @@ def evaluate_id_card_workflow(
 
     honorific = detect_customer_gender_title(customer_name)
     ws_id = int(workspace_id or 1)
-    
+
     # Load structured state from DB (Phase 2 State Machine)
     saved_state = {}
     if sender_id:
         try:
-            from app.ai_agent.conversation_state import get_or_create_conversation_state, SalesStage
+            from app.ai_agent.conversation_state import get_or_create_conversation_state
             saved_state = get_or_create_conversation_state(sender_id=str(sender_id), workspace_id=ws_id)
         except Exception:
             saved_state = {}
 
-    # Authoritative check: Were samples/packages already sent?
-    samples_already_sent = bool(
-        saved_state.get("sample_sent") in (1, "1", True) or
-        saved_state.get("sample_permission") == "granted" or
-        saved_state.get("current_sales_stage") in (
-            "SAMPLE_SENT", "PACKAGE_IDENTIFIED", "PRICE_READY", "ORDER_INTENT",
-            "ADVANCE_PENDING", "ADVANCE_CONFIRMED", "CUSTOMER_INFO_PENDING",
-            "CUSTOMER_INFO_COMPLETE", "DESIGN_PROCESSING", "PROOF_PENDING",
-            "PROOF_SENT", "CUSTOMER_CORRECTION", "FINAL_APPROVAL_PENDING",
-            "FINAL_APPROVED", "PRINTING", "COURIER", "DELIVERED"
-        )
-    )
-    if not samples_already_sent and conversation_history:
-        recent_bot_msgs = [
-            (m.get("content", "") or m.get("text", "") or "").lower() for m in conversation_history[-20:]
-            if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant", "seller", "ai")
-        ]
-        recent_bot_media = [
-            str(m.get("media_url") or "").lower() for m in conversation_history[-20:]
-            if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant", "seller", "ai")
-        ]
-        if any(
-            any(ext in bm for ext in [
-                "/uploads/package", "স্যাম্পলগুলো পাঠিয়ে দিচ্ছি", "স্যাম্পলগুলো পাঠানো হলো",
-                "প্যাকেজের ছবিগুলো পাঠানো হলো", "প্যাকেজগুলো পাঠানো হলো", "এগুলো আমাদের কার্ড",
-                "এগুলো আমাদের প্রিন্ট করা ফিতা", "প্যাকেজের ছবিতে উল্লেখিত"
-            ])
-            for bm in recent_bot_msgs
-        ) or any("package" in m or "sample" in m or "/uploads/" in m for m in recent_bot_media):
-            samples_already_sent = True
-
-    # 0.0 Identity Inquiries (Agent Name 'নাদিম', Owner Name inquiry)
-    from app.ai_agent.knowledge_engine import KnowledgeEngine
-    identity_res = KnowledgeEngine.check_identity_inquiry(
-        message=message_text,
-        customer_name=customer_name,
-        workspace_id=workspace_id,
-        sender_id=str(sender_id or "")
-    )
-    if identity_res and identity_res.get("is_handled"):
-        return {
-            "reply_text": identity_res["reply_text"],
-            "media_sequence": [],
-            "matched_images": [],
-            "voice_url": "",
-            "video_url": "",
-            "order_created": None,
-            "response_source": identity_res.get("response_source", "knowledge_engine")
-        }
-
-    # 0.01 Photo Service inquiry
-    if any(kw in msg for kw in ["ছবি কি আপনারা তুলে নেন", "ছবি তুলে দেন", "ছবি তোলার ব্যবস্থা", "ফটোগ্রাফার", "ছবি কি তুলবেন", "ছবি তুলে দেবেন", "ছবি তুলে দিবেন"]):
-        return {
-            "reply_text": f"জি {honorific}, আমরা ছবি তোলার সার্ভিস প্রদান করি না। ছবি ও তথ্য আপনাকেই তুলে দিতে হবে। আমরা সম্পূর্ণ কাজ তৈরি করে, প্রিমিয়াম প্রিন্ট ও ডেলিভারি সম্পন্ন করে দেব।",
-            "media_sequence": [],
-            "matched_images": [],
-            "voice_url": "",
-            "video_url": "",
-            "order_created": None,
-            "response_source": "photo_service_policy"
-        }
-
-    # 0.02 Topic Switch: Mosque or not making ID card
-    if "মসজিদ" in msg and any(kw in msg for kw in ["বানাবো না", "বানাব না", "লাগবে না", "লাগবে", "জন্য"]):
-        return {
-            "reply_text": f"জি {honorific}, আপনার মসজিদের কী ধরণের কাজ প্রয়োজন জানাবেন প্লিজ (যেমন: আইডি কার্ড, ডোনেশন রশিদ, ব্যানার বা সিল)? আমরা আপনার প্রয়োজন অনুযায়ী সহায়তা করতে পারব।",
-            "media_sequence": [],
-            "matched_images": [],
-            "voice_url": "",
-            "video_url": "",
-            "order_created": None,
-            "response_source": "topic_switch_clarification"
-        }
-
     # 0. Check phone numbers, WhatsApp references, complaints, or questions about sending media
     if any(k in msg for k in ["নাম্বার", "নম্বর", "নাম্বার দিতে", "দিতে বলেছিলেন", "এগুলো কেন", "দিচ্ছেন কেন", "whatsapp", "হোয়াটসঅ্যাপ"]):
         return None
-        
+
     msg_without_system_tags = re.sub(r'\[কাস্টমার পূর্ববর্তী.*?\]', '', msg)
     cleaned_digits = re.sub(r'\D', '', msg_without_system_tags)
     if len(cleaned_digits) >= 10 and (re.search(r'01[3-9]\d{8}', msg_without_system_tags) or re.search(r'8801[3-9]\d{8}', msg_without_system_tags) or len(msg_without_system_tags.strip().split()) <= 2):
@@ -852,7 +773,7 @@ def evaluate_id_card_workflow(
 
     # Check if message is asking about unlisted/unknown products (pen, mug, notebook, t-shirt, etc.)
     unlisted_keywords = [
-        "কলম", "পেন", "pen", "বলপেন", "খাতা", "ডায়েরি", "ডায়েরি", "diary", "মগ", "mug", 
+        "কলম", "পেন", "pen", "বলপেন", "খাতা", "ডায়েরি", "ডায়েরি", "diary", "মগ", "mug",
         "টি-শার্ট", "টি শার্ট", "tshirt", "t-shirt", "ব্যাগ", "bag", "স্ট্যাম্প", "stamp", "সিল", "seal"
     ]
     if any(k in msg for k in unlisted_keywords) and not any(k in msg for k in ["আইডি", "কার্ড", "ফিতা", "কভার"]):
@@ -920,6 +841,22 @@ def evaluate_id_card_workflow(
     else:
         effective_qty = qty
 
+    # Check if message is asking about unlisted/unknown products (pen, mug, notebook, t-shirt, etc.)
+    unlisted_keywords = [
+        "কলম", "পেন", "pen", "বলপেন", "খাতা", "ডায়েরি", "ডায়েরি", "diary", "মগ", "mug",
+        "টি-শার্ট", "টি শার্ট", "tshirt", "t-shirt", "ব্যাগ", "bag", "স্ট্যাম্প", "stamp", "সিল", "seal"
+    ]
+    if any(k in msg for k in unlisted_keywords) and not any(k in msg for k in ["আইডি", "কার্ড", "ফিতা", "কভার"]):
+        return {
+            "reply_text": f"জি {honorific}, আপনার এই বিষয়টি আমরা নোট করেছি। আমাদের টিম বিষয়টি জেনে আপনাকে বিস্তারিত জানিয়ে দেবে, ইনশাআল্লাহ।",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "unlisted_product_team_referral"
+        }
+
     # Check if customer is asking about taking photos physically / photography service
     is_asking_photo_service = any(k in msg for k in [
         "ছবি কি আপনারা তুলে", "ছবি আপনারা তুলে", "ছবি তুলে নিয়ে যাবেন", "ছবি তুলে নিয়ে আসবেন",
@@ -941,7 +878,7 @@ def evaluate_id_card_workflow(
     is_asking_package_price = any(k in msg for k in [
         "প্যাকেজের দাম", "প্যাকেজের রেট", "প্যাকেজগুলোর দাম", "প্যাকেজের খরচ", "প্যাকেজ কত", "প্যাকেজ রেট", "প্যাকেজ মূল্য", "প্যাকেজের বিস্তারিত মূল্য"
     ]) or (
-        any(k in msg for k in ["দাম কত", "রেট কত", "কত টাকা", "খরচ কত", "মূল্য কত", "কত করে", "দাম কত করে", "দাম কত রাখা যাবে", "দাম কত হবে", "প্রতি পিস", "প্রতি পিসের", "প্রতি পিস কত", "প্রতি পিস কত টাকা", "প্রতি পিস কত রাখবেন", "প্রতি পিস কত করে রাখবেন", "প্রতি পিস কত টাকা রাখা যাবে", "কত টাকা রাখা যাবে", "per piece", "rate", "price"]) and
+        any(k in msg for k in ["দাম কত", "রেট কত", "কত টাকা", "খরচ কত", "মূল্য কত", "কত করে", "দাম কত করে", "দাম কত রাখা যাবে", "দাম কত হবে", "প্রতি পিস", "প্রতি পিসের", "প্রতি পিস কত", "প্রতি পিস কত টাকা", "প্রতি পিস কত রাখবেন", "প্রতি পিস কত করে রাখবেন", "per piece", "rate", "price"]) and
         (any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo", "সেট", "পিস", "কার্ড", "টাকা"]) or "প্যাকেজ" in last_bot_msg or "স্যাম্পল" in last_bot_msg or effective_qty is not None)
     )
     if is_asking_package_price:
@@ -1010,75 +947,9 @@ def evaluate_id_card_workflow(
             "response_source": "id_card_package_pricing_breakdown"
         }
 
-    # Check if customer is negotiating / asking for discount or lower rate
-    # e.g. "এটি কম করা যাবে না?", "কম রাখা যায় না", "৮৫ টাকা হবে?", "৭৫ টাকা দেন", "কিছু কম হবে?", "ডিসকাউন্ট দেন"
-    is_discount_inquiry = any(k in msg for k in [
-        "কম করা যাবে না", "কম করা যাবে না?", "কম রাখা যায় না", "কম রাখবেন", "কম হবে না",
-        "কম হবে?", "কম হবে কি", "কিছু কম", "একটু কম", "কম রাখেন", "কমায় দেন", "কম রাখা যাবে",
-        "কম করা যাবে", "কম করা যায়", "ডিসকাউন্ট", "ছাড়", "সম্মান করবেন", "বেশি রাখছেন",
-        "টাকা হবে", "টাকা হবে?", "টাকা রাখা যাবে কি", "টাকা রাখবেন",
-        "টাকা করে দেন", "টাকা করে রাখবেন", "টাকা দেন", "টাকা দেওয়া যাবে"
-    ]) or (
-        any(k in msg for k in ["হবে", "রাখবেন", "দেন", "দিবেন"]) and
-        re.search(r'\b(?:৭০|৭৩|৭৫|৭৮|৮০|৮২|৮৩|৮৫|৮৮|৯০|৯১|91|88|85|82|80|75|73|70)\s*টাকা', msg)
-    )
-
-    if is_discount_inquiry:
-        dem_match = re.search(r'([০-৯\d]{2,4})\s*(?:টাকা|টাকায়|টাকাতে|tk|taka|৳)', msg)
-        demanded_price = None
-        if dem_match:
-            try:
-                bengali_digits = {'০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4', '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'}
-                clean_num = ''.join(bengali_digits.get(c, c) for c in dem_match.group(1))
-                demanded_price = float(clean_num)
-            except Exception:
-                demanded_price = None
-
-        curr_disc = 0.0
-        try:
-            curr_disc = float(saved_state.get("discount_amount") or 0.0)
-        except Exception:
-            curr_disc = 0.0
-
-        effective_neg_qty = effective_qty if effective_qty is not None else 100
-        pkg_id = saved_state.get("package_id") or "7"
-
-        from app.ai_agent.pricing_engine import negotiate_step
-        neg_res = negotiate_step(
-            package_id=pkg_id,
-            quantity=effective_neg_qty,
-            current_discount=curr_disc,
-            customer_demanded_price=demanded_price
-        )
-
-        if sender_id and not neg_res.get("requires_owner_approval") and neg_res.get("offered_discount", 0.0) > 0:
-            try:
-                from app.ai_agent.conversation_state import update_conversation_state
-                update_conversation_state(
-                    sender_id=str(sender_id),
-                    updates={
-                        "discount_amount": neg_res["offered_discount"],
-                        "quoted_price": neg_res["offered_unit_price"]
-                    },
-                    reason="negotiation_step_applied",
-                    workspace_id=ws_id
-                )
-            except Exception:
-                pass
-
-        return {
-            "reply_text": neg_res["reply_text"],
-            "media_sequence": [],
-            "matched_images": [],
-            "voice_url": "",
-            "video_url": "",
-            "order_created": None,
-            "response_source": "discount_negotiation_response"
-        }
-
     # Check if message is ID card related (and not negative)
     is_id_card_inquiry = any(k in msg for k in [
-        "আইডি কার্ড", "আইডি কাড", "id card", "আইডিকার্ড", "আইডি", "কার্ড বানাতে", "কার্ড করতে", 
+        "আইডি কার্ড", "আইডি কাড", "id card", "আইডিকার্ড", "আইডি", "কার্ড বানাতে", "কার্ড করতে",
         "কার্ড বানাবো", "কার্ড লাগবে", "কার্ডের দাম", "কার্ডের খরচ", "কার্ডের স্যাম্পল"
     ]) and not any(k in msg for k in ["চাচ্ছি না", "চাই না", "বানাব না", "বানাবো না", "করব না", "করবো না", "লাগবে না", "নেব না", "নিব না", "দরকার নাই", "দরকার নেই"])
 
@@ -1100,12 +971,12 @@ def evaluate_id_card_workflow(
     is_asking_question = any(k in msg for k in ["?", "কত", "কেন", "কি", "কী", "দাম", "চার্জ", "সময়", "কেমন", "ডেলিভারি", "কোথায়"])
     is_answering_quantity = (
         qty is not None and not is_asking_question and (
-            bot_asked_quantity or 
+            bot_asked_quantity or
             any(k in msg for k in ["পিস", "টা", "টি", "pcs", "কপি", "বানাবো", "বানাতে চাই"]) or
             re.fullmatch(r'\d{1,5}', msg.strip())
         )
     )
-    
+
     if qty is not None and is_answering_quantity:
         if qty < 30:
             if sender_id:
@@ -1176,8 +1047,28 @@ def evaluate_id_card_workflow(
                     "response_source": "id_card_sample_dispatch"
                 }
 
-            is_asking_again = any(k in msg for k in ["আবার", "আসেনি", "পাইনি", "পাই নাই", "আসে নাই", "পুনরায়", "আবারও", "আবার পাঠান", "আবার পাঠাবেন", "ছবি আসেনি"])
-            if samples_already_sent and not is_asking_again:
+            # Check if package samples were already sent in conversation history!
+            already_sent_packages = False
+            if conversation_history:
+                recent_bot_msgs = [
+                    (m.get("content", "") or m.get("text", "") or "").lower() for m in conversation_history[-15:]
+                    if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant", "seller", "ai")
+                ]
+                recent_bot_media = [
+                    str(m.get("media_url") or "").lower() for m in conversation_history[-15:]
+                    if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant", "seller", "ai")
+                ]
+                already_sent_packages = any(
+                    any(ext in bm for ext in [
+                        "pakage", "package", "pkg", "/uploads/package", "প্যাকেজ", "স্যাম্পলগুলো পাঠিয়ে দিচ্ছি",
+                        "পছন্দ হয় জানাবেন", "পছন্দ হয়েছে জানাবেন", "এগুলো আমাদের কার্ড", "এগুলো আমাদের প্রিন্ট করা ফিতা",
+                        "প্যাকেজগুলো পাঠানো হলো", "প্যাকেজের ছবি"
+                    ])
+                    for bm in recent_bot_msgs
+                ) or any("package" in m or "sample" in m or "/uploads/" in m for m in recent_bot_media)
+
+            is_asking_again = any(k in msg for k in ["আবার", "আসেনি", "পাইনি", "পাই নাই", "আসে নাই", "পুনরায়", "আবারও", "আবার পাঠান", "ছবি আসেনি"])
+            if already_sent_packages and not is_asking_again:
                 if 30 <= qty < 50:
                     tier_text = f"জি {honorific}, আমাদের প্যাকেজগুলোর রেট ১০০+ অর্ডারের ক্ষেত্রে প্রযোজ্য। আপনার যেহেতু ১০০ এর কম ({qty} পিস), তাই প্রতি প্যাকেজে ১০ টাকা করে বেশি হবে। আপনার কোন প্যাকেজটি পছন্দ জানাবেন প্লিজ।"
                 elif 50 <= qty < 80:
@@ -1194,28 +1085,27 @@ def evaluate_id_card_workflow(
                     "response_source": "id_card_tier_text_reply"
                 }
 
-            # If stating quantity for the FIRST time and samples not yet sent: ask permission before sending samples
-            if not samples_already_sent:
-                if sender_id:
-                    try:
-                        from app.ai_agent.conversation_state import update_conversation_state, SalesStage
-                        update_conversation_state(
-                            sender_id=str(sender_id),
-                            updates={"sample_permission": "pending", "current_sales_stage": SalesStage.SAMPLE_PERMISSION_PENDING},
-                            reason="asked_sample_permission",
-                            workspace_id=ws_id
-                        )
-                    except Exception:
-                        pass
-                return {
-                    "reply_text": f"জি {honorific}, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?",
-                    "media_sequence": [],
-                    "matched_images": [],
-                    "voice_url": "",
-                    "video_url": "",
-                    "order_created": None,
-                    "response_source": "id_card_ask_sample_permission"
-                }
+            # If stating quantity (e.g. 50, 100, 500, 1000 pcs), ask permission before sending samples
+            if sender_id:
+                try:
+                    from app.ai_agent.conversation_state import update_conversation_state, SalesStage
+                    update_conversation_state(
+                        sender_id=str(sender_id),
+                        updates={"sample_permission": "pending", "current_sales_stage": SalesStage.SAMPLE_PERMISSION_PENDING},
+                        reason="asked_sample_permission",
+                        workspace_id=ws_id
+                    )
+                except Exception:
+                    pass
+            return {
+                "reply_text": f"জি {honorific}, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?",
+                "media_sequence": [],
+                "matched_images": [],
+                "voice_url": "",
+                "video_url": "",
+                "order_created": None,
+                "response_source": "id_card_ask_sample_permission"
+            }
 
     # Check if customer points out that samples were already sent (e.g. "স্যাম্পলগুলো তো পাঠিয়েছেন", "ছবি তো দিয়েছেন")
     is_pointing_out_already_sent = any(k in msg for k in [
@@ -1288,9 +1178,27 @@ def evaluate_id_card_workflow(
             "response_source": "specific_package_price_confirmed"
         }
 
-    is_explicitly_asking_again = any(k in msg for k in [
-        "আবার", "আসেনি", "পাইনি", "পাই নাই", "আসে নাই", "পুনরায়", "আবারও", "আবার পাঠান", "আবার পাঠাবেন", "ছবি আসেনি"
-    ])
+    # --- Global check: Were packages/samples already sent in recent conversation? ---
+    _global_already_sent = False
+    if conversation_history:
+        _recent_bot = [
+            (m.get("content", "") or m.get("text", "") or "").lower() for m in conversation_history[-15:]
+            if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant", "seller", "ai")
+        ]
+        _recent_media = [
+            str(m.get("media_url") or "").lower() for m in conversation_history[-15:]
+            if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant", "seller", "ai")
+        ]
+        _global_already_sent = any(
+            any(ext in bm for ext in [
+                "pakage", "package", "pkg", "/uploads/package", "প্যাকেজ", "স্যাম্পলগুলো পাঠিয়ে দিচ্ছি",
+                "পছন্দ হয় জানাবেন", "পছন্দ হয়েছে জানাবেন", "এগুলো আমাদের কার্ড", "এগুলো আমাদের প্রিন্ট করা ফিতা",
+                "প্যাকেজগুলো পাঠানো হলো", "প্যাকেজের ছবি"
+            ])
+            for bm in _recent_bot
+        ) or any("package" in m or "sample" in m or "/uploads/" in m for m in _recent_media)
+
+    is_explicitly_asking_again = any(k in msg for k in ["আবার", "আসেনি", "পাইনি", "পাই নাই", "আসে নাই", "পুনরায়", "আবারও", "আবার পাঠান", "ছবি আসেনি"])
 
     # Case C: Confirming to send samples, or asking specifically for packages/samples
     is_sample_confirmation = bot_asked_sample_permission and is_affirmative_response(msg) and not any(k in msg for k in ["তো পাঠিয়েছেন", "তো দিয়েছেন", "আগেই", "আগে"])
@@ -1300,27 +1208,16 @@ def evaluate_id_card_workflow(
             any(k in msg for k in [
                 "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
                 "কম্বো প্যাকেজ দেখান", "কম্বো প্যাকেজ পাঠান",
-                "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল পাঠাবেন", "স্যাম্পল দিন", "স্যাম্পল দেন", "স্যাম্পল দেখতে চাই", "স্যাম্পল দেখতে",
-                "স্যাম্পলগুলো পাঠান", "স্যাম্পলগুলো পাঠাবেন", "স্যাম্পলগুলো দিন", "স্যাম্পলগুলো দেন", "স্যাম্পলগুলো দেখান", "স্যাম্পলগুলো আবার",
-                "ছবি পাঠান", "ছবি পাঠাবেন", "ছবি দিন", "ছবি দেন", "ছবি দেখান", "ছবি দেখাও", "ছবি পাঠাও", "ছবি দেখতে চাই",
-                "আবার পাঠান", "আবার পাঠাবেন", "আবার দিন", "আবার দেন", "আবার দেখান", "ছবি আসেনি", "ছবিগুলো আসেনি", "ছবি পাই নাই", "ছবি পাইনি",
+                "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দিন", "স্যাম্পল দেন", "স্যাম্পল দেখতে চাই", "স্যাম্পল দেখতে",
+                "ছবি পাঠান", "ছবি দিন", "ছবি দেন", "ছবি দেখান", "ছবি দেখাও", "ছবি পাঠাও", "ছবি দেখতে চাই",
+                "আবার পাঠান", "আবার দিন", "আবার দেন", "আবার দেখান", "ছবি আসেনি", "ছবিগুলো আসেনি", "ছবি পাই নাই", "ছবি পাইনি",
                 "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দাও"
             ]) and not any(k in msg for k in ["এটি", "এটা", "এইটা", "এই প্যাকেজ", "পছন্দ", "নির্বাচন", "তো পাঠিয়েছেন", "তো দিয়েছেন", "আগেই", "আগে"])
         )
     )
 
-    # CRITICAL: If samples/packages already sent and NOT explicitly asking for re-send, BLOCK duplicate dispatch
-    if samples_already_sent and not is_explicitly_asking_again:
-        if is_sample_confirmation or is_package_request:
-            return {
-                "reply_text": f"জি {honorific}, পূর্বের পাঠানো স্যাম্পল ও প্যাকেজগুলো দেখে আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন প্লিজ, অথবা আপনার আর কোনো কিছু জানার থাকলে বলুন {honorific}।",
-                "media_sequence": [],
-                "matched_images": [],
-                "voice_url": "",
-                "video_url": "",
-                "order_created": None,
-                "response_source": "samples_already_sent_acknowledged"
-            }
+    # CRITICAL: If packages already sent and NOT explicitly asking for re-send, BLOCK dispatch
+    if is_package_request and _global_already_sent and not is_explicitly_asking_again and not is_sample_confirmation:
         is_package_request = False
 
     if is_package_request:
@@ -1356,11 +1253,7 @@ def evaluate_id_card_workflow(
         }
 
     # Case D: Customer quotes / selects a package photo (e.g. replies with ".", ",", "এটি", "এইটা", "এই প্যাকেজটি", "প্যাকেজ ৩", etc.)
-    is_negotiating_or_question = any(k in msg for k in [
-        "কম", "ছাড়", "ডিসকাউন্ট", "কমান", "রাখা যাবে", "হবে কি", "হবে না", "যাবে না", "কত", "কেন", "কিভাবে", "?"
-    ])
-
-    is_package_selection = not is_negotiating_or_question and (
+    is_package_selection = (
         any(k in msg for k in [
             "[কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন:", "প্যাকেজের রিপ্লাই", "package", "wa0002", "wa0003",
             "wa0006", "wa0057", "wa0023", "wa0045", "wa0081"
@@ -1404,7 +1297,7 @@ def evaluate_id_card_workflow(
         tier_note = ""
         if effective_qty is not None and 30 <= effective_qty < 50:
             tier_note = f"\n(যেহেতু আপনাদের পরিমাণ {effective_qty} পিস—১০০ এর কম, তাই প্যাকেজের রেগুলার মূল্যের সাথে প্রতি পিসে ১০ টাকা যোগ হবে।)\n"
-            
+
         ack_text = (
             f"জি {honorific}, চমৎকার পছন্দ! আপনি আমাদের এই আকর্ষণীয় প্যাকেজটি নির্বাচন করেছেন।{tier_note}\n\n"
             f"আপনার অর্ডারটি চূড়ান্ত করতে অনুগ্রহ করে নিচের তথ্যগুলো দিন:\n"
@@ -1498,7 +1391,7 @@ def get_category_batch_images(category_or_code: str, requested_count: int = None
     Returns sample gallery images for a specific product category within a workspace.
     """
     cat_lower = (category_or_code or "").strip().lower()
-    
+
     if int(workspace_id or 1) == 1:
         if cat_lower in ["fita", "lanyard", "ribbon", "fita-02", "lan-15", "lan-20", "ফিতা", "রিবন", "ল্যানিয়ার্ড"]:
             imgs = get_fita_sample_images(workspace_id=workspace_id)
@@ -1515,18 +1408,6 @@ def get_category_batch_images(category_or_code: str, requested_count: int = None
 
     return []
 
-def generate_sample_delivery_sequence(workspace_id: int = 1) -> list:
-    """Generates canonical sequenced sample delivery items."""
-    pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
-    return [
-        {
-            "type": "text",
-            "text": f"আমাদের কাজের কোয়ালিটি ও সম্মানিত কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন:\n{REVIEW_FACEBOOK_POST_URL}"
-        },
-        {"type": "images", "category": "package", "urls": pkg_imgs},
-        {"type": "text", "text": "আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন স্যার।"}
-    ]
-
 def parse_requested_image_count(user_msg: str) -> Optional[int]:
     """
     Detects if user explicitly asked for a specific number of photos/images
@@ -1535,13 +1416,13 @@ def parse_requested_image_count(user_msg: str) -> Optional[int]:
     if not user_msg:
         return None
     msg = user_msg.lower()
-    
+
     # Range patterns: '২-৩টা ছবি', '2-3টা', '3-4 pics'
     if re.search(r'(?:২\s*[-–]\s*৩|2\s*[-–]\s*3)\s*(?:টা|টি|পিস|টি\s*ছবি|টা\s*ছবি|pics|photos)?', msg):
         return 3
     if re.search(r'(?:৩\s*[-–]\s*৪|3\s*[-–]\s*4)\s*(?:টা|টি|পিস|টি\s*ছবি|টা\s*ছবি|pics|photos)?', msg):
         return 4
-        
+
     # Explicit count with photo context
     if re.search(r'(?:২|2|দুই|দুটো)\s*(?:টা|টি|পিস)\s*(?:ছবি|পিক|স্যাম্পল|photo|pic)?', msg):
         return 2
@@ -1562,10 +1443,10 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     Never sends photos if user is just asking questions, sending phone number, or discussing price.
     """
     msg = (user_msg or "").strip().lower()
-    
+
     # 1. Stop / Cancellation check
     stop_phrases = [
-        "লাগবে না", "আর লাগবে না", "থামুন", "আর দিয়েন না", "আর পাঠাবেন না", 
+        "লাগবে না", "আর লাগবে না", "থামুন", "আর দিয়েন না", "আর পাঠাবেন না",
         "ছবি লাগবে না", "ফটো লাগবে না", "আর না", "চাই না", "আর দিও না",
         "stop", "no more", "don't send", "dont send"
     ]
@@ -1588,7 +1469,7 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
         "সব ছবি", "সবগুলো ছবি", "সব প্যাকেজ", "সবগুলো প্যাকেজ", "প্যাকেজের ছবি",
         "show photo", "send photo", "show sample", "send sample", "show pic", "send pic", "show image", "send image"
     ]) or (
-        any(k in msg for k in ["ছবি", "স্যাম্পল", "ফটো", "পিক", "পিকচার"]) and 
+        any(k in msg for k in ["ছবি", "স্যাম্পল", "ফটো", "পিক", "পিকচার"]) and
         any(a in msg for a in ["দেখান", "পাঠান", "দিন", "দেন", "দিয়েন", "দিয়েন", "পাঠিয়েন", "পাঠিয়েন", "দিবেন", "পাঠাবেন", "দেখবো", "show", "send", "তো"])
     ) or (
         any(k in msg for k in ["কভারের ছবি", "ফিতার ছবি", "কার্ডের ছবি", "প্যাকেজের ছবি", "কভারের স্যাম্পল", "ফিতার স্যাম্পল", "কার্ডের স্যাম্পল"])
@@ -1634,7 +1515,7 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
             if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant")
         ]
         already_sent_recently = any(
-            any(ext in bm for ext in [".jpg", ".png", ".jpeg", "/uploads/"]) or 
+            any(ext in bm for ext in [".jpg", ".png", ".jpeg", "/uploads/"]) or
             any(kw in bm for kw in ["স্যাম্পল ছবি", "ছবি দেওয়া হলো", "ছবি পাঠানো হলো"])
             for bm in recent_bot_msgs
         )
@@ -1715,7 +1596,7 @@ def generate_smart_fallback_reply(
     ]
     if any(k in msg for k in refusal_phrases) or (len(msg.split()) == 1 and msg.strip() in ["না", "no"]):
         return f"জি {honorific}, ঠিক আছে। আপনার আর কোনো তথ্য বা অর্ডার সংক্রান্ত সহযোগিতা প্রয়োজন হলে জানাবেন প্লিজ।"
-    
+
     if any(k in msg for k in ["ডেলিভারি", "কুরিয়ার", "delivery"]):
         return f"জি {honorific}, ডেলিভারি চার্জ ঢাকার ভেতরে {inside_fee} টাকা এবং ঢাকার বাইরে {outside_fee} টাকা (প্রতি কেজিতে ২০ টাকা এবং প্রতি হাজারে ১০ টাকা COD চার্জ প্রযোজ্য)।"
 
@@ -1824,20 +1705,6 @@ def generate_smart_fallback_reply(
         state_qty = conversation_state.get("quantity") if conversation_state else None
         effective_qty = qty if qty is not None else state_qty
 
-        samples_sent_in_state = bool(
-            conversation_state and (
-                conversation_state.get("sample_sent") in (1, "1", True) or
-                conversation_state.get("sample_permission") == "granted" or
-                conversation_state.get("current_sales_stage") in (
-                    "SAMPLE_SENT", "PACKAGE_IDENTIFIED", "PRICE_READY", "ORDER_INTENT",
-                    "ADVANCE_PENDING", "ADVANCE_CONFIRMED", "CUSTOMER_INFO_PENDING",
-                    "CUSTOMER_INFO_COMPLETE", "DESIGN_PROCESSING", "PROOF_PENDING",
-                    "PROOF_SENT", "CUSTOMER_CORRECTION", "FINAL_APPROVAL_PENDING",
-                    "FINAL_APPROVED", "PRINTING", "COURIER", "DELIVERED"
-                )
-            )
-        )
-
         if effective_qty is not None:
             if effective_qty < 30:
                 return f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
@@ -1849,71 +1716,7 @@ def generate_smart_fallback_reply(
                         return f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য ফিক্সড রেগুলার প্যাকেজ রেট প্রযোজ্য হবে। কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ।"
                     else:
                         return f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য (৩০-৪৯ পিস টিয়ারে) রেগুলার রেটের চেয়ে প্রতি সেটে ১০ টাকা বেশি হবে। কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ।"
-
-                if any(k in msg for k in ["কম", "ছাড়", "ডিসকাউন্ট", "কমান", "রাখা যাবে", "হবে কি", "হবে না"]):
-                    if effective_qty >= 80:
-                        return f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য আমরা বিশেষ বিবেচনায় প্রতি সেট ৮৮ টাকা করে রাখতে পারব। কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ।"
-                    elif effective_qty >= 50:
-                        return f"দুঃখিত {honorific}, {effective_qty} পিস অর্ডারের ক্ষেত্রে আমাদের এই রেটটি ফিক্সড রেগুলার রেট। ১০০+ বাল্ক অর্ডারের ক্ষেত্রে স্পেশাল ডিসকাউন্ট পলিসি প্রযোজ্য হয়।"
-                    else:
-                        return f"দুঃখিত {honorific}, {effective_qty} পিস অর্ডারের ক্ষেত্রে (৩০-৪৯ পিস টিয়ারে) ফিক্সড রেট প্রযোজ্য—প্রতি সেটে ১০ টাকা অতিরিক্ত চার্জ রয়েছে এবং কোনো ডিসকাউন্ট প্রযোজ্য নয়।"
-
-                if samples_sent_in_state:
-                    return f"জি {honorific}, পূর্বের পাঠানো স্যাম্পল ও প্যাকেজগুলো দেখে আপনার কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ {honorific}।"
-
                 return f"জি {honorific}, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
-
-        # Identity Inquiries in Fallback
-        if any(k in msg for k in ["আপনার নাম", "তোমার নাম", "who are you", "who is this", "apni ke", "apnar nam", "tomar nam"]) or re.search(r'(?:^|[\s,।!?])(?:আপনি|তুমি)\s*কে(?:[\s,।!?]|$)', msg):
-            return f"জি {honorific}, আমার নাম নাদিম, RS Graphics-এর পক্ষ থেকে আপনাকে সহযোগিতা করছি। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
-
-        # Social Pleasantries in Fallback (Well-being and Friendly Meals)
-        if any(k in msg for k in [
-            "ভালো আছেন", "ভাল আছেন", "কেমন আছেন", "কেমন আছো", "কি খবর", "কী খবর",
-            "খাবার", "ভাত খেয়েছেন", "ভাত খাইছেন", "ভাত খেয়েছেন নাকি", "নাস্তা করেছেন", "খাওয়া দাওয়া",
-            "রাতের খাবার", "দুপুরের খাবার", "bhalo achen", "kemon achen", "ki khobor", "khabar kheyechen"
-        ]):
-            has_salam = any(k in msg for k in ["সালাম", "salam", "assalam"])
-            is_food = any(k in msg for k in ["খাবার", "ভাত", "নাস্তা", "খাওয়া", "খাইছেন", "খেয়েছেন", "khabar", "bhat"])
-            if is_food:
-                if "রাতের খাবার" in msg:
-                    lbl = "রাতের খাবার"
-                elif "দুপুরের খাবার" in msg:
-                    lbl = "দুপুরের খাবার"
-                elif "নাস্তা" in msg:
-                    lbl = "নাস্তা"
-                else:
-                    lbl = "খাওয়া"
-
-                if lbl == "খাওয়া":
-                    if has_salam:
-                        return f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, খাওয়া হয়েছে। আপনি খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                    return f"আলহামদুলিল্লাহ {honorific}, খাওয়া হয়েছে। আপনি খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                elif lbl == "নাস্তা":
-                    if has_salam:
-                        return f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, নাস্তা করা হয়েছে। আপনি নাস্তা করেছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                    return f"আলহামদুলিল্লাহ {honorific}, নাস্তা করা হয়েছে। আপনি নাস্তা করেছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                else:
-                    if has_salam:
-                        return f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, {lbl} খাওয়া হয়েছে। আপনি খাবার খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-                    return f"আলহামদুলিল্লাহ {honorific}, {lbl} খাওয়া হয়েছে। আপনি খাবার খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-
-            if has_salam:
-                return f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-            return f"আলহামদুলিল্লাহ {honorific}, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-
-        # Pure Greetings in Fallback
-        if any(k in msg for k in ["সালাম", "salam", "assalam", "হাই", "হ্যালো", "hello", "hi", "hey"]):
-            has_salam = any(k in msg for k in ["সালাম", "salam", "assalam"])
-            if has_salam:
-                return f"ওয়ালাইকুমুস সালাম {honorific}! আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-            elif any(k in msg for k in ["হ্যালো", "hello"]):
-                return f"হ্যালো {honorific}! আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-            return f"জি {honorific}, আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
-
-        # Delivery Fee in Fallback
-        if any(k in msg for k in ["ডেলিভারি চার্জ", "কুরিয়ার চার্জ", "ডেলিভারি", "delivery"]):
-            return f"জি {honorific}, আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে ৮০ টাকা এবং ঢাকার বাইরে ১৩০ টাকা।"
 
         if any(k in msg for k in ["আইডি কার্ড", "আইডি কাড", "id card", "আইডিকার্ড", "কার্ড বানাতে", "কার্ড করতে", "কার্ড বানাবো"]):
             return f"জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন?"
@@ -1930,7 +1733,7 @@ def generate_smart_fallback_reply(
         if any(k in msg for k in ["দাম", "রেট", "মূল্য", "price", "cost"]):
             return f"জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন জানাবেন প্লিজ? আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস।"
 
-        return f"জি {honorific}, আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+        return f"জি {honorific}, আসসালামু আলাইকুম! আপনি আইডি কার্ড কত পিস বানাবেন জানাবেন প্লিজ?"
 
     # Workspace 2+ Clean Generic Fallbacks (Never mentioning RS Graphics or ID cards)
     if any(k in msg for k in ["দাম", "রেট", "মূল্য", "price", "cost"]):
@@ -2035,7 +1838,7 @@ async def process_customer_message(
     try:
         client = genai.Client(api_key=api_key)
         contents = []
-        
+
         # Add conversation history (up to last 15 turns for deep memory) with normalized roles
         if conversation_history:
             history_text = "[পূর্ববর্তী চ্যাট হিস্ট্রি - এটি সম্পূর্ণ মনে রেখে কথা বলবে]:\n"

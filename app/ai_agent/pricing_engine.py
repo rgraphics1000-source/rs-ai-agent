@@ -151,7 +151,7 @@ def get_quantity_tier(quantity: int) -> QuantityTier:
     - 30 to 49 pcs: SMALL_ORDER (+10 Tk / piece)
     - 50 to 79 pcs: REGULAR (Fixed Regular Price)
     - 80+ pcs: BULK (100+ / Bulk Tier: 80, 81, 90, 99, 100, 200, 300+ pcs)
-    
+
     IMPORTANT: 80-99 is NOT a separate tier. 80+ is strictly in the BULK tier.
     """
     if quantity < 30:

@@ -28,7 +28,7 @@ class TestMutedContacts(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertTrue(data.get("success"))
-        
+
         # Verify AI is paused for this number across all format variations
         self.assertFalse(is_conversation_ai_active("01576656763"))
         self.assertFalse(is_conversation_ai_active("8801576656763"))
@@ -55,10 +55,10 @@ class TestMutedContacts(unittest.TestCase):
             self.assertEqual(resp.status_code, 200)
             data = resp.json()
             self.assertTrue(data.get("success"))
-            
+
             # Verify AI is paused for this Facebook Messenger customer
             self.assertFalse(is_conversation_ai_active(sender_id=fb_cust, workspace_id=1))
-            
+
             # 2. Check presence in GET /api/muted-contacts
             resp_get = self.client.get("/api/muted-contacts")
             self.assertEqual(resp_get.status_code, 200)

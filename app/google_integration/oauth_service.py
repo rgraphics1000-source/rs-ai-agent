@@ -25,18 +25,18 @@ GOOGLE_SCOPES = [
 def get_client_config() -> Tuple[str, str, str]:
     """Resolves Client ID, Client Secret, and Redirect URI."""
     client_id = (
-        os.getenv("GOOGLE_CLIENT_ID") 
-        or get_setting("google_client_id") 
+        os.getenv("GOOGLE_CLIENT_ID")
+        or get_setting("google_client_id")
         or settings.GOOGLE_CLIENT_ID
     )
     client_secret = (
-        os.getenv("GOOGLE_CLIENT_SECRET") 
-        or get_setting("google_client_secret") 
+        os.getenv("GOOGLE_CLIENT_SECRET")
+        or get_setting("google_client_secret")
         or settings.GOOGLE_CLIENT_SECRET
     )
     redirect_uri = (
-        os.getenv("GOOGLE_REDIRECT_URI") 
-        or get_setting("google_redirect_uri") 
+        os.getenv("GOOGLE_REDIRECT_URI")
+        or get_setting("google_redirect_uri")
         or settings.GOOGLE_REDIRECT_URI
         or "https://rs-ai-agent.onrender.com/api/google/auth/callback"
     )
@@ -46,13 +46,13 @@ def get_oauth_authorization_url(workspace_id: int = 1, redirect_uri: str = None)
     """Generates the Google OAuth 2.0 authorization URL for a specific workspace."""
     client_id, _, default_redirect = get_client_config()
     final_redirect = redirect_uri or default_redirect
-    
+
     if not client_id:
         raise ValueError("GOOGLE_CLIENT_ID is not configured in settings or environment.")
 
     scopes_str = "%20".join(GOOGLE_SCOPES)
     state = f"ws_{workspace_id}"
-    
+
     auth_url = (
         f"https://accounts.google.com/o/oauth2/v2/auth?"
         f"client_id={client_id}&"

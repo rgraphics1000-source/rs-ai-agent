@@ -90,8 +90,8 @@ class TestMediaDataHardening(unittest.TestCase):
         conn = get_db_connection()
         c = conn.cursor()
         c.execute("""
-            SELECT media_key, COUNT(*) as cnt 
-            FROM saved_media 
+            SELECT media_key, COUNT(*) as cnt
+            FROM saved_media
             WHERE workspace_id = 1 AND is_active = 1
             GROUP BY media_key
             HAVING cnt > 1

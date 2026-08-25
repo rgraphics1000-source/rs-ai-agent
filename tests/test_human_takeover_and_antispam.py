@@ -36,7 +36,7 @@ class TestHumanTakeoverAndAntiSpam(unittest.TestCase):
             {"sender_type": "user", "content": "আমি ওনারের সাথে কথা বলতে চাই"},
             {"sender_type": "admin", "content": "জি ভাইয়া, আমি শপ ওনার বলছি। আপনি কেমন আছেন?"}
         ]
-        
+
         photos = detect_sample_photos_to_send(
             user_msg="জি ভালো আছি",
             conversation_history=history,
@@ -52,7 +52,7 @@ class TestHumanTakeoverAndAntiSpam(unittest.TestCase):
             {"sender_type": "user", "content": "আইডি কার্ডের দাম কত?"},
             {"sender_type": "bot", "content": "জি স্যার, আমাদের কার্ডের দাম ৫০ টাকা। আপনি কি কিছু স্যাম্পল দেখতে চান?"}
         ]
-        
+
         photos = detect_sample_photos_to_send(
             user_msg="হ্যাঁ পাঠান",
             conversation_history=history,
@@ -71,7 +71,7 @@ class TestHumanTakeoverAndAntiSpam(unittest.TestCase):
             {"sender_type": "user", "content": "প্যাকেজ কত?"},
             {"sender_type": "bot", "content": "প্যাকেজ ৩৫০ টাকা।"}
         ]
-        
+
         photos = detect_sample_photos_to_send(
             user_msg="জি",
             conversation_history=history,
@@ -89,7 +89,7 @@ class TestHumanTakeoverAndAntiSpam(unittest.TestCase):
             "page_name": "RS Graphics",
             "page_access_token": "test_tok"
         })
-        
+
         payload = {
             "object": "page",
             "entry": [{
@@ -109,7 +109,7 @@ class TestHumanTakeoverAndAntiSpam(unittest.TestCase):
         }
 
         asyncio.run(handle_facebook_webhook_event(payload))
-        
+
         # Verify AI is now paused for this customer
         self.assertFalse(is_conversation_ai_active(self.test_sender))
         print("✓ Test 4 Passed: Admin echo message automatically activated human takeover and silenced AI.")
@@ -118,7 +118,7 @@ class TestHumanTakeoverAndAntiSpam(unittest.TestCase):
         """'#pause' pauses AI and '#ai' resumes AI."""
         add_muted_number(self.test_sender)
         self.assertFalse(is_conversation_ai_active(self.test_sender))
-        
+
         remove_muted_number(self.test_sender)
         self.assertTrue(is_conversation_ai_active(self.test_sender))
         print("✓ Test 5 Passed: AI pause and resume controls working 100% reliably.")

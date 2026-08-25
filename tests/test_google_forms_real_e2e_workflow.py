@@ -28,9 +28,6 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
         self.workspace_id = 9971
         self.workspace_id_2 = 9972
         self._clean_db()
-        from app.database import enable_conversation_ai
-        enable_conversation_ai(sender_id="8801816504097", workspace_id=self.workspace_id, enabled_by="test_setup")
-        enable_conversation_ai(sender_id="8801816504097", workspace_id=self.workspace_id_2, enabled_by="test_setup")
 
     def tearDown(self):
         self._clean_db()
@@ -41,13 +38,6 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
         c.execute("DELETE FROM google_connections WHERE workspace_id IN (?, ?)", (self.workspace_id, self.workspace_id_2))
         c.execute("DELETE FROM generated_forms WHERE workspace_id IN (?, ?)", (self.workspace_id, self.workspace_id_2))
         c.execute("DELETE FROM institutions WHERE workspace_id IN (?, ?)", (self.workspace_id, self.workspace_id_2))
-        c.execute("DELETE FROM conversations WHERE workspace_id IN (?, ?)", (self.workspace_id, self.workspace_id_2))
-        c.execute("DELETE FROM conversation_states WHERE workspace_id IN (?, ?)", (self.workspace_id, self.workspace_id_2))
-        c.execute("DELETE FROM conversation_state_audits WHERE workspace_id IN (?, ?)", (self.workspace_id, self.workspace_id_2))
-        try:
-            c.execute("DELETE FROM admin_takeovers WHERE workspace_id IN (?, ?)", (self.workspace_id, self.workspace_id_2))
-        except Exception:
-            pass
         conn.commit()
         conn.close()
 
@@ -342,7 +332,7 @@ class TestGoogleFormsRealE2EWorkflow(unittest.TestCase):
         mock_form_details, mock_forms_client
     ):
         self._setup_mock_connection(self.workspace_id)
-        
+
         # Existing Master Form questions
         master_items = [
             {"itemId": "q1", "title": "শিক্ষার্থীর নাম", "questionItem": {"question": {"required": True}}},

@@ -25,7 +25,6 @@ from app.database import (
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.channels.debouncer import message_debouncer, PendingBatch
 from app.ai_agent.gemini_brain import process_customer_message, detect_customer_gender_title
-from app.ai_agent.orchestrator import MasterOrchestrator
 
 GRAPH_API_URL = "https://graph.facebook.com/v19.0"
 
@@ -37,7 +36,7 @@ def get_fb_token(page_id: str = None) -> str:
             tok = str(p["page_access_token"]).strip()
             if tok and len(tok) > 10 and not tok.startswith("EAA_TEST"):
                 return tok
-    
+
     token = get_setting("fb_page_access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN") or settings.FB_PAGE_ACCESS_TOKEN
     if not token or len(str(token)) < 10 or str(token).startswith("EAA_TEST"):
         all_pages = get_all_connected_pages()
@@ -139,7 +138,7 @@ def get_fb_page_details(page_id: str = None, page_token: str = None) -> Dict[str
     url = f"https://graph.facebook.com/{graph_version}/{pid}"
     try:
         r = requests.get(url, params={"fields": "id,name,link,category,verification_status", "access_token": clean_token}, timeout=8)
-        
+
         # Check granted permissions
         granted_permissions = []
         try:
@@ -323,7 +322,7 @@ def send_fb_media_message_detailed(
                 mime = "image/jpeg" if media_type == "image" else ("video/mp4" if media_type == "video" else "audio/mp4")
                 files = {"filedata": (local_file_path.name, f_bin, mime)}
                 r = requests.post(url, params=params, data=data, files=files, timeout=25)
-                
+
             if r.status_code == 200:
                 try:
                     res_json = r.json()
@@ -428,7 +427,7 @@ def reply_to_fb_comment_detailed(comment_id: str, message: str, page_token: str 
         return False, {"error": "Missing token or comment_id"}
 
     graph_version = getattr(settings, "META_GRAPH_VERSION", "v23.0") or "v23.0"
-    
+
     candidate_ids = [comment_id]
     if "_" in comment_id:
         parts = comment_id.split("_")
@@ -450,7 +449,7 @@ def reply_to_fb_comment_detailed(comment_id: str, message: str, page_token: str 
             if r.status_code == 200 and resp_json.get("id"):
                 print(f"[Facebook Comment Reply SUCCESS]: Replied to comment {cid} -> New Comment ID: {resp_json.get('id')}")
                 return True, resp_json
-            
+
             # 2. Try JSON payload
             r_json = requests.post(url, params={"access_token": clean_token}, json={"message": message}, timeout=12)
             if r_json.status_code == 200 and r_json.json().get("id"):
@@ -483,7 +482,7 @@ def classify_facebook_comment_intent(comment_text: str) -> str:
     """
     if not comment_text or not comment_text.strip():
         return "gratitude"
-    
+
     text = comment_text.strip().lower().replace("য়", "য").replace("য়", "য")
 
     # 1. Inquiry keywords / question markers (take precedence if user is asking something)
@@ -599,41 +598,22 @@ async def process_facebook_batch(batch: PendingBatch):
     # Fetch conversation history scoped strictly to this Workspace
     history = get_conversation_history("facebook", sender_id, limit=12, page_id=page_id, workspace_id=workspace_id)
 
-    # Process with MasterOrchestrator (Central Intelligent Decision Pipeline)
-    ai_result = MasterOrchestrator.execute_decision(
-        customer_message=combined_text,
-        sender_id=sender_id,
-        customer_name=customer_name,
-        workspace_id=workspace_id,
-        conversation_history=history,
-        channel="facebook",
+    # Process with Gemini AI Brain with Workspace-isolated context & full image list
+    ai_result = await process_customer_message(
+        message_text=combined_text,
         image_bytes=image_bytes,
         image_mime=image_mime,
         image_list=image_list,
         audio_bytes=audio_bytes,
         audio_mime=audio_mime,
+        conversation_history=history,
+        channel="facebook",
+        sender_id=sender_id,
+        customer_name=customer_name,
         generate_voice_reply=bool(audio_bytes),
+        workspace_id=workspace_id,
         page_id=page_id
     )
-
-    # Sentinel: If orchestrator delegates to Gemini brain (non-primary workspace or multimodal)
-    _rs = ai_result.get("response_source", "")
-    if _rs in ("gemini_fallthrough", "multimodal_delegate"):
-        ai_result = await process_customer_message(
-            message_text=combined_text,
-            image_bytes=image_bytes,
-            image_mime=image_mime,
-            image_list=image_list,
-            audio_bytes=audio_bytes,
-            audio_mime=audio_mime,
-            conversation_history=history,
-            channel="facebook",
-            sender_id=sender_id,
-            customer_name=customer_name,
-            generate_voice_reply=bool(audio_bytes),
-            workspace_id=workspace_id,
-            page_id=page_id
-        )
 
     # Pre-Send Safety Guard: Double-check takeover state & version before delivering to user
     state = get_conversation_state(sender_id=sender_id, workspace_id=workspace_id)
@@ -653,7 +633,7 @@ async def process_facebook_batch(batch: PendingBatch):
             print(f"[OUTBOUND] message_id={batch.batch_id} conversation_id={batch.conversation_id}")
 
     base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
-    
+
     # Handle phased media sequence if generated
     media_sequence = ai_result.get("media_sequence")
     if media_sequence and isinstance(media_sequence, list) and len(media_sequence) > 0:
@@ -796,7 +776,7 @@ async def handle_facebook_webhook_event(data: dict):
                 for event in entry["messaging"]:
                     sender_id = str(event.get("sender", {}).get("id", "")).strip()
                     recipient_id = str(event.get("recipient", {}).get("id", "")).strip()
-                    
+
                     if not sender_id:
                         continue
 
@@ -835,7 +815,7 @@ async def handle_facebook_webhook_event(data: dict):
                     # Detect if message was an echo or sent by the Page
                     if is_echo or (sender_id == page_id) or (get_connected_page(sender_id) is not None):
                         actual_cust_id = recipient_id if (sender_id == page_id or get_connected_page(sender_id) is not None) else sender_id
-                        
+
                         # Distinguish AI bot outgoing echo vs Human Admin takeover
                         is_our_app = bool(app_id and str(app_id).strip() == str(settings.META_APP_ID).strip())
                         is_ai_outbound = is_outbound_ai_message("facebook", msg_id) if msg_id else False
@@ -873,7 +853,7 @@ async def handle_facebook_webhook_event(data: dict):
 
                     msg_text = msg.get("text", "")
                     attachments = msg.get("attachments", [])
-                    
+
                     image_bytes = None
                     image_mime = "image/jpeg"
                     audio_bytes = None
@@ -885,7 +865,7 @@ async def handle_facebook_webhook_event(data: dict):
                         att_url = att.get("payload", {}).get("url")
                         if not att_url:
                             continue
-                        
+
                         try:
                             if att_type == "image":
                                 r = requests.get(att_url, timeout=10)
@@ -976,13 +956,13 @@ async def handle_facebook_webhook_event(data: dict):
                 for change in entry.get("changes", []):
                     field = change.get("field")
                     value = change.get("value", {})
-                    
+
                     verb = value.get("verb", "add")
                     if verb in ["remove", "hide", "block", "unlike", "delete"]:
                         continue
 
                     is_comment = (
-                        (field in ["feed", "comments", "mention"]) and 
+                        (field in ["feed", "comments", "mention"]) and
                         (value.get("item") == "comment" or bool(value.get("comment_id")))
                     )
                     if not is_comment:

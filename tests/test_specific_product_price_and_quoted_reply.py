@@ -173,7 +173,7 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
     def test_15_specific_category_photo_requests(self):
         from app.ai_agent.gemini_brain import detect_sample_photos_to_send
         bot_cover_reply = "জি স্যার, অবশ্যই দিচ্ছি। আমাদের কাছে বেশ কয়েকটি প্রিমিয়াম ও চমৎকার মানের কভার রয়েছে। নিচে ছবিগুলো দেওয়া হলো স্যার:"
-        
+
         # 1. Cover photo request with count and 'দিয়েন'
         imgs_cover = detect_sample_photos_to_send("দুইটা ভালো মানের কভারের ছবি দিয়েন তো", bot_reply=bot_cover_reply, workspace_id=1)
         self.assertEqual(len(imgs_cover), 2)

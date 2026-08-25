@@ -226,7 +226,7 @@ class TestWhatsAppRoutingFix(unittest.TestCase):
         w1_count_2 = len([wa for wa in all_wa_2 if wa["workspace_id"] == 1])
 
         self.assertEqual(w1_count_1, w1_count_2, f"init_db created duplicate WhatsApp accounts: before={w1_count_1}, after={w1_count_2}")
-        
+
         # Ensure primary account has verified ID
         w1_acc = get_whatsapp_account_by_workspace_id(1)
         self.assertIn(w1_acc["phone_number_id"], ["418451426636680", "4184514263660680"])

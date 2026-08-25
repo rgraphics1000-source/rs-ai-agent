@@ -58,7 +58,7 @@ class TestPreDeploymentAuditAToK(unittest.TestCase):
         self.wa_cust = "8801711990011"
         self.fb_cust = "audit_fb_user_11"
         self.wa_cust_w2 = "8801711990022"
-        
+
         # Clean test state
         conn = get_db_connection()
         conn.execute("DELETE FROM conversations WHERE sender_id IN (?, ?, ?)", (self.wa_cust, self.fb_cust, self.wa_cust_w2))
@@ -187,7 +187,7 @@ class TestPreDeploymentAuditAToK(unittest.TestCase):
             await asyncio.sleep(0.08) # Less than 0.15s
             # Message 3 (resets timer)
             await debouncer.add_message("whatsapp", 1, self.wa_cust, "Customer WA", text="মেসেজ ৩", callback=callback)
-            
+
             # Wait for the extended timer to fire
             await asyncio.sleep(0.25)
 
@@ -283,7 +283,7 @@ class TestPreDeploymentAuditAToK(unittest.TestCase):
     # -------------------------------------------------------------
     def test_item_g_after_takeover_five_messages_zero_ai_responses(self):
         set_admin_takeover(sender_id=self.wa_cust, workspace_id=1)
-        
+
         with patch("app.channels.whatsapp.send_whatsapp_message") as mock_send:
             for i in range(7):
                 payload = {
@@ -388,10 +388,10 @@ class TestPreDeploymentAuditAToK(unittest.TestCase):
     # -------------------------------------------------------------
     def test_item_j_google_form_prevented_under_takeover(self):
         set_admin_takeover(sender_id=self.wa_cust, workspace_id=1)
-        
+
         with patch("app.google_integration.ai_tool.create_institution_form") as mock_form, \
              patch("app.channels.whatsapp.send_whatsapp_message") as mock_send:
-            
+
             payload = {
                 "entry": [{
                     "changes": [{
@@ -447,7 +447,7 @@ class TestPreDeploymentAuditAToK(unittest.TestCase):
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(conversations)")
         existing_cols = [c[1] for c in cursor.fetchall()]
-        
+
         # Apply migration steps from init_db()
         if "admin_takeover" not in existing_cols:
             cursor.execute("ALTER TABLE conversations ADD COLUMN admin_takeover INTEGER DEFAULT 0")

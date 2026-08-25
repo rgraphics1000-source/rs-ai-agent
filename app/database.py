@@ -580,81 +580,6 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_owner_approval_audits_appr ON owner_approval_audits(approval_id);")
 
-    # 24. AI Training Rule Versions (Immutable Audit Trail for Training Knowledge)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS ai_training_rule_versions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        rule_id INTEGER NOT NULL,
-        workspace_id INTEGER DEFAULT 1,
-        version INTEGER NOT NULL,
-        title TEXT NOT NULL,
-        rule_type TEXT DEFAULT 'qa',
-        question_or_trigger TEXT,
-        response_or_rule TEXT NOT NULL,
-        category TEXT DEFAULT 'General',
-        status TEXT DEFAULT 'active',
-        is_active INTEGER DEFAULT 1,
-        priority INTEGER DEFAULT 10,
-        modified_by TEXT DEFAULT 'system',
-        source_reference TEXT,
-        change_summary TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_training_rule_versions_rule_ws ON ai_training_rule_versions(rule_id, workspace_id);")
-
-    # 25. Team Escalations (Durable Unknown Topic & Question Escalation Engine)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS team_escalations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        workspace_id INTEGER DEFAULT 1,
-        sender_id TEXT NOT NULL,
-        conversation_id TEXT,
-        customer_message TEXT NOT NULL,
-        detected_unknown_topic TEXT,
-        status TEXT DEFAULT 'PENDING', -- 'PENDING', 'RESOLVED', 'DISMISSED'
-        source_channel TEXT DEFAULT 'facebook',
-        resolved_by TEXT,
-        resolution_notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_escalations_sender_ws ON team_escalations(sender_id, workspace_id);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_escalations_status ON team_escalations(status);")
-
-    # Auto-migration columns for ai_training_rules (Phase 9 Durable Training Engine)
-    training_cols = [
-        ("priority", "INTEGER DEFAULT 10"),
-        ("version", "INTEGER DEFAULT 1"),
-        ("status", "TEXT DEFAULT 'active'"),
-        ("created_by", "TEXT DEFAULT 'system'"),
-        ("source_reference", "TEXT"),
-        ("archived_at", "TIMESTAMP"),
-        ("updated_at", "TIMESTAMP")
-    ]
-    for col_name, col_def in training_cols:
-        try:
-            cursor.execute(f"ALTER TABLE ai_training_rules ADD COLUMN {col_name} {col_def}")
-        except Exception:
-            pass
-
-    # Auto-migration columns for conversation_states (Phase 9 Rich Conversation Memory)
-    conv_state_cols = [
-        ("memory_context", "TEXT DEFAULT '{}'"),
-        ("current_topic", "TEXT DEFAULT 'id_card'"),
-        ("previous_topic", "TEXT"),
-        ("pending_question", "TEXT"),
-        ("questions_asked", "TEXT DEFAULT '[]'"),
-        ("facts_confirmed", "TEXT DEFAULT '{}'"),
-        ("media_dispatched", "TEXT DEFAULT '[]'")
-    ]
-    for col_name, col_def in conv_state_cols:
-        try:
-            cursor.execute(f"ALTER TABLE conversation_states ADD COLUMN {col_name} {col_def}")
-        except Exception:
-            pass
-
     # Multi-tenant scoping columns migration for all business tables
     scoped_tables = [
         "products", "orders", "conversations", "comment_logs",
@@ -1069,333 +994,73 @@ def get_all_settings(masked: bool = False) -> dict:
     return result
 
 # ============================================================
-# AI TRAINING & KNOWLEDGE BASE HELPERS (Phase 9 Durable Versioning)
+# AI TRAINING & KNOWLEDGE BASE HELPERS
 # ============================================================
 
 def get_active_training_rules(workspace_id: int = 1) -> list:
     """Returns all active AI training rules, Q&A, and policy guidelines scoped to a workspace."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT * FROM ai_training_rules
-        WHERE workspace_id = ? AND is_active = 1 AND (status IS NULL OR status = 'active')
-        ORDER BY priority DESC, category ASC, id ASC
-    """, (int(workspace_id or 1),))
+    cursor.execute("SELECT * FROM ai_training_rules WHERE workspace_id = ? AND is_active = 1 ORDER BY category ASC, id ASC", (int(workspace_id or 1),))
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
-def get_all_training_rules(workspace_id: Optional[int] = None, include_archived: bool = False) -> list:
-    """Returns all training rules for dashboard management, optionally scoped by workspace and archived filter."""
+def get_all_training_rules(workspace_id: Optional[int] = None) -> list:
+    """Returns all training rules for dashboard management, optionally scoped by workspace."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    query = "SELECT * FROM ai_training_rules WHERE 1=1"
-    params = []
     if workspace_id is not None:
-        query += " AND workspace_id = ?"
-        params.append(int(workspace_id))
-    if not include_archived:
-        query += " AND (status IS NULL OR status != 'archived')"
-    query += " ORDER BY id DESC"
-    cursor.execute(query, tuple(params))
+        cursor.execute("SELECT * FROM ai_training_rules WHERE workspace_id = ? ORDER BY id DESC", (int(workspace_id),))
+    else:
+        cursor.execute("SELECT * FROM ai_training_rules ORDER BY id DESC")
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
-def create_training_rule(
-    title: str,
-    response_or_rule: str,
-    rule_type: str = "qa",
-    question_or_trigger: str = "",
-    category: str = "General",
-    is_active: int = 1,
-    workspace_id: int = 1,
-    created_by: str = "system",
-    priority: int = 10,
-    source_reference: str = ""
-) -> int:
-    """Creates a durable training rule and records its version 1 audit snapshot."""
+def create_training_rule(title: str, response_or_rule: str, rule_type: str = "qa", question_or_trigger: str = "", category: str = "General", is_active: int = 1, workspace_id: int = 1) -> int:
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO ai_training_rules (
-            title, rule_type, question_or_trigger, response_or_rule, category,
-            is_active, workspace_id, version, status, created_by, priority, source_reference
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'active', ?, ?, ?)
-    """, (
-        title, rule_type, question_or_trigger, response_or_rule, category,
-        is_active, int(workspace_id or 1), created_by, priority, source_reference
-    ))
-    rule_id = cursor.lastrowid
-
-    # Record Version 1 Snapshot
-    cursor.execute("""
-        INSERT INTO ai_training_rule_versions (
-            rule_id, workspace_id, version, title, rule_type, question_or_trigger,
-            response_or_rule, category, status, is_active, priority, modified_by,
-            source_reference, change_summary
-        ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, 'Initial version created')
-    """, (
-        rule_id, int(workspace_id or 1), title, rule_type, question_or_trigger,
-        response_or_rule, category, is_active, priority, created_by, source_reference
-    ))
+        INSERT INTO ai_training_rules (title, rule_type, question_or_trigger, response_or_rule, category, is_active, workspace_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (title, rule_type, question_or_trigger, response_or_rule, category, is_active, int(workspace_id or 1)))
     conn.commit()
+    rule_id = cursor.lastrowid
     conn.close()
     return rule_id
 
-def update_training_rule(
-    rule_id: int,
-    title: str,
-    response_or_rule: str,
-    rule_type: str = "qa",
-    question_or_trigger: str = "",
-    category: str = "General",
-    is_active: int = 1,
-    workspace_id: Optional[int] = None,
-    modified_by: str = "admin",
-    change_summary: str = "Updated training content"
-) -> bool:
-    """Updates a training rule, increments version, and appends an immutable version audit snapshot."""
+def update_training_rule(rule_id: int, title: str, response_or_rule: str, rule_type: str = "qa", question_or_trigger: str = "", category: str = "General", is_active: int = 1, workspace_id: Optional[int] = None) -> bool:
     conn = get_db_connection()
     cursor = conn.cursor()
-
-    # Fetch current version
-    cursor.execute("SELECT version, workspace_id, priority, source_reference FROM ai_training_rules WHERE id = ?", (rule_id,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        return False
-
-    old_version = int(row["version"] or 1)
-    new_version = old_version + 1
-    ws_id = int(workspace_id) if workspace_id is not None else int(row["workspace_id"] or 1)
-    prio = int(row["priority"] or 10)
-    src_ref = str(row["source_reference"] or "")
-
-    cursor.execute("""
-        UPDATE ai_training_rules
-        SET title = ?, rule_type = ?, question_or_trigger = ?, response_or_rule = ?,
-            category = ?, is_active = ?, version = ?, updated_at = CURRENT_TIMESTAMP, workspace_id = ?
-        WHERE id = ?
-    """, (
-        title, rule_type, question_or_trigger, response_or_rule,
-        category, is_active, new_version, ws_id, rule_id
-    ))
-
-    # Append new version record
-    cursor.execute("""
-        INSERT INTO ai_training_rule_versions (
-            rule_id, workspace_id, version, title, rule_type, question_or_trigger,
-            response_or_rule, category, status, is_active, priority, modified_by,
-            source_reference, change_summary
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
-    """, (
-        rule_id, ws_id, new_version, title, rule_type, question_or_trigger,
-        response_or_rule, category, is_active, prio, modified_by, src_ref, change_summary
-    ))
-
+    if workspace_id is not None:
+        cursor.execute("""
+            UPDATE ai_training_rules
+            SET title = ?, rule_type = ?, question_or_trigger = ?, response_or_rule = ?, category = ?, is_active = ?, workspace_id = ?
+            WHERE id = ?
+        """, (title, rule_type, question_or_trigger, response_or_rule, category, is_active, int(workspace_id), rule_id))
+    else:
+        cursor.execute("""
+            UPDATE ai_training_rules
+            SET title = ?, rule_type = ?, question_or_trigger = ?, response_or_rule = ?, category = ?, is_active = ?
+            WHERE id = ?
+        """, (title, rule_type, question_or_trigger, response_or_rule, category, is_active, rule_id))
     conn.commit()
     conn.close()
     return True
 
-def archive_training_rule(rule_id: int, modified_by: str = "admin") -> bool:
-    """Soft-archives a training rule, safely deactivating it without data loss."""
+def delete_training_rule(rule_id: int) -> bool:
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT version, workspace_id, title, rule_type, question_or_trigger, response_or_rule, category, priority, source_reference FROM ai_training_rules WHERE id = ?", (rule_id,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        return False
-
-    old_ver = int(row["version"] or 1)
-    new_ver = old_ver + 1
-    ws_id = int(row["workspace_id"] or 1)
-
-    cursor.execute("""
-        UPDATE ai_training_rules
-        SET status = 'archived', is_active = 0, archived_at = CURRENT_TIMESTAMP, version = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    """, (new_ver, rule_id))
-
-    cursor.execute("""
-        INSERT INTO ai_training_rule_versions (
-            rule_id, workspace_id, version, title, rule_type, question_or_trigger,
-            response_or_rule, category, status, is_active, priority, modified_by,
-            source_reference, change_summary
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'archived', 0, ?, ?, ?, 'Archived by user')
-    """, (
-        rule_id, ws_id, new_ver, row["title"], row["rule_type"], row["question_or_trigger"],
-        row["response_or_rule"], row["category"], int(row["priority"] or 10), modified_by, str(row["source_reference"] or "")
-    ))
-
-    conn.commit()
-    conn.close()
-    return True
-
-def restore_training_rule(rule_id: int, modified_by: str = "admin") -> bool:
-    """Restores an archived training rule to active status."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT version, workspace_id, title, rule_type, question_or_trigger, response_or_rule, category, priority, source_reference FROM ai_training_rules WHERE id = ?", (rule_id,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        return False
-
-    old_ver = int(row["version"] or 1)
-    new_ver = old_ver + 1
-    ws_id = int(row["workspace_id"] or 1)
-
-    cursor.execute("""
-        UPDATE ai_training_rules
-        SET status = 'active', is_active = 1, archived_at = NULL, version = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    """, (new_ver, rule_id))
-
-    cursor.execute("""
-        INSERT INTO ai_training_rule_versions (
-            rule_id, workspace_id, version, title, rule_type, question_or_trigger,
-            response_or_rule, category, status, is_active, priority, modified_by,
-            source_reference, change_summary
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, ?, ?, ?, 'Restored to active')
-    """, (
-        rule_id, ws_id, new_ver, row["title"], row["rule_type"], row["question_or_trigger"],
-        row["response_or_rule"], row["category"], int(row["priority"] or 10), modified_by, str(row["source_reference"] or "")
-    ))
-
-    conn.commit()
-    conn.close()
-    return True
-
-def delete_training_rule(rule_id: int, permanent: bool = False) -> bool:
-    """Deletes or archives a training rule. Permanent deletion drops history, soft deletion archives."""
-    if not permanent:
-        return archive_training_rule(rule_id)
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM ai_training_rule_versions WHERE rule_id = ?", (rule_id,))
     cursor.execute("DELETE FROM ai_training_rules WHERE id = ?", (rule_id,))
     conn.commit()
     conn.close()
     return True
 
 def toggle_training_rule(rule_id: int) -> bool:
-    """Toggles active state of a training rule."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE ai_training_rules
-        SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    """, (rule_id,))
-    conn.commit()
-    conn.close()
-    return True
-
-def get_training_rule_versions(rule_id: int) -> list:
-    """Returns the immutable version history of a training rule."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM ai_training_rule_versions WHERE rule_id = ? ORDER BY version DESC", (rule_id,))
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return rows
-
-def search_training_rules(query: str, workspace_id: int = 1) -> list:
-    """Searches active training rules by keyword match across title, trigger, category, and response."""
-    if not query:
-        return get_active_training_rules(workspace_id)
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    term = f"%{query.strip().lower()}%"
-    cursor.execute("""
-        SELECT * FROM ai_training_rules
-        WHERE workspace_id = ? AND is_active = 1 AND (status IS NULL OR status = 'active')
-          AND (LOWER(title) LIKE ? OR LOWER(question_or_trigger) LIKE ? OR LOWER(response_or_rule) LIKE ? OR LOWER(category) LIKE ?)
-        ORDER BY priority DESC, id ASC
-    """, (int(workspace_id or 1), term, term, term, term))
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return rows
-
-# ============================================================
-# TEAM ESCALATIONS HELPERS (Phase 9 No-Guess Boundary Engine)
-# ============================================================
-
-def create_team_escalation(
-    sender_id: str,
-    customer_message: str,
-    detected_unknown_topic: str = "",
-    workspace_id: int = 1,
-    conversation_id: str = "",
-    source_channel: str = "facebook"
-) -> int:
-    """Creates or updates a deduplicated team escalation for an unanswered/unknown inquiry."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    s_id = str(sender_id).strip()
-    ws_id = int(workspace_id or 1)
-    topic_str = str(detected_unknown_topic or "").strip()
-    conv_id = str(conversation_id or f"conv_{ws_id}_{s_id}").strip()
-
-    # Deduplication check: Has a pending escalation been created recently for this topic?
-    cursor.execute("""
-        SELECT id FROM team_escalations
-        WHERE workspace_id = ? AND sender_id = ? AND detected_unknown_topic = ? AND status = 'PENDING'
-        ORDER BY id DESC LIMIT 1
-    """, (ws_id, s_id, topic_str))
-    existing = cursor.fetchone()
-    if existing:
-        esc_id = existing["id"]
-        cursor.execute("""
-            UPDATE team_escalations
-            SET customer_message = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (customer_message, esc_id))
-        conn.commit()
-        conn.close()
-        return esc_id
-
-    cursor.execute("""
-        INSERT INTO team_escalations (
-            workspace_id, sender_id, conversation_id, customer_message,
-            detected_unknown_topic, status, source_channel
-        ) VALUES (?, ?, ?, ?, ?, 'PENDING', ?)
-    """, (ws_id, s_id, conv_id, customer_message, topic_str, source_channel))
-    esc_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return esc_id
-
-def get_team_escalations(workspace_id: Optional[int] = None, status: str = "PENDING") -> list:
-    """Returns team escalations filtered by status and workspace."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    if workspace_id is not None:
-        if status == "ALL":
-            cursor.execute("SELECT * FROM team_escalations WHERE workspace_id = ? ORDER BY id DESC", (int(workspace_id),))
-        else:
-            cursor.execute("SELECT * FROM team_escalations WHERE workspace_id = ? AND status = ? ORDER BY id DESC", (int(workspace_id), status))
-    else:
-        if status == "ALL":
-            cursor.execute("SELECT * FROM team_escalations ORDER BY id DESC")
-        else:
-            cursor.execute("SELECT * FROM team_escalations WHERE status = ? ORDER BY id DESC", (status,))
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return rows
-
-def resolve_team_escalation(escalation_id: int, resolved_by: str = "admin", resolution_notes: str = "") -> bool:
-    """Marks a team escalation as resolved."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE team_escalations
-        SET status = 'RESOLVED', resolved_by = ?, resolution_notes = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    """, (resolved_by, resolution_notes, escalation_id))
+    cursor.execute("UPDATE ai_training_rules SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE id = ?", (rule_id,))
     conn.commit()
     conn.close()
     return True
