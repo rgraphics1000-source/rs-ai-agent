@@ -1863,6 +1863,25 @@ def generate_smart_fallback_reply(
 
                 return f"জি {honorific}, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
 
+        # Identity Inquiries in Fallback
+        if any(k in msg for k in ["আপনি কে", "তুমি কে", "আপনার নাম", "তোমার নাম", "who are you", "who is this", "apni ke", "apnar nam"]):
+            return f"জি {honorific}, আমি নাদিম, RS Graphics-এর পক্ষ থেকে আপনাকে সহযোগিতা করছি। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
+
+        # Social Pleasantries in Fallback
+        if any(k in msg for k in ["ভালো আছেন", "ভাল আছেন", "কেমন আছেন", "কেমন আছো", "কি খবর", "কী খবর", "bhalo achen", "kemon achen", "ki khobor"]):
+            has_salam = any(k in msg for k in ["সালাম", "salam", "assalam"])
+            if has_salam:
+                return f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+            return f"আলহামদুলিল্লাহ {honorific}, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+
+        # Pure Greetings in Fallback
+        if any(k in msg for k in ["সালাম", "salam", "assalam", "হাই", "হ্যালো", "hello", "hi", "hey"]):
+            return f"ওয়ালাইকুমুস সালাম {honorific}! আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+
+        # Delivery Fee in Fallback
+        if any(k in msg for k in ["ডেলিভারি চার্জ", "কুরিয়ার চার্জ", "ডেলিভারি", "delivery"]):
+            return f"জি {honorific}, আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে ৮০ টাকা এবং ঢাকার বাইরে ১৩০ টাকা।"
+
         if any(k in msg for k in ["আইডি কার্ড", "আইডি কাড", "id card", "আইডিকার্ড", "কার্ড বানাতে", "কার্ড করতে", "কার্ড বানাবো"]):
             return f"জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন?"
 
@@ -1878,7 +1897,7 @@ def generate_smart_fallback_reply(
         if any(k in msg for k in ["দাম", "রেট", "মূল্য", "price", "cost"]):
             return f"জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন জানাবেন প্লিজ? আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস।"
 
-        return f"জি {honorific}, আসসালামু আলাইকুম! আপনি আইডি কার্ড কত পিস বানাবেন জানাবেন প্লিজ?"
+        return f"জি {honorific}, আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
 
     # Workspace 2+ Clean Generic Fallbacks (Never mentioning RS Graphics or ID cards)
     if any(k in msg for k in ["দাম", "রেট", "মূল্য", "price", "cost"]):

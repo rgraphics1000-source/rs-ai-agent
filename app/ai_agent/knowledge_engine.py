@@ -1,5 +1,5 @@
 """
-Phase 9: Knowledge Engine, Strict No-Guess Boundary & Team Escalation for RS Graphics AI Agent.
+Phase 9 & 9.3: Knowledge Engine, Strict No-Guess Boundary & Team Escalation for RS Graphics AI Agent.
 
 Guarantees:
 1. Centralized dynamic knowledge retrieval from database (Active Training Rules, FAQs, Products).
@@ -7,6 +7,7 @@ Guarantees:
 3. Persistent Deduplicated Team Escalations in SQLite.
 4. Agent Persona: Explicit agent name is 'নাদিম'.
 5. Owner Persona: Never hallucinates owner identity unless authoritatively defined.
+6. Separation of Concerns: Differentiates actionable response rules from internal prompt instructions.
 """
 
 import re
@@ -40,11 +41,14 @@ class KnowledgeEngine:
         """
         Retrieves strictly relevant active training rules, FAQs, and product specs
         scoped to workspace without dumping the whole database into prompts.
+        Separates direct customer-facing answers from developer guidance instructions.
         """
         ws_id = int(workspace_id or 1)
         q_clean = (query or "").strip().lower()
 
         matched_rules = []
+        direct_answers = []
+        guidance_instructions = []
         matched_faqs = []
         matched_products = []
 
@@ -61,6 +65,14 @@ class KnowledgeEngine:
                         if r not in rule_candidates:
                             rule_candidates.append(r)
             matched_rules = rule_candidates[:5]
+
+            # Categorize into direct verbatim answers vs LLM prompt instructions
+            for r in matched_rules:
+                r_type = str(r.get("rule_type") or "").strip().lower()
+                if r_type in ("response", "faq", "direct_answer", "answer"):
+                    direct_answers.append(r)
+                else:
+                    guidance_instructions.append(r)
 
             # 2. Search FAQs
             all_faqs = get_all_faqs(workspace_id=ws_id)
@@ -80,7 +92,7 @@ class KnowledgeEngine:
                     matched_products.append(p)
             matched_products = matched_products[:3]
 
-        has_authoritative_answer = bool(matched_rules or matched_faqs or matched_products)
+        has_authoritative_answer = bool(direct_answers or matched_faqs or matched_products)
 
         return {
             "query": query,
@@ -88,6 +100,8 @@ class KnowledgeEngine:
             "topic": topic,
             "workspace_id": ws_id,
             "matched_rules": matched_rules,
+            "direct_answers": direct_answers,
+            "guidance_instructions": guidance_instructions,
             "matched_faqs": matched_faqs,
             "matched_products": matched_products,
             "has_authoritative_answer": has_authoritative_answer
@@ -108,15 +122,17 @@ class KnowledgeEngine:
         honorific = detect_customer_gender_title(customer_name)
         ws_id = int(workspace_id or 1)
 
-        # Agent Name inquiry
+        # Agent Name inquiry (Comprehensive Bangla & Banglish matching)
         agent_name_patterns = [
             "তোমার নাম কি", "তোমার নাম কী", "আপনার নাম কি", "আপনার নাম কী",
-            "তোমার নাম", "আপনার নাম", "who are you", "what is your name",
-            "কার সাথে কথা বলছি", "কার সাথে কথা বলতেছি"
+            "তোমার নাম", "আপনার নাম", "who are you", "what is your name", "who is this",
+            "কার সাথে কথা বলছি", "কার সাথে কথা বলতেছি", "কার সাথে কথা বলতেছেন",
+            "আপনি কে", "তুমি কে", "কে কথা বলছেন", "কে কথা বলতেছেন", "কে বলছেন", "কে বলছ",
+            "apni ke", "apni k", "tumi ke", "apnar nam ki", "tomar nam ki", "ke bolchen"
         ]
-        if any(p in raw_msg for p in agent_name_patterns):
+        if any(p in raw_msg for p in agent_name_patterns) or re.search(r'\b(?:আপনি|তুমি)\s*কে\b', raw_msg):
             return {
-                "reply_text": f"জি {honorific}, আমার নাম {AGENT_NAME_BN}। আমি আরএস গ্রাফিক্সের সেলস সহকারী। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?",
+                "reply_text": f"জি {honorific}, আমার নাম নাদিম, আমি RS Graphics-এর পক্ষ থেকে আপনাকে সহযোগিতা করছি। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?",
                 "is_handled": True,
                 "response_source": "agent_identity_inquiry"
             }
@@ -158,7 +174,7 @@ class KnowledgeEngine:
         cls,
         customer_message: str,
         sender_id: str,
-        detected_topic: str = "unsupported_inquiry",
+        detected_topic: str = "unknown_inquiry",
         workspace_id: int = 1,
         customer_name: str = "Customer",
         channel: str = "facebook"
@@ -183,7 +199,7 @@ class KnowledgeEngine:
             except Exception as e:
                 print(f"[Team Escalation Save Warning]: {e}")
 
-        reply_text = f"জি {honorific}, এই বিষয়টির সঠিক তথ্য এই মুহূর্তে আমার কাছে নেই। বিষয়টি আমাদের টিমকে জানাচ্ছি। আমাদের টিম আপনাকে জানাবে।"
+        reply_text = f"জি {honorific}, বিষয়টি আমি নিশ্চিতভাবে বুঝতে পারছি না। আমাদের টিমকে জানাচ্ছি, তারা আপনাকে বিষয়টি জানিয়ে দেবে।"
 
         return {
             "reply_text": reply_text,

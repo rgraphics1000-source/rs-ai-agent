@@ -281,25 +281,50 @@ class ResponseValidator:
                 validation_flags.append("REPEATED_SAMPLE_PERMISSION_INTERCEPTED")
 
         # -------------------------------------------------------------
-        # 9. PERSONA & CLEANLINESS SANITIZATION
+        # 9. PERSONA & CLEANLINESS SANITIZATION & PROMPT LEAK GUARD
         # -------------------------------------------------------------
-        # Replace informal ভাইয়া / আপু with formal honorific
-        clean_text = reply_text
-        for word in ["ভাইয়া", "ভাই", "আপু", "আপা", "আপু/ভাইয়া", "ভাইয়া/আপু", "স্যার/ম্যাম"]:
-            clean_text = clean_text.replace(word, honorific)
+        # Intercept internal developer instructions, system prompts, or leaked rule texts
+        instruction_leak_patterns = [
+            r'কাস্টমার\s*প্রথমে\s*মেসেজ\s*দিলে',
+            r'সরাসরি\s*প্রথম\s*মেসেজেই\s*দাম\s*বলা\s*যাবে\s*না',
+            r'প্রথম\s*মেসেজেই\s*দাম',
+            r'প্রথমে\s*নম্রভাবে\s*শুভেচ্ছা\s*জানিয়ে',
+            r'Sales\s*Protocol',
+            r'Pricing\s*&\s*MOQ',
+            r'Minimum\s*Order\s*Quantity\s*হলো',
+            r'system[_\s]*prompt',
+            r'system[_\s]*instruction',
+            r'developer\s*note',
+            r'internal\s*rule',
+            r'rule_type',
+            r'def\s+\w+\(',
+            r'import\s+\w+',
+            r'return\s+["\']',
+            r'```(?:json|python|bash)?',
+            r'\{[\s\n]*["\'](?:intent|reply|reply_text|response_source)["\']\s*:'
+        ]
+        is_leaked = any(re.search(p, reply_text, flags=re.IGNORECASE) for p in instruction_leak_patterns)
+        if is_leaked:
+            clean_text = f"জি {honorific}, আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+            validation_flags.append("INTERNAL_INSTRUCTION_LEAK_REJECTED")
+        else:
+            # Replace informal ভাইয়া / আপু with formal honorific
+            clean_text = reply_text
+            for word in ["ভাইয়া", "ভাই", "আপু", "আপা", "আপু/ভাইয়া", "ভাইয়া/আপু", "স্যার/ম্যাম"]:
+                clean_text = clean_text.replace(word, honorific)
 
-        # Remove HTML tags and script tags
-        clean_text = re.sub(r'<[^>]+>', '', clean_text)
-        # Remove markdown image syntax and raw file paths from chat text
-        clean_text = re.sub(r'!\[[^\]]*\]\([^)]+\)', '', clean_text)
-        clean_text = re.sub(r'\[Image[s]?:\s*[^\]]+\]', '', clean_text, flags=re.IGNORECASE)
-        clean_text = re.sub(r'/static/uploads/\S+', '', clean_text)
-        clean_text = re.sub(r'[ \t]+', ' ', clean_text)
-        clean_text = re.sub(r'\n{3,}', '\n\n', clean_text).strip()
+            # Remove HTML tags and script tags
+            clean_text = re.sub(r'<[^>]+>', '', clean_text)
+            # Remove markdown image syntax and raw file paths from chat text
+            clean_text = re.sub(r'!\[[^\]]*\]\([^)]+\)', '', clean_text)
+            clean_text = re.sub(r'\[Image[s]?:\s*[^\]]+\]', '', clean_text, flags=re.IGNORECASE)
+            clean_text = re.sub(r'/static/uploads/\S+', '', clean_text)
+            clean_text = re.sub(r'[ \t]+', ' ', clean_text)
+            clean_text = re.sub(r'\n{3,}', '\n\n', clean_text).strip()
 
         # Fallback for empty text
         if not clean_text:
-            clean_text = f"জি {honorific}, আরএস গ্রাফিক্সের পক্ষ থেকে আপনাকে স্বাগতম। আপনার অর্ডার বা তথ্যের বিষয়ে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+            clean_text = f"জি {honorific}, আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনার অর্ডার বা তথ্যের বিষয়ে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
 
         # Deduplicate matched images and cap at 3 (unless full package sequence)
         unique_images = []
