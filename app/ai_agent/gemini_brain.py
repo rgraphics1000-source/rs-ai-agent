@@ -47,6 +47,60 @@ def detect_customer_gender_title(customer_name: str) -> str:
         
     return "স্যার"
 
+def is_affirmative_response(text: str) -> bool:
+    """
+    Safely normalizes and checks if customer message is an affirmative response.
+    Supports Bengali, English, and Banglish affirmative words and phrases.
+    Uses strict token/word-boundary matching to prevent false positives (e.g. 'jeep', 'jihad', 'yesman').
+    """
+    if not text:
+        return False
+
+    cleaned = text.strip().lower()
+    # Remove common punctuation
+    cleaned_norm = re.sub(r'[\.,!\?;:\-_"\'\(\)\[\]\{\}\|/\\]+', ' ', cleaned).strip()
+    tokens = [t for t in cleaned_norm.split() if t]
+
+    if not tokens:
+        return False
+
+    # Exact single token affirmatives
+    exact_single_tokens = {
+        # Bengali
+        "জি", "জী", "হ্যাঁ", "হা", "হাঁ", "হুম", "হুমম", "হুমম্ম", "অবশ্যই", "নিশ্চয়", "নিশ্চয়",
+        "আচ্ছা", "ঠিক", "দেখান", "পাঠান", "দিন", "দেন", "পাঠাও", "দাও", "দেখা", "সেন্ড", "করুন", "করেন",
+        # English / Banglish
+        "yes", "y", "yeah", "yep", "yup", "ok", "okay", "sure", "fine",
+        "ji", "jee", "je", "ha", "haa", "hm", "hmm", "hmmm", "send", "show"
+    }
+
+    polite_fillers = {
+        "please", "sir", "madam", "mam", "vai", "bhai", "plz", "pls",
+        "স্যার", "ম্যাম", "ম্যাডাম", "ভাই", "প্লিজ", "একটু", "একবার"
+    }
+
+    # If all tokens in the message are either affirmatives or polite fillers
+    if all(t in exact_single_tokens or t in polite_fillers for t in tokens):
+        # At least one token must be in exact_single_tokens (not just 'please sir')
+        if any(t in exact_single_tokens for t in tokens):
+            return True
+
+    # Multi-token phrases
+    affirmative_phrases = [
+        "ঠিক আছে", "ঠিক আছে পাঠান", "আচ্ছা পাঠান", "আচ্ছা দিন", "আচ্ছা দেন",
+        "পাঠিয়ে দেন", "পাঠিয়ে দিন", "পাঠিয়ে দাও", "সেন্ড করুন", "সেন্ড করেন",
+        "স্যাম্পল পাঠান", "স্যাম্পল দিন", "স্যাম্পল দেন", "স্যাম্পল দেখান",
+        "ছবি পাঠান", "ছবি দিন", "ছবি দেন", "ছবি দেখান", "প্যাকেজ দেখান", "প্যাকেজ পাঠান",
+        "yes please", "sure please", "ok please", "okay send", "send please",
+        "ji please", "jee please", "ji পাঠান", "jee পাঠান", "জি পাঠান", "জি দিন", "জি দেন",
+        "হ্যাঁ পাঠান", "হ্যাঁ দিন", "হ্যাঁ দেন", "হ্যা পাঠান", "হ্যা দিন", "হ্যা দেন"
+    ]
+
+    if any(p == cleaned_norm or cleaned_norm.startswith(p) for p in affirmative_phrases):
+        return True
+
+    return False
+
 def get_product_catalog_context(workspace_id: int = 1) -> str:
     """Fetches active products from DB scoped strictly to the workspace."""
     conn = get_db_connection()
@@ -81,7 +135,12 @@ def get_product_catalog_context(workspace_id: int = 1) -> str:
             pass
     return "\n".join(lines)
 
-def build_system_instruction(customer_name: str = "", workspace_id: int = 1, page_id: str = "") -> str:
+def build_system_instruction(
+    customer_name: str = "",
+    workspace_id: int = 1,
+    page_id: str = "",
+    conversation_state: Optional[Dict[str, Any]] = None
+) -> str:
     """Builds the natural, human-like system prompt strictly isolated to the specified workspace."""
     from app.database import get_page_ai_config, get_faqs
     config = get_page_ai_config(page_id=page_id, workspace_id=workspace_id)
@@ -311,11 +370,10 @@ PART 50: NEVER DO LIST
 {training_text}
 {faq_text}
 """
-        return prompt
-
-    # For Workspace 2+ (or custom prompt workspaces):
-    # Strictly use THIS workspace's identity, catalog, and rules. Never mention RS Graphics.
-    prompt = f"""
+    else:
+        # For Workspace 2+ (or custom prompt workspaces):
+        # Strictly use THIS workspace's identity, catalog, and rules. Never mention RS Graphics.
+        prompt = f"""
 তুমি হচ্ছো '{shop_name}' পেজের একজন অত্যন্ত অভিজ্ঞ, প্রফেশনাল, অমায়িক ও চৌকস সেলস কনসালট্যান্ট ও বিজনেস ম্যানেজার।
 আমাদের হটলাইন নম্বর: {shop_phone or 'ইনবক্সে সার্বক্ষণিক যোগাযোগ করতে পারেন'}
 আমাদের ঠিকানা: {shop_address}
@@ -354,6 +412,27 @@ PART 50: NEVER DO LIST
    - কখনোই মিথ্যা ওয়েটিং টাইম বা ভুয়া লিংক দেবে না।
    - সরাসরি বলবে: "জি {honorific}, এই বিষয়টি আমাদের টিমকে জানিয়েছি। কিছুক্ষণের মধ্যে আমাদের টিম আপনার সাথে যোগাযোগ করে সঠিক তথ্যটি জানিয়ে দেবে।"
 """
+    # If customer quantity is already verified in state machine, inject explicit non-authoritative context block
+    if conversation_state and conversation_state.get("quantity") is not None:
+        try:
+            c_qty = int(conversation_state["quantity"])
+            c_tier = "BULK (৮০+ পিস)" if c_qty >= 80 else ("SMALL_ORDER (৩০-৪৯ পিস)" if c_qty < 50 else "REGULAR (৫০-৭৯ পিস)")
+            c_pkg = conversation_state.get("package_id") or "এখনো নির্দিষ্ট হয়নি"
+            c_sample = conversation_state.get("sample_permission") or "pending"
+            state_context_block = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 [CURRENT VERIFIED CONVERSATION STATE - AUTHORITATIVE CONTEXT]:
+• Customer Confirmed Order Quantity: {c_qty} পিস ({c_tier})
+• Selected Package Context: {c_pkg}
+• Sample Status: {c_sample}
+⚠️ STRICT RULE: The customer has ALREADY confirmed their order quantity ({c_qty} পিস).
+DO NOT ask the customer for quantity again ("কত পিস বানাবেন?"). Proceed directly to assisting with package selection, sample review, pricing, or order details.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+            prompt = state_context_block + "\n" + prompt
+        except Exception:
+            pass
+
     return prompt
 
 def extract_order_quantity_number(text: str) -> Optional[int]:
@@ -420,8 +499,8 @@ def extract_order_quantity_number(text: str) -> Optional[int]:
         if re.search(r'(?:^|\s)' + re.escape(word) + r'(?:\s|$|টা|টি|পিস|টি|পিসেস|pcs|ta|ti|কপি)', cleaned_lower):
             return val
 
-    # Match explicit quantity units: e.g. "50 পিস", "100 pcs", "30 টা", "80 টি", "100 জন", "50 কপি"
-    m_unit = re.search(r'(\d+)\s*(?:পিস|পিসেস|টা|টি|pcs|pc|pieces|piece|জন|কপি|set|সেট)', cleaned_lower)
+    # Match explicit quantity units: e.g. "50 পিস", "100 pcs", "30 টা", "80 টি", "100 জন", "50 কপি", "100 card", "১০০ কার্ড"
+    m_unit = re.search(r'(\d+)\s*(?:পিস|পিসেস|টা|টি|pcs|pc|pieces|piece|জন|কপি|set|সেট|কার্ড|কার্ডের|card|cards)', cleaned_lower)
     if m_unit:
         try:
             val = int(m_unit.group(1))
@@ -1014,9 +1093,21 @@ def evaluate_id_card_workflow(
                 break
         if detected_pkg:
             p_num, p_price = detected_pkg
-            confirm_text = f"জি {honorific}, প্যাকেজ {p_num} এর মূল্য ১০০+ পিস অর্ডারে প্রতি সেট {p_price} টাকা। আপনার কত পিস প্রয়োজন {honorific}?"
+            if effective_qty is not None and effective_qty >= 30:
+                if effective_qty >= 80:
+                    confirm_text = f"জি {honorific}, প্যাকেজ {p_num} এর রেগুলার মূল্য প্রতি সেট {p_price} টাকা। এটি কি আপনার অর্ডারের জন্য কনফার্ম করব জানাবেন প্লিজ।"
+                elif effective_qty >= 50:
+                    confirm_text = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য প্যাকেজ {p_num} এর ফিক্সড রেগুলার মূল্য প্রতি সেট {p_price} টাকা। এটি কি কনফার্ম করব জানাবেন প্লিজ।"
+                else:
+                    small_price = int(p_price) + 10
+                    confirm_text = f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য (৩০-৪৯ পিস টিয়ারে) প্যাকেজ {p_num} এর মূল্য প্রতি সেট {small_price} টাকা। এটি কি কনফার্ম করব জানাবেন প্লিজ।"
+            else:
+                confirm_text = f"জি {honorific}, প্যাকেজ {p_num} এর মূল্য ১০০+ পিস অর্ডারে প্রতি সেট {p_price} টাকা। আপনার কত পিস প্রয়োজন {honorific}?"
         else:
-            confirm_text = f"জি {honorific}, আপনার উল্লেখিত প্যাকেজের তথ্য সঠিক। আপনার কত পিস প্রয়োজন {honorific}?"
+            if effective_qty is not None and effective_qty >= 30:
+                confirm_text = f"জি {honorific}, আপনার উল্লেখিত প্যাকেজের তথ্য সঠিক। এটি কি আপনার অর্ডারের জন্য কনফার্ম করব জানাবেন প্লিজ {honorific}?"
+            else:
+                confirm_text = f"জি {honorific}, আপনার উল্লেখিত প্যাকেজের তথ্য সঠিক। আপনার কত পিস প্রয়োজন {honorific}?"
         return {
             "reply_text": confirm_text,
             "media_sequence": [],
@@ -1050,9 +1141,7 @@ def evaluate_id_card_workflow(
     is_explicitly_asking_again = any(k in msg for k in ["আবার", "আসেনি", "পাইনি", "পাই নাই", "আসে নাই", "পুনরায়", "আবারও", "আবার পাঠান", "ছবি আসেনি"])
 
     # Case C: Confirming to send samples, or asking specifically for packages/samples
-    is_sample_confirmation = bot_asked_sample_permission and any(k in msg for k in [
-        "হ্যাঁ", "হাঁ", "জি", "হুম", "hm", "yes", "sure", "ok", "ঠিক আছে", "আচ্ছা", "পাঠান", "দেখান", "দিন", "দেন", "পাঠিয়ে দেন", "পাঠিয়ে দিন", "পাঠাও", "দেখা", "সেন্ড করুন", "দাও"
-    ]) and not any(k in msg for k in ["তো পাঠিয়েছেন", "তো দিয়েছেন", "আগেই", "আগে"])
+    is_sample_confirmation = bot_asked_sample_permission and is_affirmative_response(msg) and not any(k in msg for k in ["তো পাঠিয়েছেন", "তো দিয়েছেন", "আগেই", "আগে"])
 
     is_package_request = not is_pointing_out_already_sent and (
         is_sample_confirmation or (
@@ -1423,7 +1512,13 @@ def detect_saved_media_to_send(
         print(f"[MediaRouter Delegation Error]: {e}")
         return {"video_url": "", "voice_url": ""}
 
-def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", workspace_id: int = 1, page_id: str = "") -> str:
+def generate_smart_fallback_reply(
+    user_msg: str,
+    customer_name: str = "",
+    workspace_id: int = 1,
+    page_id: str = "",
+    conversation_state: Optional[Dict[str, Any]] = None
+) -> str:
     """Generates an intelligent context-aware reply strictly isolated to the workspace if Gemini API is unreachable."""
     msg = (user_msg or "").strip().lower()
     honorific = detect_customer_gender_title(customer_name)
@@ -1459,14 +1554,14 @@ def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", worksp
         if any(k in msg for k in ["প্যাকেজের দাম", "প্যাকেজের রেট", "প্যাকেজগুলোর দাম", "প্যাকেজ কত", "প্যাকেজের খরচ", "প্যাকেজের বিস্তারিত মূল্য"]):
             return (
                 f"জি {honorific}, প্রতিটি প্যাকেজের ছবির সাথে দাম লেখা আছে, তারপরও আপনাদের সুবিধার জন্য প্রতিটি প্যাকেজের বিস্তারিত মূল্য নিচে দেওয়া হলো:\n\n"
-                f"• প্যাকেজ ১ (মেটাল কভার + ২ সেমি ফিতা + UV কার্ড): ৫৮ টাকা\n"
-                f"• প্যাকেজ ২ (T-738V / REAP / T-994V হার্ড কভার + ২ সেমি ফিতা + UV কার্ড): ৫০ টাকা\n"
-                f"• প্যাকেজ ৩ (Xinding Q-993 কভার + ২ সেমি ফিতা + UV কার্ড): ৪৮ টাকা\n"
-                f"• প্যাকেজ ৪ (T-065V সফট কভার + ২ সেমি ফিতা + UV কার্ড): ৪৪ টাকা\n"
-                f"• প্যাকেজ ৫ (DX কভার + ২ সেমি ফিতা + UV কার্ড): ৪২ টাকা\n"
-                f"• প্যাকেজ ৬ (T-014V সফট কভার + ২ সেমি ফিতা + UV কার্ড): ৩৮ টাকা\n"
-                f"• প্যাকেজ ৭ (১.৫ সেমি ফিতা + T-014V সফট কভার + UV কার্ড): ৩৬ টাকা\n\n"
-                f"(নোট: উল্লেখিত প্যাকেজ রেট ১০০+ পিস অর্ডারের ক্ষেত্রে প্রযোজ্য। ৫০ পিসের ক্ষেত্রে প্যাকেজ প্রতি ১০ টাকা এবং ৩০-৪৯ পিসের ক্ষেত্রে প্যাকেজ প্রতি ১০ টাকা বেশি হবে।)\n\n"
+                f"• প্যাকেজ ১: ৭০ টাকা\n"
+                f"• প্যাকেজ ২: ৭০ টাকা\n"
+                f"• প্যাকেজ ৩: ৭৩ টাকা\n"
+                f"• প্যাকেজ ৪: ৭৩ টাকা\n"
+                f"• প্যাকেজ ৫: ৮৩ টাকা\n"
+                f"• প্যাকেজ ৬: ৮৩ টাকা\n"
+                f"• প্যাকেজ ৭: ৯১ টাকা\n\n"
+                f"(নোট: উল্লেখিত প্যাকেজ রেট ১০০+ পিস অর্ডারের ক্ষেত্রে প্রযোজ্য। ৫০-৭৯ পিসের ক্ষেত্রে ফিক্সড রেগুলার রেট এবং ৩০-৪৯ পিসের ক্ষেত্রে প্রতি প্যাকেজে ১০ টাকা বেশি হবে।)\n\n"
                 f"আপনার কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ {honorific}।"
             )
 
@@ -1495,19 +1590,24 @@ def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", worksp
             return f"জি {honorific}, আমাদের জাপানি মেশিনের অরজিনাল UV কালার প্রিন্ট প্রিমিয়াম PVC আইডি কার্ডের রেগুলার মূল্য প্রতি পিস ৩৫ টাকা (১০০+ পিস অর্ডারের ক্ষেত্রে)।"
 
         qty = extract_order_quantity_number(msg)
-        if any(k in msg for k in ["আইডি কার্ড", "আইডি কাড", "id card", "আইডিকার্ড", "কার্ড বানাতে", "কার্ড করতে", "কার্ড বানাবো"]):
-            if qty is None:
-                return f"জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন?"
-            elif qty < 30:
+        state_qty = conversation_state.get("quantity") if conversation_state else None
+        effective_qty = qty if qty is not None else state_qty
+
+        if effective_qty is not None:
+            if effective_qty < 30:
                 return f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
             else:
+                if any(k in msg for k in ["প্যাকেজ", "দাম", "রেট", "মূল্য", "খরচ", "কত"]):
+                    if effective_qty >= 80:
+                        return f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য আমাদের রেগুলার প্যাকেজ রেট প্রযোজ্য হবে। কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ।"
+                    elif effective_qty >= 50:
+                        return f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য ফিক্সড রেগুলার প্যাকেজ রেট প্রযোজ্য হবে। কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ।"
+                    else:
+                        return f"জি {honorific}, আপনার {effective_qty} পিস অর্ডারের জন্য (৩০-৪৯ পিস টিয়ারে) রেগুলার রেটের চেয়ে প্রতি সেটে ১০ টাকা বেশি হবে। কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ।"
                 return f"জি {honorific}, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
 
-        if qty is not None and any(k in msg for k in ["পিস", "টা", "টি", "বানাবো", "pcs"]):
-            if qty < 30:
-                return f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
-            else:
-                return f"জি {honorific}, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
+        if any(k in msg for k in ["আইডি কার্ড", "আইডি কাড", "id card", "আইডিকার্ড", "কার্ড বানাতে", "কার্ড করতে", "কার্ড বানাবো"]):
+            return f"জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন?"
 
         if any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo"]):
             return f"জি {honorific}, আপনি কত পিস আইডি কার্ড বানাবেন জানাবেন প্লিজ?"
@@ -1550,6 +1650,15 @@ async def process_customer_message(
     """
     api_key = get_setting("gemini_api_key", settings.GEMINI_API_KEY)
     ws_id = int(workspace_id or 1)
+
+    # 0. Load persistent conversation state for context and safety guards
+    saved_state = {}
+    if sender_id:
+        try:
+            from app.ai_agent.conversation_state import get_structured_conversation_state
+            saved_state = get_structured_conversation_state(str(sender_id), ws_id)
+        except Exception:
+            saved_state = {}
 
     # 0. ZERO-REPLY SAFETY GUARD: If Admin Takeover is active, AI MUST BE 100% SILENT
     from app.database import is_conversation_ai_active
@@ -1603,9 +1712,9 @@ async def process_customer_message(
 
     # Check if API key is provided
     if not api_key:
-        fallback_reply = generate_smart_fallback_reply(message_text, customer_name, workspace_id=ws_id, page_id=page_id)
+        fallback_reply = generate_smart_fallback_reply(message_text, customer_name, workspace_id=ws_id, page_id=page_id, conversation_state=saved_state)
         matched_imgs = detect_sample_photos_to_send(message_text, conversation_history, fallback_reply, workspace_id=ws_id)
-        media_found = detect_saved_media_to_send(message_text, fallback_reply, workspace_id=ws_id)
+        media_found = detect_saved_media_to_send(message_text, fallback_reply, workspace_id=ws_id, conversation_state=saved_state)
         return {
             "reply_text": fallback_reply,
             "voice_url": media_found.get("voice_url", ""),
@@ -1684,7 +1793,12 @@ async def process_customer_message(
         ]
 
         response = None
-        system_instruction = build_system_instruction(customer_name=customer_name, workspace_id=ws_id, page_id=page_id)
+        system_instruction = build_system_instruction(
+            customer_name=customer_name,
+            workspace_id=ws_id,
+            page_id=page_id,
+            conversation_state=saved_state
+        )
 
         for m_name in candidate_models:
             try:
@@ -1703,7 +1817,13 @@ async def process_customer_message(
                 print(f"[Gemini Model {m_name} failed]: {model_err}")
                 continue
 
-        raw_text = response.text if response and response.text else generate_smart_fallback_reply(message_text, customer_name, workspace_id=ws_id, page_id=page_id)
+        raw_text = response.text if response and response.text else generate_smart_fallback_reply(
+            message_text,
+            customer_name,
+            workspace_id=ws_id,
+            page_id=page_id,
+            conversation_state=saved_state
+        )
 
         # Parse order json block if present
         order_created = None
