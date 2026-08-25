@@ -1904,7 +1904,12 @@ def generate_smart_fallback_reply(
 
         # Pure Greetings in Fallback
         if any(k in msg for k in ["সালাম", "salam", "assalam", "হাই", "হ্যালো", "hello", "hi", "hey"]):
-            return f"ওয়ালাইকুমুস সালাম {honorific}! আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+            has_salam = any(k in msg for k in ["সালাম", "salam", "assalam"])
+            if has_salam:
+                return f"ওয়ালাইকুমুস সালাম {honorific}! আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+            elif any(k in msg for k in ["হ্যালো", "hello"]):
+                return f"হ্যালো {honorific}! আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+            return f"জি {honorific}, আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
 
         # Delivery Fee in Fallback
         if any(k in msg for k in ["ডেলিভারি চার্জ", "কুরিয়ার চার্জ", "ডেলিভারি", "delivery"]):

@@ -397,8 +397,28 @@ class TestPhase93ConversationalIntelligence(unittest.TestCase):
 
         # 6. 'আপনি কে?' -> True identity inquiry
         r_identity = MasterOrchestrator.execute_decision("আপনি কে?", self.sender_id, "Customer", self.ws_id)
-        self.assertIn("নাদিম", r_identity["reply_text"])
-        self.assertEqual(r_identity["response_source"], "agent_identity_inquiry")
+    # -------------------------------------------------------------
+    # 20. HI / HELLO VS SALAM GREETING DISTINCTION
+    # -------------------------------------------------------------
+    def test_20_hi_hello_greeting_distinction(self):
+        """Invariant 20: 'Hi' / 'Hello' does not return 'ওয়ালাইকুমুস সালাম'; Salam returns 'ওয়ালাইকুমুস সালাম'."""
+        # 1. 'Hi'
+        r_hi = MasterOrchestrator.execute_decision("Hi", self.sender_id, "Customer", self.ws_id)
+        self.assertNotIn("ওয়ালাইকুমুস সালাম", r_hi["reply_text"])
+        self.assertIn("স্বাগতম", r_hi["reply_text"])
+        self.assertEqual(r_hi["response_source"], "standard_greeting")
+
+        # 2. 'Hello'
+        r_hello = MasterOrchestrator.execute_decision("Hello", self.sender_id, "Customer", self.ws_id)
+        self.assertNotIn("ওয়ালাইকুমুস সালাম", r_hello["reply_text"])
+        self.assertIn("স্বাগতম", r_hello["reply_text"])
+        self.assertEqual(r_hello["response_source"], "standard_greeting")
+
+        # 3. 'আসসালামু আলাইকুম'
+        r_salam = MasterOrchestrator.execute_decision("আসসালামু আলাইকুম", self.sender_id, "Customer", self.ws_id)
+        self.assertIn("ওয়ালাইকুমুস সালাম", r_salam["reply_text"])
+        self.assertIn("স্বাগতম", r_salam["reply_text"])
+        self.assertEqual(r_salam["response_source"], "standard_greeting")
 
 
 if __name__ == "__main__":

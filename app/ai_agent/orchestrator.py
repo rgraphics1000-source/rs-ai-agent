@@ -730,13 +730,22 @@ class MasterOrchestrator:
             # J. PURE GREETING ("আসসালামু আলাইকুম", "Hi", "Hello")
             elif primary_intent == CustomerIntent.GREETING:
                 norm_msg = (customer_message or "").strip().lower()
+                has_salam = any(kw in norm_msg for kw in ["সালাম", "salam", "assalam"])
                 has_product_ref = any(kw in norm_msg for kw in ["আইডি কার্ড", "id card", "কার্ড", "ফিতা", "কভার", "প্যাকেজ", "বানাবো", "বানাতে", "লাগবে"])
-                if has_product_ref and effective_qty is not None and effective_qty >= 30:
-                    draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনার {effective_qty} পিস আইডি কার্ডের অর্ডারের জন্য কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
-                elif has_product_ref:
-                    draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনি কত পিস আইডি কার্ড বানাতে চান জানাবেন প্লিজ?"
+
+                if has_salam:
+                    prefix = f"ওয়ালাইকুমুস সালাম {honorific}!"
+                elif any(kw in norm_msg for kw in ["হ্যালো", "hello"]):
+                    prefix = f"হ্যালো {honorific}!"
                 else:
-                    draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                    prefix = f"জি {honorific},"
+
+                if has_product_ref and effective_qty is not None and effective_qty >= 30:
+                    draft_reply = f"{prefix} আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনার {effective_qty} পিস আইডি কার্ডের অর্ডারের জন্য কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
+                elif has_product_ref:
+                    draft_reply = f"{prefix} আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনি কত পিস আইডি কার্ড বানাতে চান জানাবেন প্লিজ?"
+                else:
+                    draft_reply = f"{prefix} আরএস গ্রাফিক্সে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
                 response_source = "standard_greeting"
 
             # K. QUANTITY PROVIDED
