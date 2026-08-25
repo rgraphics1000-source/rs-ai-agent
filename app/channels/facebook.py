@@ -83,7 +83,7 @@ def subscribe_facebook_page_webhooks(page_id: str = None, page_token: str = None
     graph_version = getattr(settings, "META_GRAPH_VERSION", "v23.0") or "v23.0"
     url = f"https://graph.facebook.com/{graph_version}/{pid}/subscribed_apps"
     params = {
-        "subscribed_fields": "feed,messages,messaging_postbacks,message_deliveries,message_reads,conversations",
+        "subscribed_fields": "feed,messages,messaging_postbacks,message_deliveries,message_reads,message_echoes,conversations",
         "access_token": clean_token
     }
 
@@ -100,7 +100,7 @@ def subscribe_facebook_page_webhooks(page_id: str = None, page_token: str = None
             return {
                 "success": True,
                 "page_id": pid,
-                "subscribed_fields": ["feed", "messages", "messaging_postbacks", "conversations"],
+                "subscribed_fields": ["feed", "messages", "messaging_postbacks", "message_echoes", "conversations"],
                 "message": "Facebook Page successfully subscribed to Meta Webhook (feed, messages)!"
             }
         else:
