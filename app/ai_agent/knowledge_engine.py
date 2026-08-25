@@ -137,6 +137,14 @@ class KnowledgeEngine:
                 "response_source": "agent_identity_inquiry"
             }
 
+        # Specific mention of Rashed Bhai (Rule 13)
+        if any(p in raw_msg for p in ["রাশেদ", "rashed", "রাশেদুল"]):
+            return {
+                "reply_text": f"জি {honorific}, রাশেদ স্যার আমাদের ওনার স্যার। আপনার বিষয়টি ওনার স্যারকে জানিয়ে দিচ্ছি।",
+                "is_handled": True,
+                "response_source": "owner_mention_rule_13"
+            }
+
         # Owner Name inquiry (Never hallucinate; follow Rule 13 / No-guess policy)
         owner_patterns = [
             "owner এর নাম কি", "owner এর নাম কী", "owner-এর নাম কি", "owner-এর নাম কী",
@@ -157,14 +165,6 @@ class KnowledgeEngine:
                 "reply_text": f"জি {honorific}, Owner স্যারের নামের তথ্যটি এই মুহূর্তে আমার কাছে সংরক্ষিত নেই। বিষয়টি আমাদের টিমকে জানাচ্ছি। আমাদের টিম আপনাকে জানাবে।",
                 "is_handled": True,
                 "response_source": "owner_identity_escalation"
-            }
-
-        # Specific mention of Rashed Bhai (Rule 13)
-        if any(p in raw_msg for p in ["রাশেদ ভাই কোথায়", "রাশেদ কোথায়", "রাশেদ ভাইয়ের সাথে", "রাশেদ এর সাথে", "rashed bhai", "রাশেদুল ইসলাম কে", "রাশেদুল ইসলাম", "রাশেদ কে", "রাশেদুল"]):
-            return {
-                "reply_text": f"জি {honorific}, রাশেদ স্যার আমাদের ওনার স্যার। আপনার বিষয়টি ওনার স্যারকে জানিয়ে দিচ্ছি।",
-                "is_handled": True,
-                "response_source": "owner_mention_rule_13"
             }
 
         return None

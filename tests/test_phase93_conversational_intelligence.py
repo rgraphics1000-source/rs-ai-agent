@@ -456,6 +456,27 @@ class TestPhase93ConversationalIntelligence(unittest.TestCase):
         self.assertNotIn("টিমকে জানাচ্ছি", r_tea["reply_text"])
         self.assertTrue("ধন্যবাদ" in r_tea["reply_text"] or "চা" in r_tea["reply_text"])
 
+    # -------------------------------------------------------------
+    # 22. RASHED INQUIRY & HUMAN TALK DEMAND CONTINUITY
+    # -------------------------------------------------------------
+    def test_22_rashed_and_human_request_continuity(self):
+        """Invariant 22: 'রাশেদ কোথায়?' states Rashed is owner; 'তাকে একটু দরকার' acknowledges talk demand."""
+        # 1. 'রাশেদ কোথায়?'
+        r_rashed = MasterOrchestrator.execute_decision("রাশেদ কোথায়?", self.sender_id, "Customer", self.ws_id)
+        self.assertIn("রাশেদ", r_rashed["reply_text"])
+        self.assertIn("ওনার", r_rashed["reply_text"])
+        self.assertEqual(r_rashed["response_source"], "owner_mention_rule_13")
+
+        # 2. 'তাকে একটু দরকার'
+        r_need_him = MasterOrchestrator.execute_decision("তাকে একটু দরকার", self.sender_id, "Customer", self.ws_id)
+        self.assertTrue("যোগাযোগ" in r_need_him["reply_text"] or "জানিয়ে" in r_need_him["reply_text"])
+        self.assertEqual(r_need_him["response_source"], "human_request_acknowledgement")
+
+        # 3. 'উনাকে দরকার'
+        r_need_owner = MasterOrchestrator.execute_decision("উনাকে দরকার", self.sender_id, "Customer", self.ws_id)
+        self.assertTrue("যোগাযোগ" in r_need_owner["reply_text"] or "জানিয়ে" in r_need_owner["reply_text"])
+        self.assertEqual(r_need_owner["response_source"], "human_request_acknowledgement")
+
 
 if __name__ == "__main__":
     unittest.main()

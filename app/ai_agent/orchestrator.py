@@ -246,14 +246,19 @@ class MasterOrchestrator:
         if any(kw in norm_msg for kw in agent_capability_words):
             detected_intents.append(CustomerIntent.AGENT_CAPABILITY_INQUIRY)
 
-        # C. Owner Identity Inquiry
+        # C. Owner Identity & Human Talk Request
         owner_words = [
             "owner এর নাম", "owner-এর নাম", "মালিকের নাম", "ওনারের নাম", "বসের নাম",
             "owner কে", "মালিক কে", "ওনার কে", "who is the owner", "owner name",
-            "বসের সাথে", "কথা বলব", "স্যার এর সাথে", "রাশেদ", "rashed"
+            "বসের সাথে", "মালিকের সাথে", "কথা বলব", "স্যার এর সাথে", "রাশেদ", "rashed", "রাশেদুল",
+            "তাকে দরকার", "তাকে একটু দরকার", "উনাকে দরকার", "উনাকে একটু দরকার", "তাকে চাই", "উনাকে চাই",
+            "তার সাথে কথা", "উনার সাথে কথা", "তার সাথে জরুরি", "উনার সাথে জরুরি",
+            "মানুষের সাথে কথা", "মানুষের সাথে", "অ্যাডমিনের সাথে", "অ্যাডমিনকে দরকার", "লাইভ এজেন্ট",
+            "কথা বলতে চাই", "কল দেন", "কল দিন", "ফোন দিন", "ফোন দেন", "নাম্বার দিন", "নম্বর দিন"
         ]
         if any(kw in norm_msg for kw in owner_words) or re.search(r'(?:owner|ওনার|মালিক|বস)[-\s]*(?:এর)?\s*(?:নাম|কে)', norm_msg):
             detected_intents.append(CustomerIntent.OWNER_REQUEST)
+            detected_intents.append(CustomerIntent.HUMAN_REQUEST)
 
         # D. Social Pleasantry & Casual Chit-Chat (Bangla + Banglish)
         pleasantry_phrases = [
@@ -609,22 +614,30 @@ class MasterOrchestrator:
                 draft_reply = f"জি {honorific}, আমি আরএস গ্রাফিক্সের সেলস সহকারী নাদিম। আমি আপনাকে আমাদের আইডি কার্ড, ফিতা ও কভারের বিভিন্ন প্যাকেজ, প্রাইসিং, কোয়ালিটি, অর্ডার প্রক্রিয়া এবং ডেলিভারি সংক্রান্ত যেকোনো তথ্যে সহযোগিতা করতে পারি। আপনার কি কোনো আইডি কার্ড বা ফিতার প্রয়োজন রয়েছে জানাবেন প্লিজ?"
                 response_source = "agent_capability_inquiry"
 
-            # C. OWNER IDENTITY / PRIVACY ("Owner এর নাম কী", "মালিক কে")
-            elif primary_intent == CustomerIntent.OWNER_REQUEST:
+            # C. OWNER IDENTITY / RASHED / HUMAN ASSISTANCE REQUEST
+            elif primary_intent in (CustomerIntent.OWNER_REQUEST, CustomerIntent.HUMAN_REQUEST):
                 selected_tools.append("knowledge_engine")
+                raw_msg_lower = (customer_message or "").strip().lower()
+                is_rashed_inquiry = any(p in raw_msg_lower for p in ["রাশেদ", "rashed", "রাশেদুল"])
+                is_talk_demand = any(p in raw_msg_lower for p in [
+                    "তাকে দরকার", "উনাকে দরকার", "দরকার", "কথা বলতে চাই", "কথা বলব", "জরুরি", "ফোন", "কল", "চাই", "মানুষ", "অ্যাডমিন"
+                ])
                 if s_id:
+                    esc_topic = "human_agent_request" if is_talk_demand else "owner_identity_inquiry"
                     create_team_escalation(
                         sender_id=str(s_id),
                         customer_message=customer_message,
-                        detected_unknown_topic="owner_identity_inquiry",
+                        detected_unknown_topic=esc_topic,
                         workspace_id=ws_id,
                         source_channel=channel
                     )
-                # Specific mention of Rashed Bhai
-                raw_msg_lower = (customer_message or "").strip().lower()
-                if any(p in raw_msg_lower for p in ["রাশেদ ভাই", "রাশেদ কোথায়", "rashed bhai", "রাশেদুল ইসলাম", "রাশেদ কে"]):
+
+                if is_rashed_inquiry:
                     draft_reply = f"জি {honorific}, রাশেদ স্যার আমাদের ওনার স্যার। আপনার বিষয়টি ওনার স্যারকে জানিয়ে দিচ্ছি।"
                     response_source = "owner_mention_rule_13"
+                elif is_talk_demand:
+                    draft_reply = f"জি {honorific}, আপনার বিষয়টি আমি রাশেদ স্যার ও আমাদের মূল টিমকে জানিয়ে দিয়েছি। ওনার টিম থেকে শীঘ্রই আপনার সাথে যোগাযোগ করা হবে। আপনার কোনো জরুরি মেসেজ বা মোবাইল নম্বর থাকলে এখানে লিখে রাখতে পারেন।"
+                    response_source = "human_request_acknowledgement"
                 else:
                     draft_reply = f"জি {honorific}, Owner স্যারের নামের তথ্যটি এই মুহূর্তে আমার কাছে সংরক্ষিত নেই। বিষয়টি আমাদের টিমকে জানাচ্ছি। আমাদের টিম আপনাকে জানাবে।"
                     response_source = "owner_identity_escalation"
