@@ -122,6 +122,60 @@ def init_db():
     );
     """)
 
+    # 4b. Persistent Conversation States Table (Phase 2 State Machine)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS conversation_states (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER DEFAULT 1,
+        conversation_id TEXT,
+        sender_id TEXT NOT NULL,
+        service_type TEXT DEFAULT 'id_card',
+        quantity INTEGER,
+        quantity_source TEXT DEFAULT 'none',
+        package_id TEXT,
+        package_source TEXT DEFAULT 'none',
+        sample_permission TEXT DEFAULT 'pending',
+        sample_sent INTEGER DEFAULT 0,
+        sample_sent_at TIMESTAMP,
+        sample_version INTEGER DEFAULT 0,
+        price_context TEXT,
+        quoted_price REAL,
+        discount_amount REAL,
+        advance_required INTEGER DEFAULT 1,
+        advance_amount REAL,
+        advance_status TEXT DEFAULT 'not_required',
+        customer_info_status TEXT DEFAULT 'pending',
+        google_form_status TEXT DEFAULT 'not_requested',
+        proof_status TEXT DEFAULT 'not_started',
+        customer_approval_status TEXT DEFAULT 'pending',
+        printing_status TEXT DEFAULT 'pending',
+        courier_status TEXT DEFAULT 'pending',
+        human_takeover INTEGER DEFAULT 0,
+        last_customer_intent TEXT,
+        current_sales_stage TEXT DEFAULT 'NEW',
+        state_version INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_conv_state_sender_ws ON conversation_states(sender_id, workspace_id);")
+
+    # 4c. Conversation State Audits Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS conversation_state_audits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER DEFAULT 1,
+        conversation_id TEXT,
+        sender_id TEXT NOT NULL,
+        previous_stage TEXT,
+        new_stage TEXT,
+        changed_fields TEXT,
+        reason TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_conv_state_audit_sender ON conversation_state_audits(sender_id, workspace_id);")
+
     # 5. Comment Automation Logs Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS comment_logs (
@@ -168,14 +222,46 @@ def init_db():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS saved_media (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id INTEGER DEFAULT 1,
+        media_key TEXT,
         title TEXT NOT NULL,
         media_type TEXT NOT NULL, -- 'voice', 'video', 'image', 'document'
         file_url TEXT NOT NULL,
         description TEXT,
+        intent TEXT,
+        trigger_phrases TEXT,
+        negative_phrases TEXT,
+        language TEXT DEFAULT 'all',
+        is_active INTEGER DEFAULT 1,
+        priority INTEGER DEFAULT 10,
+        version INTEGER DEFAULT 1,
+        send_once INTEGER DEFAULT 1,
         duration_seconds INTEGER DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
+    # Auto-migration for existing saved_media table
+    for col_name, col_def in [
+        ("workspace_id", "INTEGER DEFAULT 1"),
+        ("media_key", "TEXT"),
+        ("intent", "TEXT"),
+        ("trigger_phrases", "TEXT"),
+        ("negative_phrases", "TEXT"),
+        ("language", "TEXT DEFAULT 'all'"),
+        ("is_active", "INTEGER DEFAULT 1"),
+        ("priority", "INTEGER DEFAULT 10"),
+        ("version", "INTEGER DEFAULT 1"),
+        ("send_once", "INTEGER DEFAULT 1"),
+        ("updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE saved_media ADD COLUMN {col_name} {col_def}")
+        except Exception:
+            pass
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_saved_media_key ON saved_media(media_key, workspace_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_saved_media_intent ON saved_media(intent, workspace_id);")
 
     # 9. Shop & Automation Settings Table
     cursor.execute("""
@@ -449,6 +535,50 @@ def init_db():
     );
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_gupload_files_ws_form ON google_uploaded_files(workspace_id, generated_form_id)")
+
+    # 22. Owner Approvals (Persistent Human Escalation & Exception Engine - Phase 7)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS owner_approvals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        approval_id TEXT UNIQUE NOT NULL,
+        workspace_id INTEGER DEFAULT 1,
+        conversation_id TEXT NOT NULL,
+        customer_id TEXT NOT NULL,
+        request_type TEXT NOT NULL,
+        package_id TEXT,
+        quantity INTEGER,
+        requested_value REAL,
+        authorized_value REAL,
+        approved_value REAL,
+        reason TEXT,
+        status TEXT DEFAULT 'PENDING',
+        expiry_at TIMESTAMP,
+        resolved_at TIMESTAMP,
+        resolved_by TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_owner_approvals_ws_cust ON owner_approvals(workspace_id, customer_id, status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_owner_approvals_conv ON owner_approvals(conversation_id, status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_owner_approvals_status ON owner_approvals(status);")
+
+    # 23. Owner Approval Audits (Audit Trail for Transitions)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS owner_approval_audits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        approval_id TEXT NOT NULL,
+        workspace_id INTEGER DEFAULT 1,
+        old_status TEXT,
+        new_status TEXT NOT NULL,
+        old_value REAL,
+        new_value REAL,
+        actor TEXT NOT NULL,
+        reason TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_owner_approval_audits_appr ON owner_approval_audits(approval_id);")
 
     # Multi-tenant scoping columns migration for all business tables
     scoped_tables = [
@@ -1259,7 +1389,7 @@ def ensure_default_products(conn=None):
 # ============================================================
 
 def ensure_default_saved_media(conn=None):
-    """Initializes default saved media idempotently and safely without overwriting user custom media."""
+    """Initializes default canonical saved media idempotently and safely with structured metadata."""
     should_close = False
     if conn is None:
         conn = get_db_connection()
@@ -1267,54 +1397,140 @@ def ensure_default_saved_media(conn=None):
     try:
         cursor = conn.cursor()
         defaults = [
-            (
-                "গুগল ফর্মে আইডি কার্ডের তথ্য ও ছবি আপলোড করার নিয়ম",
-                "video",
-                "/static/uploads/media/google_form_submission_guide.mp4",
-                "গুগল ফর্মের মাধ্যমে আইডি কার্ডের তথ্য এবং ছবিগুলো কীভাবে আপলোড দিতে হয় তার পূর্ণাঙ্গ ডেমো ভিডিও।",
-                0,
-                1
-            ),
-            (
-                "গুগল ফর্মে তথ্য সংশোধন করার নিয়ম",
-                "video",
-                "/static/uploads/media/google_form_edit_correction_guide.mp4",
-                "তথ্য সাবমিট করার পর কোনো ভুল হলে তা কীভাবে এডিট বা সংশোধন করবেন তার নির্দেশিকা ভিডিও।",
-                0,
-                1
-            ),
-            (
-                "কার্ড ও ফিতা এর কোয়ালিটি কেমন হবে",
-                "voice",
-                "/static/uploads/media/id_card_and_fita_quality.aac",
-                "আমাদের জাপানি UV কালার প্রিন্ট পিভিসি আইডি কার্ড এবং প্রিমিয়াম ডিজিটাল সাবলিমেশন ফিতার কোয়ালিটি ও মান সংক্রান্ত ভয়েস বার্তা।",
-                0,
-                1
-            ),
-            (
-                "আইডি কার্ড, ফিতা ও কভারের বৈশিষ্ট্য ও কোয়ালিটি",
-                "voice",
-                "/static/uploads/media/id_card_features_voice_note.mp3",
-                "আমাদের জাপানি UV কালার প্রিন্ট পিভিসি আইডি কার্ড, ডিজিটাল সাবলিমেশন ফিতা ও কভারের প্রিমিয়াম বৈশিষ্ট্য সংক্রান্ত ভয়েস বার্তা।",
-                0,
-                1
-            ),
-            (
-                "প্যাকেজ অফার ও বাল্ক অর্ডার ভয়েস বার্তা",
-                "voice",
-                "/static/uploads/voice/PTT-20260119-WA0105.mp3",
-                "৮০-৯০ বা ১০০+ পিস অর্ডারে প্যাকেজ এবং স্পেশাল অফার সংক্রান্ত ভয়েস বার্তা।",
-                0,
-                1
-            )
+            {
+                "media_key": "google_form_submission_tutorial",
+                "title": "গুগল ফর্মে আইডি কার্ডের তথ্য ও ছবি আপলোড করার নিয়ম",
+                "media_type": "video",
+                "file_url": "/static/uploads/media/google_form_submission_guide.mp4",
+                "description": "গুগল ফর্মের মাধ্যমে আইডি কার্ডের তথ্য এবং ছবিগুলো কীভাবে আপলোড দিতে হয় তার পূর্ণাঙ্গ ডেমো ভিডিও।",
+                "intent": "GOOGLE_FORM_SUBMISSION_HELP",
+                "trigger_phrases": '["গুগল ফর্মে তথ্য দেওয়ার নিয়ম", "তথ্য কিভাবে দিব", "ফর্ম পূরণ", "submission", "how to submit", "ছবি আপলোড", "ফর্মের ভিডিও", "আপলোডের ভিডিও", "ডেমো ভিডিও"]',
+                "negative_phrases": '["সংশোধন", "ভুল", "correction", "edit", "ভুল ঠিক করব", "তথ্য পরিবর্তন"]',
+                "priority": 10,
+                "send_once": 1,
+                "workspace_id": 1
+            },
+            {
+                "media_key": "google_form_correction_tutorial",
+                "title": "গুগল ফর্মে তথ্য সংশোধন করার নিয়ম",
+                "media_type": "video",
+                "file_url": "/static/uploads/media/google_form_edit_correction_guide.mp4",
+                "description": "তথ্য সাবমিট করার পর কোনো ভুল হলে তা কীভাবে এডিট বা সংশোধন করবেন তার নির্দেশিকা ভিডিও।",
+                "intent": "GOOGLE_FORM_CORRECTION_HELP",
+                "trigger_phrases": '["তথ্য সংশোধন", "ভুল হয়েছে", "correction", "edit", "ভুল ঠিক করব", "তথ্য পরিবর্তন", "how to correct", "সংশোধনের ভিডিও", "এডিটের ভিডিও"]',
+                "negative_phrases": '[]',
+                "priority": 10,
+                "send_once": 1,
+                "workspace_id": 1
+            },
+            {
+                "media_key": "id_card_features",
+                "title": "আইডি কার্ডের বৈশিষ্ট্য ও কোয়ালিটি",
+                "media_type": "voice",
+                "file_url": "/static/uploads/media/id_card_features_voice_note.mp3",
+                "description": "আমাদের জাপানি UV কালার প্রিন্ট পিভিসি আইডি কার্ডের প্রিমিয়াম বৈশিষ্ট্য সংক্রান্ত ভয়েস বার্তা।",
+                "intent": "CARD_FEATURES",
+                "trigger_phrases": '["কার্ডের বৈশিষ্ট্য", "কার্ড কেমন", "card quality", "আইডি কার্ডের কোয়ালিটি", "card feature", "ইউভি প্রিন্ট", "কার্ড সম্পর্কে বলুন"]',
+                "negative_phrases": '[]',
+                "priority": 10,
+                "send_once": 1,
+                "workspace_id": 1
+            },
+            {
+                "media_key": "ribbon_features",
+                "title": "ডিজিটাল সাবলিমেশন ফিতার বৈশিষ্ট্য ও কোয়ালিটি",
+                "media_type": "voice",
+                "file_url": "/static/uploads/media/id_card_and_fita_quality.aac",
+                "description": "আমাদের ডিজিটাল সাবলিমেশন ফিতার প্রিমিয়াম কোয়ালিটি ও মান সংক্রান্ত ভয়েস বার্তা।",
+                "intent": "RIBBON_FEATURES",
+                "trigger_phrases": '["ফিতার বৈশিষ্ট্য", "ফিতা কেমন", "ribbon quality", "ফিতা সম্পর্কে বলুন", "ফিতার feature", "ল্যানিয়ার্ড", "ফিতা এর কোয়ালিটি"]',
+                "negative_phrases": '[]',
+                "priority": 10,
+                "send_once": 1,
+                "workspace_id": 1
+            },
+            {
+                "media_key": "cover_features",
+                "title": "আইডি কার্ড কভার ও হোল্ডারের বৈশিষ্ট্য",
+                "media_type": "voice",
+                "file_url": "/static/uploads/voice/cover_features.mp3",
+                "description": "আমাদের আইডি কার্ড কভার ও হোল্ডার কালেকশনের প্রিমিয়াম কোয়ালিটি সংক্রান্ত ভয়েস বার্তা (নতুন ভয়েস ফাইল আপলোড না হওয়া পর্যন্ত নিষ্ক্রিয়)।",
+                "intent": "COVER_FEATURES",
+                "trigger_phrases": '["কভারের বৈশিষ্ট্য", "কভার কেমন", "holder quality", "cover সম্পর্কে বলুন", "কভারের feature", "কার্ড কভার"]',
+                "negative_phrases": '[]',
+                "priority": 10,
+                "send_once": 1,
+                "is_active": 0,
+                "workspace_id": 1
+            },
+            {
+                "media_key": "package_special_offer",
+                "title": "প্যাকেজ অফার ও বাল্ক অর্ডার ভয়েস বার্তা",
+                "media_type": "voice",
+                "file_url": "/static/uploads/voice/PTT-20260119-WA0105.mp3",
+                "description": "৮০-৯০ বা ১০০+ পিস অর্ডারে প্যাকেজ এবং স্পেশাল অফার সংক্রান্ত ভয়েস বার্তা।",
+                "intent": "PACKAGE_SPECIAL_OFFER",
+                "trigger_phrases": '["প্যাকেজ অফার", "স্পেশাল অফার", "বাল্ক অর্ডার অফার"]',
+                "negative_phrases": '[]',
+                "priority": 10,
+                "send_once": 1,
+                "is_active": 1,
+                "workspace_id": 1
+            }
         ]
-        for title, m_type, f_url, desc, dur, ws_id in defaults:
-            cursor.execute("SELECT id FROM saved_media WHERE (file_url = ? OR title = ?) AND workspace_id = ?", (f_url, title, ws_id))
-            if not cursor.fetchone():
+        for m in defaults:
+            cursor.execute("""
+                SELECT id, media_key FROM saved_media 
+                WHERE media_key = ? AND workspace_id = ?
+            """, (m["media_key"], m["workspace_id"]))
+            row = cursor.fetchone()
+            if row:
                 cursor.execute("""
-                    INSERT INTO saved_media (title, media_type, file_url, description, duration_seconds, workspace_id)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (title, m_type, f_url, desc, dur, ws_id))
+                    UPDATE saved_media 
+                    SET title = ?,
+                        media_type = ?,
+                        file_url = ?,
+                        description = ?,
+                        intent = ?,
+                        trigger_phrases = ?,
+                        negative_phrases = ?,
+                        priority = ?,
+                        send_once = ?,
+                        is_active = ?
+                    WHERE id = ?
+                """, (
+                    m["title"], m["media_type"], m["file_url"], m["description"],
+                    m["intent"], m["trigger_phrases"], m["negative_phrases"],
+                    m["priority"], m["send_once"], m.get("is_active", 1), row["id"]
+                ))
+            else:
+                cursor.execute("""
+                    INSERT INTO saved_media (
+                        media_key, title, media_type, file_url, description, 
+                        intent, trigger_phrases, negative_phrases, priority, 
+                        send_once, workspace_id, is_active
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    m["media_key"], m["title"], m["media_type"], m["file_url"], m["description"],
+                    m["intent"], m["trigger_phrases"], m["negative_phrases"], m["priority"],
+                    m["send_once"], m["workspace_id"], m.get("is_active", 1)
+                ))
+
+        # Enforce single authoritative active record per media_key
+        for m in defaults:
+            cursor.execute("""
+                SELECT id FROM saved_media 
+                WHERE media_key = ? AND workspace_id = ?
+                ORDER BY id DESC
+            """, (m["media_key"], m["workspace_id"]))
+            dup_rows = cursor.fetchall()
+            if len(dup_rows) > 1:
+                keep_id = dup_rows[0]["id"]
+                cursor.execute("""
+                    DELETE FROM saved_media 
+                    WHERE media_key = ? AND workspace_id = ? AND id != ?
+                """, (m["media_key"], m["workspace_id"], keep_id))
         conn.commit()
     except Exception as e:
         print(f"[DB ensure_default_saved_media Error]: {e}")
@@ -1325,7 +1541,7 @@ def ensure_default_saved_media(conn=None):
 def get_saved_media(media_type: str = None, workspace_id: Optional[int] = None) -> list:
     conn = get_db_connection()
     cursor = conn.cursor()
-    query = "SELECT * FROM saved_media WHERE 1=1"
+    query = "SELECT * FROM saved_media WHERE is_active = 1"
     params = []
     if media_type:
         query += " AND media_type = ?"
@@ -1333,19 +1549,92 @@ def get_saved_media(media_type: str = None, workspace_id: Optional[int] = None) 
     if workspace_id is not None:
         query += " AND (workspace_id = ? OR workspace_id = 1)"
         params.append(int(workspace_id))
-    query += " ORDER BY id DESC"
+    query += " ORDER BY priority DESC, id DESC"
     cursor.execute(query, params)
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
-def create_saved_media(title: str, media_type: str, file_url: str, description: str = "", duration_seconds: int = 0, workspace_id: int = 1) -> int:
+def get_saved_media_by_key(media_key: str, workspace_id: int = 1) -> Optional[dict]:
+    """Fetches active saved media item by canonical media_key."""
+    if not media_key:
+        return None
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO saved_media (title, media_type, file_url, description, duration_seconds, workspace_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (title, media_type, file_url, description, duration_seconds, int(workspace_id or 1)))
+        SELECT * FROM saved_media 
+        WHERE media_key = ? AND (workspace_id = ? OR workspace_id = 1) AND is_active = 1
+        ORDER BY priority DESC, id DESC LIMIT 1
+    """, (str(media_key).strip(), int(workspace_id or 1)))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def get_saved_media_by_intent(intent: str, workspace_id: int = 1) -> list:
+    """Fetches active saved media items matching canonical intent."""
+    if not intent:
+        return []
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM saved_media 
+        WHERE intent = ? AND (workspace_id = ? OR workspace_id = 1) AND is_active = 1
+        ORDER BY priority DESC, id DESC
+    """, (str(intent).strip(), int(workspace_id or 1)))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def create_saved_media(
+    title: str,
+    media_type: str,
+    file_url: str,
+    description: str = "",
+    duration_seconds: int = 0,
+    workspace_id: int = 1,
+    media_key: str = None,
+    intent: str = None,
+    trigger_phrases: str = None,
+    negative_phrases: str = None,
+    priority: int = 10,
+    send_once: int = 1
+) -> int:
+    # Auto-infer media_key and intent if omitted
+    if not media_key:
+        t_desc = (str(title or "") + " " + str(description or "")).lower()
+        m_type_lower = str(media_type or "").lower()
+        if m_type_lower == "video":
+            if any(k in t_desc for k in ["সংশোধন", "ভুল", "edit", "correction"]):
+                media_key = "google_form_correction_tutorial"
+                intent = "GOOGLE_FORM_CORRECTION_HELP"
+            else:
+                media_key = "google_form_submission_tutorial"
+                intent = "GOOGLE_FORM_SUBMISSION_HELP"
+        elif m_type_lower == "voice":
+            if any(k in t_desc for k in ["ফিতা", "ল্যানিয়ার্ড", "ribbon"]):
+                media_key = "ribbon_features"
+                intent = "RIBBON_FEATURES"
+            elif any(k in t_desc for k in ["কভার", "হোল্ডার", "cover"]):
+                media_key = "cover_features"
+                intent = "COVER_FEATURES"
+            else:
+                media_key = "id_card_features"
+                intent = "CARD_FEATURES"
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO saved_media (
+            title, media_type, file_url, description, duration_seconds, 
+            workspace_id, media_key, intent, trigger_phrases, negative_phrases, 
+            priority, send_once, is_active
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    """, (
+        title, media_type, file_url, description, duration_seconds, 
+        int(workspace_id or 1), media_key, intent, trigger_phrases, negative_phrases, 
+        int(priority or 10), int(send_once or 1)
+    ))
     conn.commit()
     media_id = cursor.lastrowid
     conn.close()
@@ -1725,6 +2014,11 @@ def set_admin_takeover(
                 message_debouncer.cancel_batch("facebook", ws_id, str(sender_id))
             except Exception:
                 pass
+            try:
+                from app.ai_agent.conversation_state import sync_human_takeover_state
+                sync_human_takeover_state(sender_id=str(sender_id), workspace_id=ws_id, is_takeover=True, reason=takeover_reason)
+            except Exception as st_err:
+                print(f"[State Machine Sync Error on Takeover]: {st_err}")
             
         print(f"[ADMIN_TAKEOVER] workspace_id={ws_id} conversation_id={conversation_id or sender_id} customer_id={sender_id} takeover_by={takeover_by} conversation_version={new_version}")
         print(f"[ADMIN_TAKEOVER_ENABLED] sender={sender_id} conv_id={conversation_id} new_version={new_version} by={takeover_by} reason={takeover_reason}")
@@ -1795,6 +2089,11 @@ def enable_conversation_ai(
         
         if sender_id:
             remove_muted_number(str(sender_id))
+            try:
+                from app.ai_agent.conversation_state import sync_human_takeover_state
+                sync_human_takeover_state(sender_id=str(sender_id), workspace_id=ws_id, is_takeover=False, reason=f"enabled_by_{enabled_by}")
+            except Exception as st_err:
+                print(f"[State Machine Sync Error on Enable]: {st_err}")
             
         print(f"[AI_REENABLED] workspace_id={ws_id} sender={sender_id} conv_id={conversation_id} new_version={new_version} by={enabled_by}")
     except Exception as e:
@@ -3880,4 +4179,30 @@ def save_uploaded_file(
     except Exception as e:
         print(f"[DB save_uploaded_file Error]: {e}")
         return {}
+
+
+# -------------------------------------------------------------
+# Conversation State Machine Interface (Phase 2)
+# -------------------------------------------------------------
+def get_or_create_conversation_state(sender_id: str, workspace_id: int = 1, conversation_id: str = None) -> dict:
+    from app.ai_agent.conversation_state import get_or_create_conversation_state as _get_or_create
+    return _get_or_create(sender_id=sender_id, workspace_id=workspace_id, conversation_id=conversation_id)
+
+def get_structured_conversation_state(sender_id: str, workspace_id: int = 1, conversation_id: str = None) -> dict:
+    from app.ai_agent.conversation_state import get_structured_conversation_state as _get_state
+    return _get_state(sender_id=sender_id, workspace_id=workspace_id, conversation_id=conversation_id)
+
+def update_conversation_state(sender_id: str, updates: dict, reason: str = "state_update", workspace_id: int = 1, conversation_id: str = None):
+    from app.ai_agent.conversation_state import update_conversation_state as _update_state
+    return _update_state(sender_id=sender_id, updates=updates, reason=reason, workspace_id=workspace_id, conversation_id=conversation_id)
+
+def transition_state(sender_id: str, new_stage: str, reason: str = "stage_transition", workspace_id: int = 1, conversation_id: str = None):
+    from app.ai_agent.conversation_state import transition_state as _trans
+    return _trans(sender_id=sender_id, new_stage=new_stage, reason=reason, workspace_id=workspace_id, conversation_id=conversation_id)
+
+def sync_human_takeover_state(sender_id: str, workspace_id: int = 1, is_takeover: bool = True, reason: str = "human_admin_message"):
+    from app.ai_agent.conversation_state import sync_human_takeover_state as _sync_takeover
+    return _sync_takeover(sender_id=sender_id, workspace_id=workspace_id, is_takeover=is_takeover, reason=reason)
+
+
 

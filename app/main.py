@@ -12,7 +12,7 @@ if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-from fastapi import FastAPI, Request, Response, Form, File, UploadFile, Query, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, Request, Response, status, Form, File, UploadFile, Query, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, PlainTextResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -37,8 +37,8 @@ from app.database import (
 from app.ai_agent.gemini_brain import process_customer_message
 from app.ai_agent.voice_engine import generate_bangla_voice, list_available_voices
 from app.ai_agent.order_engine import list_orders, update_order_status, create_order
-from datetime import datetime
-import time
+from datetime import datetime, timezone
+from app.services.cloud_sync_service import sync_cold_start_if_configured
 from app.channels.facebook import (
     send_fb_text_message,
     send_fb_media_message,
@@ -94,13 +94,17 @@ templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
 from app.google_integration.routes import router as google_router
 app.include_router(google_router)
 
-# Ensure database tables are created on startup
+# Ensure database tables are created on startup and state is restored
 @app.on_event("startup")
 def startup_event():
     try:
         init_db()
     except Exception as e:
         print(f"[DB Startup Exception]: {e}")
+    try:
+        sync_cold_start_if_configured()
+    except Exception as e:
+        print(f"[Cloud Sync Startup Notice]: {e}")
     try:
         ensure_facebook_page_consistency()
     except Exception as e:
@@ -119,34 +123,50 @@ def startup_event():
             print(f"[Facebook Auto-Subscribe on Startup Exception]: {e}")
     threading.Thread(target=_bg_subscribe, daemon=True).start()
 
-    # Self-ping keepalive loop to prevent Render free-tier idle spin-down
-    def _bg_keepalive():
-        import time, urllib.request
-        time.sleep(180)
-        while True:
-            try:
-                server_domain = os.getenv("RENDER_EXTERNAL_URL") or "https://rs-ai-agent.onrender.com"
-                url = f"{server_domain.rstrip('/')}/health"
-                req = urllib.request.Request(url, headers={"User-Agent": "RS-AI-Agent-KeepAlive/1.0"})
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    print(f"[KeepAlive Ping]: HTTP {resp.getcode()} to {url}")
-            except Exception as k_err:
-                print(f"[KeepAlive Ping Notice]: {k_err}")
-            time.sleep(540)  # Ping every 9 minutes (Render sleeps at 15 minutes)
-    threading.Thread(target=_bg_keepalive, daemon=True).start()
+    # Optional self-ping keepalive loop if explicitly configured
+    if os.getenv("ENABLE_KEEPALIVE_PING", "false").lower() == "true":
+        def _bg_keepalive():
+            import time, urllib.request
+            time.sleep(180)
+            while True:
+                try:
+                    server_domain = os.getenv("RENDER_EXTERNAL_URL") or "https://rs-ai-agent.onrender.com"
+                    url = f"{server_domain.rstrip('/')}/health"
+                    req = urllib.request.Request(url, headers={"User-Agent": "RS-AI-Agent-KeepAlive/1.0"})
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        print(f"[KeepAlive Ping]: HTTP {resp.getcode()} to {url}")
+                except Exception as k_err:
+                    print(f"[KeepAlive Ping Notice]: {k_err}")
+                time.sleep(540)
+        threading.Thread(target=_bg_keepalive, daemon=True).start()
 
     print(f"[{settings.PROJECT_NAME}] Server started successfully on port {os.getenv('PORT', 8000)}.")
 
 # Lightweight Health Check Endpoints
 @app.get("/health")
 @app.get("/api/health")
-async def health_check():
-    """Lightweight health check endpoint returning HTTP 200 without blocking or credentials requirement."""
+async def health_check(response: Response):
+    """Health check endpoint checking live database connectivity and system status."""
+    db_ok = False
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT 1")
+        c.fetchone()
+        conn.close()
+        db_ok = True
+    except Exception:
+        db_ok = False
+
+    if not db_ok:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
     return {
-        "status": "healthy",
+        "status": "healthy" if db_ok else "unhealthy",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
-        "timestamp": datetime.utcnow().isoformat()
+        "database": "connected" if db_ok else "unavailable",
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 # Root manifest and favicon
@@ -720,6 +740,154 @@ async def api_send_saved_media(request: Request):
     return {"success": True}
 
 # ==========================================
+# 5.3 OWNER APPROVAL & ESCALATION APIS (Phase 7.1)
+# ==========================================
+@app.get("/api/admin/approvals")
+async def api_get_admin_approvals(
+    status: Optional[str] = Query(None),
+    workspace_id: Optional[int] = Query(None)
+):
+    from app.ai_agent.owner_approval import OwnerApprovalEngine
+    ws_id = int(workspace_id or 1)
+    status_filter = status.upper() if status and status.upper() != "ALL" else None
+    approvals = OwnerApprovalEngine.list_approvals(workspace_id=ws_id, status_filter=status_filter)
+    return {"success": True, "approvals": approvals}
+
+
+@app.get("/api/admin/approvals/{approval_id}")
+async def api_get_admin_approval_detail(approval_id: str):
+    from app.ai_agent.owner_approval import OwnerApprovalEngine
+    appr = OwnerApprovalEngine.get_approval_by_id(approval_id)
+    if not appr:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+    return {"success": True, "approval": appr}
+
+
+@app.post("/api/admin/approvals/{approval_id}/approve")
+async def api_approve_admin_approval(approval_id: str, request: Request):
+    from app.ai_agent.owner_approval import OwnerApprovalEngine, ApprovalStatus
+    # Security check for customer role header
+    client_role = request.headers.get("x-user-role", "admin").lower()
+    if client_role == "customer":
+        raise HTTPException(status_code=403, detail="Unauthorized: Customers cannot resolve approval requests")
+
+    data = {}
+    try:
+        data = await request.json()
+    except Exception:
+        pass
+
+    actor = data.get("actor") or "owner_admin"
+    reason = data.get("reason") or "Approved by owner via dashboard"
+
+    appr = OwnerApprovalEngine.get_approval_by_id(approval_id)
+    if not appr:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+
+    req_ws = data.get("workspace_id") or request.headers.get("x-workspace-id")
+    if req_ws and int(req_ws) != int(appr.get("workspace_id", 1)):
+        raise HTTPException(status_code=403, detail="Cross-workspace approval resolution forbidden")
+
+    if appr["status"] != ApprovalStatus.PENDING.value:
+        raise HTTPException(status_code=400, detail=f"Approval is already resolved as {appr['status']}")
+
+    success, updated = OwnerApprovalEngine.resolve_approval(
+        approval_id=approval_id,
+        decision=ApprovalStatus.APPROVED,
+        actor=actor,
+        approved_value=appr["requested_value"],
+        reason=reason
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to resolve approval")
+
+    return {"success": True, "message": "Approval granted successfully", "approval": updated}
+
+
+@app.post("/api/admin/approvals/{approval_id}/modify")
+async def api_modify_admin_approval(approval_id: str, request: Request):
+    from app.ai_agent.owner_approval import OwnerApprovalEngine, ApprovalStatus
+    # Security check for customer role header
+    client_role = request.headers.get("x-user-role", "admin").lower()
+    if client_role == "customer":
+        raise HTTPException(status_code=403, detail="Unauthorized: Customers cannot resolve approval requests")
+
+    data = await request.json()
+    approved_val = data.get("approved_value")
+    if approved_val is None:
+        raise HTTPException(status_code=400, detail="approved_value is required for modification")
+    try:
+        approved_val = float(approved_val)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid approved_value format")
+
+    actor = data.get("actor") or "owner_admin"
+    reason = data.get("reason") or f"Counter-offered {approved_val} Tk by owner"
+
+    appr = OwnerApprovalEngine.get_approval_by_id(approval_id)
+    if not appr:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+
+    req_ws = data.get("workspace_id") or request.headers.get("x-workspace-id")
+    if req_ws and int(req_ws) != int(appr.get("workspace_id", 1)):
+        raise HTTPException(status_code=403, detail="Cross-workspace approval resolution forbidden")
+
+    if appr["status"] != ApprovalStatus.PENDING.value:
+        raise HTTPException(status_code=400, detail=f"Approval is already resolved as {appr['status']}")
+
+    success, updated = OwnerApprovalEngine.resolve_approval(
+        approval_id=approval_id,
+        decision=ApprovalStatus.MODIFIED,
+        actor=actor,
+        approved_value=approved_val,
+        reason=reason
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to modify approval")
+
+    return {"success": True, "message": "Approval modified with counter-offer", "approval": updated}
+
+
+@app.post("/api/admin/approvals/{approval_id}/reject")
+async def api_reject_admin_approval(approval_id: str, request: Request):
+    from app.ai_agent.owner_approval import OwnerApprovalEngine, ApprovalStatus
+    # Security check for customer role header
+    client_role = request.headers.get("x-user-role", "admin").lower()
+    if client_role == "customer":
+        raise HTTPException(status_code=403, detail="Unauthorized: Customers cannot resolve approval requests")
+
+    data = {}
+    try:
+        data = await request.json()
+    except Exception:
+        pass
+
+    actor = data.get("actor") or "owner_admin"
+    reason = data.get("reason") or "Rejected by owner"
+
+    appr = OwnerApprovalEngine.get_approval_by_id(approval_id)
+    if not appr:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+
+    req_ws = data.get("workspace_id") or request.headers.get("x-workspace-id")
+    if req_ws and int(req_ws) != int(appr.get("workspace_id", 1)):
+        raise HTTPException(status_code=403, detail="Cross-workspace approval resolution forbidden")
+
+    if appr["status"] != ApprovalStatus.PENDING.value:
+        raise HTTPException(status_code=400, detail=f"Approval is already resolved as {appr['status']}")
+
+    success, updated = OwnerApprovalEngine.resolve_approval(
+        approval_id=approval_id,
+        decision=ApprovalStatus.REJECTED,
+        actor=actor,
+        reason=reason
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to reject approval")
+
+    return {"success": True, "message": "Approval rejected", "approval": updated}
+
+# ==========================================
 # 5.2 OMNICHAT (INBOX) APIS (MULTI-PAGE & WORKSPACE AWARE)
 # ==========================================
 @app.get("/api/conversations")
@@ -1248,7 +1416,7 @@ async def api_diagnostics_meta():
 
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "meta_graph_version": settings.META_GRAPH_VERSION,
         "rs_graphics_workspace_1": {
             "canonical_facebook_page_id": "105116472071659",
@@ -1432,7 +1600,7 @@ async def api_get_diagnostics():
 
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "workspaces": workspaces,
         "connected_pages": masked_pages,
         "whatsapp_accounts": masked_wa,
@@ -1571,7 +1739,7 @@ async def api_whatsapp_embedded_signup(request: Request):
         set_setting("whatsapp_connection_mode", "business_app_coexistence")
         set_setting("whatsapp_coexistence_active", "true")
         set_setting("whatsapp_connection_status", "connected")
-        set_setting("whatsapp_connected_at", datetime.utcnow().isoformat())
+        set_setting("whatsapp_connected_at", datetime.now(timezone.utc).isoformat())
         if matched_display_name:
             set_setting("whatsapp_verified_name", matched_display_name)
         if access_token:
@@ -1672,7 +1840,10 @@ async def facebook_verify(request: Request):
 
 @app.post("/webhook/facebook")
 async def facebook_events(request: Request, background_tasks: BackgroundTasks):
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse(content={"status": "INVALID_JSON"}, status_code=400)
     background_tasks.add_task(handle_facebook_webhook_event, data)
     return JSONResponse(content={"status": "EVENT_RECEIVED"})
 
@@ -1696,6 +1867,9 @@ async def whatsapp_verify(request: Request):
 
 @app.post("/webhook/whatsapp")
 async def whatsapp_events(request: Request, background_tasks: BackgroundTasks):
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse(content={"status": "INVALID_JSON"}, status_code=400)
     background_tasks.add_task(handle_whatsapp_webhook_event, data)
     return JSONResponse(content={"status": "EVENT_RECEIVED"})

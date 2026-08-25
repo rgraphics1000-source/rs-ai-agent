@@ -49,6 +49,11 @@
                 <i class="fas fa-box"></i>
                 <span>Orders</span>
             </li>
+            <li class="nav-item" data-tab="approvals">
+                <i class="fas fa-user-shield" style="color: #fbbf24;"></i>
+                <span>Approvals</span>
+                <span id="sidebar-pending-badge" style="background:#f59e0b; color:#000; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:700; margin-left:auto; display:none;">0</span>
+            </li>
             <li class="nav-item" data-tab="products">
                 <i class="fas fa-tags"></i>
                 <span>Products</span>
@@ -439,6 +444,53 @@
                                 </tr>
                             </thead>
                             <tbody id="orders-tbody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==========================================
+                 TAB: OWNER APPROVALS (Phase 7.1)
+                 ========================================== -->
+            <section id="tab-approvals" class="tab-pane">
+                <div class="glass-card">
+                    <div class="card-header" style="flex-direction: column; align-items: stretch; gap: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div class="card-title" style="font-size: 16px;">
+                                <i class="fas fa-user-shield" style="color: #f59e0b;"></i> Owner Approvals & Human Escalation
+                            </div>
+                            <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); font-size: 11px;">
+                                Authoritative Human Decision Gateway
+                            </span>
+                        </div>
+                        <div class="scrollable-tabs-row">
+                            <button class="btn btn-primary approval-filter-btn" onclick="filterApprovalsByStatus('PENDING', this)">Pending (<span id="count-pending-approvals">0</span>)</button>
+                            <button class="btn btn-secondary approval-filter-btn" onclick="filterApprovalsByStatus('ALL', this)">All</button>
+                            <button class="btn btn-secondary approval-filter-btn" onclick="filterApprovalsByStatus('APPROVED', this)">Approved</button>
+                            <button class="btn btn-secondary approval-filter-btn" onclick="filterApprovalsByStatus('MODIFIED', this)">Modified</button>
+                            <button class="btn btn-secondary approval-filter-btn" onclick="filterApprovalsByStatus('REJECTED', this)">Rejected</button>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>ID / Ref</th>
+                                    <th>Customer</th>
+                                    <th>Request Type</th>
+                                    <th>Package / Qty</th>
+                                    <th>Requested</th>
+                                    <th>Authorized Floor</th>
+                                    <th>Approved Rate</th>
+                                    <th>Status</th>
+                                    <th>Created At</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="approvals-tbody">
                                 <!-- Populated dynamically -->
                             </tbody>
                         </table>
@@ -2317,6 +2369,66 @@
         </div>
     </div>
 
+    <!-- Modal: Owner Approval Review & Resolution (Phase 7.1) -->
+    <div id="modal-review-approval" class="modal-overlay">
+        <div class="modal-content modal-content-flex" style="max-width: 540px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-user-shield" style="color: #f59e0b;"></i> Owner Approval Review</h3>
+                <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-review-approval')">&times;</button>
+            </div>
+            <div class="modal-scroll-body" style="padding: 16px;">
+                <input type="hidden" id="modal-appr-id">
+                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 12px; margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                        <span style="color: var(--text-muted); font-size: 12px;">Customer:</span>
+                        <strong id="modal-appr-customer" style="color: #fff; font-size: 13px;">-</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                        <span style="color: var(--text-muted); font-size: 12px;">Request Type:</span>
+                        <span id="modal-appr-type" class="badge" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd;">-</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                        <span style="color: var(--text-muted); font-size: 12px;">Package & Quantity:</span>
+                        <strong id="modal-appr-pkg-qty" style="color: #fff; font-size: 13px;">-</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                        <span style="color: var(--text-muted); font-size: 12px;">Authorized Floor:</span>
+                        <span id="modal-appr-floor" style="color: #34d399; font-weight: 700;">-</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                        <span style="color: var(--text-muted); font-size: 12px;">Customer Demanded:</span>
+                        <span id="modal-appr-requested" style="color: #f87171; font-weight: 700;">-</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted); font-size: 12px;">Reason / Note:</span>
+                        <span id="modal-appr-reason" style="color: #cbd5e1; font-size: 12px; max-width: 65%; text-align: right;">-</span>
+                    </div>
+                </div>
+
+                <div id="modal-appr-modify-section" class="form-group" style="margin-bottom: 14px;">
+                    <label style="font-size: 12px; font-weight: 600; color: #fbbf24;">Counter-Offer / Custom Approved Price (৳):</label>
+                    <input type="number" step="0.5" id="modal-appr-custom-price" class="form-control" placeholder="যেমন: 80">
+                </div>
+
+                <div class="form-group">
+                    <label style="font-size: 12px;">Decision Note / Reason (Optional):</label>
+                    <input type="text" id="modal-appr-admin-note" class="form-control" placeholder="যেমন: Special wholesale client approval">
+                </div>
+            </div>
+            <div class="modal-fixed-footer" style="display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('modal-review-approval')">Cancel</button>
+                <button type="button" class="btn" style="background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5;" onclick="submitRejectApproval()">
+                    <i class="fas fa-times"></i> Reject
+                </button>
+                <button type="button" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff;" onclick="submitModifyApproval()">
+                    <i class="fas fa-edit"></i> Modify / Counter-Offer
+                </button>
+                <button type="button" class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff;" onclick="submitApproveApproval()">
+                    <i class="fas fa-check"></i> Approve (As Requested)
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- Mobile App-Like Bottom Navigation -->
     <nav class="mobile-bottom-nav">

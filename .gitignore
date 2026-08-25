@@ -13,6 +13,15 @@ Thumbs.db
 android_app/.gradle/
 android_app/**/build/
 android_app/local.properties
+# Database and Backups
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+rs_ai.db
 rs_ai_backup_*.db
 ecommerce.db
+backups/
+scratch/
 *.apk

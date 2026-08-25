@@ -38,8 +38,13 @@ class TestFacebookMediaIdempotencySuite(unittest.TestCase):
         cur = conn.cursor()
         cur.execute("DELETE FROM facebook_media_deliveries")
         cur.execute("DELETE FROM processed_webhook_events")
+        cur.execute("DELETE FROM conversations WHERE sender_id = ?", (self.recipient_id,))
         conn.commit()
         conn.close()
+        from app.database import remove_muted_number, enable_conversation_ai, set_setting
+        set_setting("blacklisted_ai_numbers", "")
+        remove_muted_number(self.recipient_id)
+        enable_conversation_ai(sender_id=self.recipient_id, workspace_id=self.workspace_id)
 
     def test_01_same_webhook_event_received_twice(self):
         """TEST 1: Same webhook event received twice -> AI/media processing occurs once."""

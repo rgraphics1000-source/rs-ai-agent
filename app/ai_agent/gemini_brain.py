@@ -198,8 +198,9 @@ PART 13: ৫০-৭৯ পিস PRICING
 • ৫০-৭৯ পিসের ক্ষেত্রে Fixed Regular Rate প্রযোজ্য। কোনো Discount বা Extra Charge হবে না।
 • বলবে: "৫০-৭৯ পিসের ক্ষেত্রে এটি আমাদের Fixed Regular Rate, স্যার/ম্যাম।"
 
-PART 14: ৮০+ / ১০০+ ORDER
-• ৮০+ বা ১০০+ Quantity হলে Special Offer Voice পাঠানো যাবে।
+PART 14: ৮০+ / BULK TIER PRICING (৮০, ৮১, ৯০, ৯৯, ১০০, ২০০, ৩০০+ পিস)
+• ৮০ পিস বা তার বেশি হলে ১০০+ / Bulk Pricing Tier প্রযোজ্য। ৮০-৯৯ পিসকে কোনো আলাদা Tier হিসেবে বিবেচনা করা যাবে না।
+• ৮০+ Quantity হলে Special Offer Voice পাঠানো যাবে।
 • Never Give Discount Upfront. প্রথমে Regular Rate বলতে হবে। Customer নিজে দামাদামি করলে তবেই Negotiation শুরু হবে।
 
 PART 15: PACKAGE 7 DISCOUNT (৯১ টাকা)
@@ -637,10 +638,12 @@ def evaluate_id_card_workflow(
     message_text: str = "",
     conversation_history: list = None,
     customer_name: str = "Customer",
-    workspace_id: int = 1
+    workspace_id: int = 1,
+    sender_id: str = None
 ) -> Optional[dict]:
     """
     Strictly evaluates ID Card Inquiry, MOQ restriction (30 pcs), Review Link, Packages, and Phased Sample Delivery.
+    Synchronizes with the persistent conversation state machine.
     """
     if int(workspace_id or 1) != 1:
         return None
@@ -650,7 +653,17 @@ def evaluate_id_card_workflow(
         return None
 
     honorific = detect_customer_gender_title(customer_name)
+    ws_id = int(workspace_id or 1)
     
+    # Load structured state from DB (Phase 2 State Machine)
+    saved_state = {}
+    if sender_id:
+        try:
+            from app.ai_agent.conversation_state import get_or_create_conversation_state
+            saved_state = get_or_create_conversation_state(sender_id=str(sender_id), workspace_id=ws_id)
+        except Exception:
+            saved_state = {}
+
     # 0. Check phone numbers, WhatsApp references, complaints, or questions about sending media
     if any(k in msg for k in ["নাম্বার", "নম্বর", "নাম্বার দিতে", "দিতে বলেছিলেন", "এগুলো কেন", "দিচ্ছেন কেন", "whatsapp", "হোয়াটসঅ্যাপ"]):
         return None
@@ -744,6 +757,8 @@ def evaluate_id_card_workflow(
     qty = extract_order_quantity_number(msg)
     if qty is None and history_qty is not None:
         effective_qty = history_qty
+    elif qty is None and saved_state.get("quantity") is not None:
+        effective_qty = saved_state.get("quantity")
     else:
         effective_qty = qty
     
@@ -825,6 +840,17 @@ def evaluate_id_card_workflow(
     
     if qty is not None and is_answering_quantity:
         if qty < 30:
+            if sender_id:
+                try:
+                    from app.ai_agent.conversation_state import update_conversation_state, SalesStage
+                    update_conversation_state(
+                        sender_id=str(sender_id),
+                        updates={"quantity": qty, "quantity_source": "customer_message", "current_sales_stage": SalesStage.MOQ_REJECTED},
+                        reason="moq_under_30",
+                        workspace_id=ws_id
+                    )
+                except Exception:
+                    pass
             return {
                 "reply_text": f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।",
                 "media_sequence": [],
@@ -835,11 +861,40 @@ def evaluate_id_card_workflow(
                 "response_source": "id_card_moq_under_30"
             }
         else:
+            if sender_id:
+                try:
+                    from app.ai_agent.conversation_state import update_conversation_state, SalesStage
+                    update_conversation_state(
+                        sender_id=str(sender_id),
+                        updates={"quantity": qty, "quantity_source": "customer_message", "current_sales_stage": SalesStage.QUANTITY_IDENTIFIED},
+                        reason="customer_provided_quantity",
+                        workspace_id=ws_id
+                    )
+                except Exception:
+                    pass
+
             # Check if user explicitly asked for samples in this same message
             user_explicit_sample_req = any(k in msg for k in [
                 "স্যাম্পল", "ছবি", "প্যাকেজ", "পাঠান", "দেখান", "দিন", "দেন", "পাঠিয়ে দেন", "পাঠিয়ে দিন", "দেখতে চাই"
             ])
             if user_explicit_sample_req:
+                if sender_id:
+                    try:
+                        from app.ai_agent.conversation_state import update_conversation_state, SalesStage
+                        from datetime import datetime
+                        update_conversation_state(
+                            sender_id=str(sender_id),
+                            updates={
+                                "sample_permission": "granted",
+                                "sample_sent": 1,
+                                "sample_sent_at": datetime.now().isoformat(),
+                                "current_sales_stage": SalesStage.SAMPLE_SENT
+                            },
+                            reason="sample_sequence_dispatched",
+                            workspace_id=ws_id
+                        )
+                    except Exception:
+                        pass
                 seq = build_full_sample_sequence(quantity=qty, customer_name=customer_name, workspace_id=workspace_id)
                 pkg_imgs = get_package_sample_images(workspace_id)
                 voice_to_send = VOICE_PACKAGE_SPECIAL_OFFER if qty >= 80 else ""
@@ -892,6 +947,17 @@ def evaluate_id_card_workflow(
                 }
 
             # If stating quantity (e.g. 50, 100, 500, 1000 pcs), ask permission before sending samples
+            if sender_id:
+                try:
+                    from app.ai_agent.conversation_state import update_conversation_state, SalesStage
+                    update_conversation_state(
+                        sender_id=str(sender_id),
+                        updates={"sample_permission": "pending", "current_sales_stage": SalesStage.SAMPLE_PERMISSION_PENDING},
+                        reason="asked_sample_permission",
+                        workspace_id=ws_id
+                    )
+                except Exception:
+                    pass
             return {
                 "reply_text": f"জি {honorific}, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?",
                 "media_sequence": [],
@@ -1006,6 +1072,23 @@ def evaluate_id_card_workflow(
         is_package_request = False
 
     if is_package_request:
+        if sender_id:
+            try:
+                from app.ai_agent.conversation_state import update_conversation_state, SalesStage
+                from datetime import datetime
+                update_conversation_state(
+                    sender_id=str(sender_id),
+                    updates={
+                        "sample_permission": "granted",
+                        "sample_sent": 1,
+                        "sample_sent_at": datetime.now().isoformat(),
+                        "current_sales_stage": SalesStage.SAMPLE_SENT
+                    },
+                    reason="sample_sequence_dispatched",
+                    workspace_id=ws_id
+                )
+            except Exception:
+                pass
         seq = build_full_sample_sequence(quantity=effective_qty, customer_name=customer_name, workspace_id=workspace_id)
         pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
         voice_to_send = VOICE_PACKAGE_SPECIAL_OFFER if (effective_qty is None or effective_qty >= 80) else ""
@@ -1038,6 +1121,30 @@ def evaluate_id_card_workflow(
     )
 
     if is_package_selection and not is_refusing:
+        # Detect package number if explicitly mentioned
+        selected_pkg = None
+        for p_idx in ["১", "২", "৩", "৪", "৫", "৬", "৭", "1", "2", "3", "4", "5", "6", "7"]:
+            if f"প্যাকেজ {p_idx}" in msg or f"package {p_idx}" in msg or msg.strip() == p_idx or f"প্যাকেজ {p_idx} দেন" in msg:
+                selected_pkg = p_idx
+                break
+
+        if sender_id:
+            try:
+                from app.ai_agent.conversation_state import update_conversation_state, SalesStage
+                update_conversation_state(
+                    sender_id=str(sender_id),
+                    updates={
+                        "package_id": selected_pkg or "selected",
+                        "package_source": "customer_selection",
+                        "current_sales_stage": SalesStage.PACKAGE_IDENTIFIED,
+                        "quoted_price": None  # Stale quote reset
+                    },
+                    reason="customer_selected_package",
+                    workspace_id=ws_id
+                )
+            except Exception:
+                pass
+
         tier_note = ""
         if effective_qty is not None and 30 <= effective_qty < 50:
             tier_note = f"\n(যেহেতু আপনাদের পরিমাণ {effective_qty} পিস—১০০ এর কম, তাই প্যাকেজের রেগুলার মূল্যের সাথে প্রতি পিসে ১০ টাকা যোগ হবে।)\n"
@@ -1295,67 +1402,26 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
         return selected_images[:3]
     return selected_images
 
-def detect_saved_media_to_send(user_msg: str, bot_reply: str = "", workspace_id: int = 1) -> dict:
-    """Detects if customer EXPLICITLY requested a specific demo video or pre-recorded voice note within user_msg."""
-    msg = (user_msg or "").strip().lower()
-    
-    res = {"video_url": "", "voice_url": ""}
-    
-    # 1. Video matching - ONLY if user explicitly asked for video / submission guide
-    is_asking_correction_video = any(k in msg for k in [
-        "সংশোধন করার ভিডিও", "সংশোধনের ভিডিও", "ভুল হলে কিভাবে ঠিক করব ভিডিও", "এডিটের ভিডিও", "সংশোধন কিভাবে করব"
-    ])
-    is_asking_submission_video = any(k in msg for k in [
-        "ফর্ম পূরণের ভিডিও", "ফর্মের ভিডিও", "আপলোডের ভিডিও", "ভিডিও দেখতে চাই", "ভিডিও পাঠান", "ভিডিও দেন",
-        "তথ্য কিভাবে দিব", "তথ্য কীভাবে দিব", "তথ্য কিভাবে দেব", "তথ্য কীভাবে দেব", "ছবি আপলোড করব",
-        "ডেমো", "demo", "ডেমো ভিডিও", "কোন ডেমো আছে", "ডেমো আছে কিনা", "ডেমো আছে", "ডেমো দেখান", "ডেমো দেন", "ডেমো দিন",
-        "গুগল ফর্মে তথ্য দেওয়ার নিয়ম", "গুগল ফরমের নিয়ম", "ফর্মের নিয়ম", "ফরমের নিয়ম", "তথ্য দেওয়ার নিয়ম", "তথ্য দেয়ার নিয়ম",
-        "গুগল ফর্ম বুঝি না", "গুগল ফরম বুঝিনা", "বুঝি না কোন ডেমো", "বুঝিনা কোন ডেমো"
-    ])
-
-    if is_asking_correction_video:
-        all_videos = get_saved_media("video", workspace_id=workspace_id)
-        for v in all_videos:
-            title_desc = (v.get("title", "") + " " + v.get("description", "") + " " + v.get("file_url", "")).lower()
-            if "সংশোধন" in title_desc or "edit" in title_desc or "correction" in title_desc:
-                res["video_url"] = v["file_url"]
-                break
-        if not res["video_url"] and all_videos:
-            res["video_url"] = all_videos[0]["file_url"]
-        if not res["video_url"]:
-            res["video_url"] = "/static/uploads/media/google_form_edit_correction_guide.mp4"
-    elif is_asking_submission_video:
-        all_videos = get_saved_media("video", workspace_id=workspace_id)
-        for v in all_videos:
-            title_desc = (v.get("title", "") + " " + v.get("description", "") + " " + v.get("file_url", "")).lower()
-            if ("আপলোড" in title_desc or "submission" in title_desc or "guide" in title_desc or "upload" in title_desc) and "সংশোধন" not in title_desc:
-                res["video_url"] = v["file_url"]
-                break
-        if not res["video_url"] and all_videos:
-            res["video_url"] = all_videos[0]["file_url"]
-        if not res["video_url"]:
-            res["video_url"] = "/static/uploads/media/google_form_submission_guide.mp4"
-            
-    # 2. Voice matching - ONLY if user explicitly asked about quality / features
-    is_asking_quality_voice = any(k in msg for k in [
-        "কোয়ালিটি কেমন হবে", "কোয়ালিটি কেমন হবে", "কোয়ালিটি কেমন", "কোয়ালিটি কেমন",
-        "মান কেমন", "কোয়ালিটি জানতে চাই", "কোয়ালিটি জানতে চাই", "কোয়ালিটির ভয়েস", "বৈশিষ্ট্য",
-        "কোয়ালিটি সম্পরকে", "কোয়ালিটি সম্পরকে", "কোয়ালিটি সম্পর্কে", "কোয়ালিটি সম্পর্কে",
-        "কার্ড ও ফিতা এর কোয়ালিটি", "কার্ড ও ফিতা এর কোয়ালিটি"
-    ])
-    if is_asking_quality_voice:
-        all_voices = get_saved_media("voice", workspace_id=workspace_id)
-        for v in all_voices:
-            title_desc = (v.get("title", "") + " " + v.get("description", "") + " " + v.get("file_url", "")).lower()
-            if "কোয়ালিটি" in title_desc or "কোয়ালিটি" in title_desc or "বৈশিষ্ট্য" in title_desc or "quality" in title_desc or "feature" in title_desc:
-                res["voice_url"] = v["file_url"]
-                break
-        if not res["voice_url"] and all_voices:
-            res["voice_url"] = all_voices[0]["file_url"]
-        if not res["voice_url"]:
-            res["voice_url"] = "/static/uploads/media/id_card_and_fita_quality.aac"
-            
-    return res
+def detect_saved_media_to_send(
+    user_msg: str,
+    bot_reply: str = "",
+    workspace_id: int = 1,
+    conversation_history: list = None,
+    conversation_state: dict = None
+) -> dict:
+    """Detects if customer EXPLICITLY requested a specific demo video or pre-recorded voice note using Intent-Based Media Router."""
+    try:
+        from app.ai_agent.media_router import detect_saved_media_to_send as mr_detect
+        return mr_detect(
+            user_msg=user_msg,
+            bot_reply=bot_reply,
+            workspace_id=workspace_id,
+            conversation_history=conversation_history,
+            conversation_state=conversation_state
+        )
+    except Exception as e:
+        print(f"[MediaRouter Delegation Error]: {e}")
+        return {"video_url": "", "voice_url": ""}
 
 def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", workspace_id: int = 1, page_id: str = "") -> str:
     """Generates an intelligent context-aware reply strictly isolated to the workspace if Gemini API is unreachable."""
@@ -1527,7 +1593,8 @@ async def process_customer_message(
             message_text=message_text,
             conversation_history=conversation_history,
             customer_name=customer_name,
-            workspace_id=ws_id
+            workspace_id=ws_id,
+            sender_id=sender_id
         )
         if id_flow_res:
             return id_flow_res
@@ -1778,18 +1845,37 @@ async def process_customer_message(
             else:
                 clean_reply = f"জি {honorific}, আমাদের প্রডাক্ট ও অর্ডার সম্পর্কে যেকোনো তথ্য প্রয়োজন হলে জানাবেন প্লিজ।"
 
-        # Detect demo videos and pre-recorded voice clips
-        media_found = detect_saved_media_to_send(user_msg=message_text, bot_reply=clean_reply, workspace_id=ws_id)
+        # Detect demo videos and pre-recorded voice clips via Intent-Based Media Router
+        media_found = detect_saved_media_to_send(
+            user_msg=message_text,
+            bot_reply=clean_reply,
+            workspace_id=ws_id,
+            conversation_history=conversation_history
+        )
         matched_video_url = media_found.get("video_url", "")
         matched_voice_url = media_found.get("voice_url", "")
 
-        return {
+        draft_out = {
             "reply_text": clean_reply,
             "voice_url": matched_voice_url or (generate_bangla_voice(clean_reply) if generate_voice_reply else ""),
             "video_url": matched_video_url,
             "order_created": order_created,
             "matched_images": matched_images
         }
+        try:
+            from app.ai_agent.response_validator import ResponseValidator
+            return ResponseValidator.validate_and_sanitize(
+                draft_response=draft_out,
+                customer_message=message_text,
+                conversation_history=conversation_history,
+                sender_id=sender_id,
+                customer_name=customer_name,
+                workspace_id=ws_id,
+                channel=channel
+            )
+        except Exception as v_err:
+            print(f"[Response Validator Error]: {v_err}")
+            return draft_out
 
     except Exception as e:
         print(f"[GeminiBrain Error]: {e}")
@@ -1802,21 +1888,47 @@ async def process_customer_message(
                 workspace_id=ws_id
             )
             if workflow_res and workflow_res.get("reply"):
-                return {
+                draft_wf = {
                     "reply_text": workflow_res["reply"],
                     "voice_url": "",
                     "video_url": "",
                     "order_created": None,
                     "matched_images": []
                 }
+                try:
+                    from app.ai_agent.response_validator import ResponseValidator
+                    return ResponseValidator.validate_and_sanitize(
+                        draft_response=draft_wf,
+                        customer_message=message_text,
+                        conversation_history=conversation_history,
+                        sender_id=sender_id,
+                        customer_name=customer_name,
+                        workspace_id=ws_id,
+                        channel=channel
+                    )
+                except Exception:
+                    return draft_wf
         except Exception:
             pass
 
         err_msg = generate_smart_fallback_reply(message_text, customer_name, workspace_id=ws_id, page_id=page_id)
-        return {
+        draft_fb = {
             "reply_text": err_msg,
             "voice_url": "",
             "video_url": "",
             "order_created": None,
             "matched_images": detect_sample_photos_to_send(message_text, conversation_history, err_msg, workspace_id=ws_id)
         }
+        try:
+            from app.ai_agent.response_validator import ResponseValidator
+            return ResponseValidator.validate_and_sanitize(
+                draft_response=draft_fb,
+                customer_message=message_text,
+                conversation_history=conversation_history,
+                sender_id=sender_id,
+                customer_name=customer_name,
+                workspace_id=ws_id,
+                channel=channel
+            )
+        except Exception:
+            return draft_fb

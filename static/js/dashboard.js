@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadWorkspacesList();
     loadOverview();
     loadOrders();
+    loadOwnerApprovals();
     loadProducts();
     loadTrainingRules();
     loadSavedMediaList();
@@ -74,6 +75,7 @@ function renderWorkspaceDropdown() {
 function refreshAllWorkspaceData() {
     loadOverview();
     loadOrders();
+    loadOwnerApprovals();
     loadProducts();
     loadTrainingRules();
     loadSavedMediaList();
@@ -162,6 +164,7 @@ function initNavigation() {
         "test-arena": { title: "⚡ AI Setup & Live Simulator", sub: "Configure your sales assistant and test customer conversations live" },
         "dashboard": { title: "📊 Dashboard Overview", sub: "Monitor total conversations, orders, conversion rate and sales" },
         "orders": { title: "📦 Orders Management", sub: "Track, manage and update customer orders across channels" },
+        "approvals": { title: "🛡️ Owner Approvals & Human Escalation", sub: "Review and resolve customer pricing exceptions, discounts, and policy requests" },
         "products": { title: "🏷️ Products & Inventory", sub: "Manage product catalog, prices, stocks and variations" },
         "content": { title: "📚 Train Content & FAQs", sub: "Train your AI with custom Q&A pairs, knowledge base and auto-replies" },
         "omnichat": { title: "💬 Omnichat Inbox", sub: "Multi-channel unified customer conversation inbox" },
@@ -204,6 +207,8 @@ function initNavigation() {
 
         if (target === "google-forms") {
             loadGoogleFormsTab();
+        } else if (target === "approvals") {
+            loadOwnerApprovals();
         }
 
         // Close mobile drawer if open
@@ -4420,6 +4425,209 @@ function copyTextToClipboard(text) {
     }).catch(() => {
         showToast("কপি করা সম্ভব হয়নি", "warning");
     });
+}
+
+// ==========================================
+// OWNER APPROVALS MANAGER (Phase 7.1)
+// ==========================================
+let currentApprovalFilter = "PENDING";
+let cachedApprovalsList = [];
+
+async function loadOwnerApprovals(status = currentApprovalFilter) {
+    currentApprovalFilter = status;
+    const wsId = currentWorkspaceId || 1;
+    const tbody = document.getElementById("approvals-tbody");
+    const countPendingEl = document.getElementById("count-pending-approvals");
+    const sidebarBadge = document.getElementById("sidebar-pending-badge");
+
+    try {
+        const queryStatus = status === "ALL" ? "" : `&status=${status}`;
+        const res = await fetch(`/api/admin/approvals?workspace_id=${wsId}${queryStatus}`);
+        const data = await res.json();
+        const approvals = data.approvals || [];
+        cachedApprovalsList = approvals;
+
+        // Also fetch pending count
+        const resPending = await fetch(`/api/admin/approvals?workspace_id=${wsId}&status=PENDING`);
+        const dataPending = await resPending.json();
+        const pendingCount = (dataPending.approvals || []).length;
+
+        if (countPendingEl) countPendingEl.innerText = pendingCount;
+        if (sidebarBadge) {
+            sidebarBadge.innerText = pendingCount;
+            sidebarBadge.style.display = pendingCount > 0 ? "inline-block" : "none";
+        }
+
+        if (!tbody) return;
+
+        if (approvals.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--text-dim);"><i class="fas fa-check-circle" style="color:#10b981;"></i> কোনো ${status === 'ALL' ? '' : status} রিকোয়েস্ট নেই।</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = approvals.map(a => {
+            let statusBadge = "";
+            if (a.status === "PENDING") {
+                statusBadge = '<span class="badge badge-pending"><i class="fas fa-clock"></i> PENDING</span>';
+            } else if (a.status === "APPROVED") {
+                statusBadge = '<span class="badge badge-delivered"><i class="fas fa-check"></i> APPROVED</span>';
+            } else if (a.status === "MODIFIED") {
+                statusBadge = '<span class="badge" style="background:rgba(245,158,11,0.2); color:#fbbf24; border:1px solid #f59e0b;"><i class="fas fa-edit"></i> MODIFIED</span>';
+            } else if (a.status === "REJECTED") {
+                statusBadge = '<span class="badge badge-cancelled"><i class="fas fa-times"></i> REJECTED</span>';
+            } else {
+                statusBadge = `<span class="badge">${a.status}</span>`;
+            }
+
+            const isPending = a.status === "PENDING";
+            const actionBtns = isPending ? `
+                <button class="btn btn-sm" style="background:linear-gradient(135deg, #2563eb, #06b6d4); color:#fff; padding:4px 8px; font-size:11px;" onclick="openReviewApprovalModal('${a.approval_id}')">
+                    <i class="fas fa-gavel"></i> Review
+                </button>
+            ` : `
+                <button class="btn btn-sm btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="openReviewApprovalModal('${a.approval_id}')">
+                    <i class="fas fa-eye"></i> Details
+                </button>
+            `;
+
+            return `
+                <tr>
+                    <td style="font-family:monospace; font-size:11px; color:#93c5fd;">${a.approval_id}</td>
+                    <td><strong>${a.customer_id}</strong></td>
+                    <td><span class="badge" style="background:rgba(255,255,255,0.06); font-size:10px;">${a.request_type}</span></td>
+                    <td>${a.package_id ? 'Pkg ' + a.package_id : '-'} / ${a.quantity ? a.quantity + ' pcs' : '-'}</td>
+                    <td style="color:#f87171; font-weight:700;">৳${a.requested_value || 0}</td>
+                    <td style="color:#34d399; font-weight:700;">৳${a.authorized_value || 0}</td>
+                    <td style="color:#fbbf24; font-weight:700;">${a.approved_value ? '৳' + a.approved_value : '-'}</td>
+                    <td>${statusBadge}</td>
+                    <td style="font-size:11px; color:var(--text-dim);">${a.created_at ? a.created_at.slice(0, 16).replace('T', ' ') : '-'}</td>
+                    <td>${actionBtns}</td>
+                </tr>
+            `;
+        }).join("");
+    } catch (e) {
+        console.error("loadOwnerApprovals error:", e);
+        if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:#f87171; padding:20px;">অনুমোদন রিকোয়েস্ট লোড করতে সমস্যা হয়েছে।</td></tr>`;
+    }
+}
+
+function filterApprovalsByStatus(status, btn) {
+    document.querySelectorAll(".approval-filter-btn").forEach(b => {
+        b.classList.remove("btn-primary");
+        b.classList.add("btn-secondary");
+    });
+    if (btn) {
+        btn.classList.remove("btn-secondary");
+        btn.classList.add("btn-primary");
+    }
+    loadOwnerApprovals(status);
+}
+
+async function openReviewApprovalModal(approvalId) {
+    const appr = cachedApprovalsList.find(a => a.approval_id === approvalId);
+    if (!appr) {
+        try {
+            const res = await fetch(`/api/admin/approvals/${approvalId}`);
+            const data = await res.json();
+            if (data.approval) {
+                populateAndShowApprovalModal(data.approval);
+            }
+        } catch (e) {
+            showToast("অনুমোদন বিবরণ লোড করা যায়নি", "error");
+        }
+        return;
+    }
+    populateAndShowApprovalModal(appr);
+}
+
+function populateAndShowApprovalModal(appr) {
+    document.getElementById("modal-appr-id").value = appr.approval_id;
+    document.getElementById("modal-appr-customer").innerText = appr.customer_id;
+    document.getElementById("modal-appr-type").innerText = appr.request_type;
+    document.getElementById("modal-appr-pkg-qty").innerText = `Package ${appr.package_id || 'N/A'} (${appr.quantity || 100} pieces)`;
+    document.getElementById("modal-appr-floor").innerText = `৳${appr.authorized_value || 0} / set`;
+    document.getElementById("modal-appr-requested").innerText = `৳${appr.requested_value || 0} / set`;
+    document.getElementById("modal-appr-reason").innerText = appr.reason || "Customer requested price exception below authorized floor";
+    document.getElementById("modal-appr-custom-price").value = appr.approved_value || appr.requested_value || 80;
+    document.getElementById("modal-appr-admin-note").value = "";
+
+    openModal("modal-review-approval");
+}
+
+async function submitApproveApproval() {
+    const apprId = document.getElementById("modal-appr-id").value;
+    const note = document.getElementById("modal-appr-admin-note").value;
+    if (!apprId) return;
+
+    try {
+        const res = await fetch(`/api/admin/approvals/${apprId}/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ actor: "owner_admin", reason: note || "Approved as requested" })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("অনুমোদন সফলভাবে মঞ্জুর করা হয়েছে!", "success");
+            closeModal("modal-review-approval");
+            loadOwnerApprovals();
+        } else {
+            showToast(data.detail || data.message || "অনুমোদন ব্যর্থ হয়েছে", "error");
+        }
+    } catch (e) {
+        showToast("সার্ভার ত্রুটি", "error");
+    }
+}
+
+async function submitModifyApproval() {
+    const apprId = document.getElementById("modal-appr-id").value;
+    const customPrice = parseFloat(document.getElementById("modal-appr-custom-price").value);
+    const note = document.getElementById("modal-appr-admin-note").value;
+    if (!apprId || isNaN(customPrice) || customPrice <= 0) {
+        showToast("সঠিক অনুমোদিত রেট লিখুন", "warning");
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/admin/approvals/${apprId}/modify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ approved_value: customPrice, actor: "owner_admin", reason: note || `Counter-offered ৳${customPrice}` })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`কাউন্টার অফার ৳${customPrice} সফলভাবে সেভ হয়েছে!`, "success");
+            closeModal("modal-review-approval");
+            loadOwnerApprovals();
+        } else {
+            showToast(data.detail || data.message || "পরিবর্তন ব্যর্থ হয়েছে", "error");
+        }
+    } catch (e) {
+        showToast("সার্ভার ত্রুটি", "error");
+    }
+}
+
+async function submitRejectApproval() {
+    const apprId = document.getElementById("modal-appr-id").value;
+    const note = document.getElementById("modal-appr-admin-note").value;
+    if (!apprId) return;
+
+    try {
+        const res = await fetch(`/api/admin/approvals/${apprId}/reject`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ actor: "owner_admin", reason: note || "Rejected by owner" })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("অনুরোধ প্রত্যাখ্যান করা হয়েছে", "info");
+            closeModal("modal-review-approval");
+            loadOwnerApprovals();
+        } else {
+            showToast(data.detail || data.message || "প্রত্যাখ্যান ব্যর্থ হয়েছে", "error");
+        }
+    } catch (e) {
+        showToast("সার্ভার ত্রুটি", "error");
+    }
 }
 
 
