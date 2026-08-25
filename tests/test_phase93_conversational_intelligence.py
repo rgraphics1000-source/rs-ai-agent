@@ -397,6 +397,9 @@ class TestPhase93ConversationalIntelligence(unittest.TestCase):
 
         # 6. 'আপনি কে?' -> True identity inquiry
         r_identity = MasterOrchestrator.execute_decision("আপনি কে?", self.sender_id, "Customer", self.ws_id)
+        self.assertIn("নাদিম", r_identity["reply_text"])
+        self.assertEqual(r_identity["response_source"], "agent_identity_inquiry")
+
     # -------------------------------------------------------------
     # 20. HI / HELLO VS SALAM GREETING DISTINCTION
     # -------------------------------------------------------------
@@ -419,6 +422,39 @@ class TestPhase93ConversationalIntelligence(unittest.TestCase):
         self.assertIn("ওয়ালাইকুমুস সালাম", r_salam["reply_text"])
         self.assertIn("স্বাগতম", r_salam["reply_text"])
         self.assertEqual(r_salam["response_source"], "standard_greeting")
+
+    # -------------------------------------------------------------
+    # 21. AGENT CAPABILITY & CASUAL CHIT-CHAT (NO UNNECESSARY ESCALATION)
+    # -------------------------------------------------------------
+    def test_21_capability_and_conversational_chit_chat(self):
+        """Invariant 21: Capabilities and casual chit-chat answered naturally without team escalation."""
+        # 1. 'আপনি কি কি জানেন?' -> Capability overview
+        r_cap = MasterOrchestrator.execute_decision("আপনি কি কি জানেন?", self.sender_id, "Customer", self.ws_id)
+        self.assertIn("নাদিম", r_cap["reply_text"])
+        self.assertIn("আইডি কার্ড", r_cap["reply_text"])
+        self.assertNotIn("টিমকে জানাচ্ছি", r_cap["reply_text"])
+        self.assertEqual(r_cap["response_source"], "agent_capability_inquiry")
+
+        # 2. 'আপনার কাজ কি?' -> Capability overview
+        r_work = MasterOrchestrator.execute_decision("আপনার কাজ কি?", self.sender_id, "Customer", self.ws_id)
+        self.assertIn("নাদিম", r_work["reply_text"])
+        self.assertNotIn("টিমকে জানাচ্ছি", r_work["reply_text"])
+        self.assertEqual(r_work["response_source"], "agent_capability_inquiry")
+
+        # 3. 'গোসল করতে যাবে?' -> Chit-chat
+        r_bath = MasterOrchestrator.execute_decision("গোসল করতে যাবে?", self.sender_id, "Customer", self.ws_id)
+        self.assertNotIn("টিমকে জানাচ্ছি", r_bath["reply_text"])
+        self.assertNotIn("নিশ্চিতভাবে বুঝতে পারছি না", r_bath["reply_text"])
+
+        # 4. 'গোসল কাকে বলে?' -> Chit-chat / GK
+        r_def = MasterOrchestrator.execute_decision("গোসল কাকে বলে?", self.sender_id, "Customer", self.ws_id)
+        self.assertNotIn("টিমকে জানাচ্ছি", r_def["reply_text"])
+        self.assertNotIn("নিশ্চিতভাবে বুঝতে পারছি না", r_def["reply_text"])
+
+        # 5. 'চা খাবেন?' -> Chit-chat
+        r_tea = MasterOrchestrator.execute_decision("চা খাবেন?", self.sender_id, "Customer", self.ws_id)
+        self.assertNotIn("টিমকে জানাচ্ছি", r_tea["reply_text"])
+        self.assertTrue("ধন্যবাদ" in r_tea["reply_text"] or "চা" in r_tea["reply_text"])
 
 
 if __name__ == "__main__":

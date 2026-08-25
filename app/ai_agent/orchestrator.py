@@ -68,6 +68,7 @@ class CustomerIntent(str, Enum):
     HUMAN_REQUEST = "HUMAN_REQUEST"
     OWNER_REQUEST = "OWNER_REQUEST"
     AGENT_IDENTITY_INQUIRY = "AGENT_IDENTITY_INQUIRY"
+    AGENT_CAPABILITY_INQUIRY = "AGENT_CAPABILITY_INQUIRY"
     COMPLAINT = "COMPLAINT"
     TOPIC_CHANGE = "TOPIC_CHANGE"
     MOQ_REJECTED = "MOQ_REJECTED"
@@ -77,6 +78,7 @@ class CustomerIntent(str, Enum):
 # Priority ranking for authoritative semantic intent resolution
 INTENT_PRIORITY_ORDER = [
     CustomerIntent.AGENT_IDENTITY_INQUIRY,
+    CustomerIntent.AGENT_CAPABILITY_INQUIRY,
     CustomerIntent.OWNER_REQUEST,
     CustomerIntent.SOCIAL_PLEASANTRY,
     CustomerIntent.GREETING,
@@ -235,7 +237,16 @@ class MasterOrchestrator:
         if any(kw in norm_msg for kw in agent_identity_words) or re.search(r'(?:^|[\s,।!?])(?:আপনি|তুমি)\s*কে(?:[\s,।!?]|$)', norm_msg):
             detected_intents.append(CustomerIntent.AGENT_IDENTITY_INQUIRY)
 
-        # B. Owner Identity Inquiry
+        # B. Agent Capability & Service Inquiry
+        agent_capability_words = [
+            "আপনি কি কি জানেন", "আপনি কি জানেন", "কি কি জানেন", "কি জানেন", "আপনার কাজ কি", "আপনার কাজ কী",
+            "আপনি কি কি পারেন", "কি করতে পারেন", "কি কি পারেন", "কি সেবা দেন", "কি সেবা পাওয়া যাবে",
+            "কি কাজ করেন", "সেবা কি", "কী সেবা", "আপনার কাজ", "what can you do", "what do you do", "your service", "কি সুবিধা"
+        ]
+        if any(kw in norm_msg for kw in agent_capability_words):
+            detected_intents.append(CustomerIntent.AGENT_CAPABILITY_INQUIRY)
+
+        # C. Owner Identity Inquiry
         owner_words = [
             "owner এর নাম", "owner-এর নাম", "মালিকের নাম", "ওনারের নাম", "বসের নাম",
             "owner কে", "মালিক কে", "ওনার কে", "who is the owner", "owner name",
@@ -244,7 +255,7 @@ class MasterOrchestrator:
         if any(kw in norm_msg for kw in owner_words) or re.search(r'(?:owner|ওনার|মালিক|বস)[-\s]*(?:এর)?\s*(?:নাম|কে)', norm_msg):
             detected_intents.append(CustomerIntent.OWNER_REQUEST)
 
-        # C. Social Pleasantry (Bangla + Banglish - Well-being & Friendly Meals)
+        # D. Social Pleasantry & Casual Chit-Chat (Bangla + Banglish)
         pleasantry_phrases = [
             "কেমন আছেন", "কেমন আছ", "কেমন আছো", "কি খবর", "কী খবর", "ভালো আছেন",
             "ভাল আছেন", "ভালো আছো", "ভালো আছ", "কেমন চলছে", "how are you",
@@ -252,6 +263,11 @@ class MasterOrchestrator:
             "খাবার", "ভাত খেয়েছেন", "ভাত খাইছেন", "ভাত খেয়েছেন নাকি", "ভাত খাইছেন নাকি",
             "নাস্তা করেছেন", "নাস্তা খাইছেন", "খাওয়া দাওয়া", "চা খেয়েছেন", "চা খাইছেন", "কফি খেয়েছেন",
             "রাতের খাবার", "দুপুরের খাবার", "সকালের নাস্তা",
+            "গোসল", "গোসল করতে", "গোসল কাকে বলে", "গোসল কি", "গোসল কী", "গোসল করবেন", "গোসল করতে যাবে",
+            "চা খাবেন", "কফি খাবেন", "চা খাইবেন", "কফি খাইবেন", "চা খাবা", "কফি খাবা",
+            "আপনার বয়স কত", "বয়স কত", "তোমার বয়স কত", "আপনার বাড়ি কোথায়", "বাড়ি কোথায়", "কোথায় থাকেন",
+            "কোথায় থাকো", "আপনার ঠিকানা", "ঘুমাবেন না", "ঘুমান না", "ঘুমাইছেন",
+            "কৌতুক", "জোকস", "গান শোনাও", "গান গাও",
             "bhalo achen", "kemon achen", "ki khobor", "bhalo asen", "kemon asen", "valo achen",
             "apni kemon achen", "khabar kheyechen", "bhat kheyechen"
         ]
@@ -581,12 +597,19 @@ class MasterOrchestrator:
             # STEP 4: AUTHORITATIVE INTENT DISPATCH PIPELINE
             # -------------------------------------------------------------
             # A. AGENT IDENTITY INQUIRY ("আপনি কে", "তোমার নাম কী")
+            # A. AGENT IDENTITY ("আপনার নাম কি", "আপনি কে?")
             if primary_intent == CustomerIntent.AGENT_IDENTITY_INQUIRY:
                 selected_tools.append("knowledge_engine")
                 draft_reply = f"জি {honorific}, আমার নাম নাদিম, আমি RS Graphics-এর পক্ষ থেকে আপনাকে সহযোগিতা করছি। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
                 response_source = "agent_identity_inquiry"
 
-            # B. OWNER IDENTITY / PRIVACY ("Owner এর নাম কী", "মালিক কে")
+            # B. AGENT CAPABILITY / SERVICE INQUIRY ("আপনি কি কি জানেন?", "আপনার কাজ কি?")
+            elif primary_intent == CustomerIntent.AGENT_CAPABILITY_INQUIRY:
+                selected_tools.append("knowledge_engine")
+                draft_reply = f"জি {honorific}, আমি আরএস গ্রাফিক্সের সেলস সহকারী নাদিম। আমি আপনাকে আমাদের আইডি কার্ড, ফিতা ও কভারের বিভিন্ন প্যাকেজ, প্রাইসিং, কোয়ালিটি, অর্ডার প্রক্রিয়া এবং ডেলিভারি সংক্রান্ত যেকোনো তথ্যে সহযোগিতা করতে পারি। আপনার কি কোনো আইডি কার্ড বা ফিতার প্রয়োজন রয়েছে জানাবেন প্লিজ?"
+                response_source = "agent_capability_inquiry"
+
+            # C. OWNER IDENTITY / PRIVACY ("Owner এর নাম কী", "মালিক কে")
             elif primary_intent == CustomerIntent.OWNER_REQUEST:
                 selected_tools.append("knowledge_engine")
                 if s_id:
@@ -606,15 +629,40 @@ class MasterOrchestrator:
                     draft_reply = f"জি {honorific}, Owner স্যারের নামের তথ্যটি এই মুহূর্তে আমার কাছে সংরক্ষিত নেই। বিষয়টি আমাদের টিমকে জানাচ্ছি। আমাদের টিম আপনাকে জানাবে।"
                     response_source = "owner_identity_escalation"
 
-            # C. SOCIAL PLEASANTRY ("ভালো আছেন?", "কেমন আছেন?", "খাবার খেয়েছেন?")
+            # D. SOCIAL PLEASANTRY & CASUAL CHIT-CHAT ("ভালো আছেন?", "কেমন আছেন?", "খাবার খেয়েছেন?", "গোসল করতে যাবে?")
             elif primary_intent == CustomerIntent.SOCIAL_PLEASANTRY:
                 selected_tools.append("conversation_engine")
                 norm_msg = (customer_message or "").strip().lower()
                 has_salam = any(kw in norm_msg for kw in ["সালাম", "salam", "assalam"])
-                is_food_inquiry = any(kw in norm_msg for kw in [
-                    "খাবার", "ভাত", "নাস্তা", "খাওয়া", "খাইছেন", "খেয়েছেন", "চা খেয়েছেন", "চা খাইছেন", "কফি খেয়েছেন", "khabar", "bhat", "nasta"
-                ])
-                if is_food_inquiry:
+
+                # 1. Gosol / Bathing
+                if any(kw in norm_msg for kw in ["গোসল কাকে বলে", "গোসল কি", "গোসল কী"]):
+                    draft_reply = f"গোসল হলো পানি দিয়ে শরীর ধৌত ও পরিচ্ছন্ন করার প্রক্রিয়া। 😊 যাই হোক {honorific}, আরএস গ্রাফিক্সের আইডি কার্ড বা ফিতার কোনো তথ্য প্রয়োজন হলে জানাতে পারেন!"
+                elif any(kw in norm_msg for kw in ["গোসল", "গোসল করতে"]):
+                    draft_reply = f"জি {honorific}, আমি তো আরএস গ্রাফিক্সের ডিজিটাল সহকারী, তাই আমার গোসল করার প্রয়োজন হয় না! 😊 তবে আপনাকে আইডি কার্ড বা প্রিন্টিংয়ের বিষয়ে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+
+                # 2. Tea / Coffee
+                elif any(kw in norm_msg for kw in ["চা খাবেন", "কফি খাবেন", "চা খাইবেন", "কফি খাইবেন", "চা খাবা", "কফি খাবা"]):
+                    draft_reply = f"অনেক ধন্যবাদ {honorific}! আমি তো ডিজিটাল সহকারী, তাই ভার্চুয়ালি এক কাপ উপভোগ করতে পারি! 😊 আপনাকে আইডি কার্ড বা প্রিন্টিংয়ের বিষয়ে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
+
+                # 3. Location / Address
+                elif any(kw in norm_msg for kw in ["বাড়ি কোথায়", "কোথায় থাকেন", "কোথায় থাকো", "আপনার ঠিকানা"]):
+                    draft_reply = f"জি {honorific}, আমি আরএস গ্রাফিক্সের অনলাইন ডিজিটাল সহকারী। আমাদের মূল অফিস ও প্রিন্টিং কারখানা ঢাকায় অবস্থিত। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
+
+                # 4. Age
+                elif any(kw in norm_msg for kw in ["বয়স কত", "তোমার বয়স"]):
+                    draft_reply = f"জি {honorific}, আমি আরএস গ্রাফিক্সের তৈরি এআই সেলস সহকারী নাদিম! 😊 আপনাকে আমাদের আইডি কার্ড বা ফিতার বিষয়ে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
+
+                # 5. Sleep
+                elif any(kw in norm_msg for kw in ["ঘুমাবেন না", "ঘুমান না", "ঘুমাইছেন", "ঘুম আসেনা"]):
+                    draft_reply = f"জি {honorific}, আমি তো ডিজিটাল সহকারী, তাই আপনাদের সহায়তার জন্য সবসময় ২৪ ঘণ্টাই অনলাইনে প্রস্তুত আছি! 😊 আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
+
+                # 6. Humor / Jokes / Song
+                elif any(kw in norm_msg for kw in ["কৌতুক", "জোকস", "গান শোনাও", "গান গাও"]):
+                    draft_reply = f"হাসিখুশি থাকা ভালো! 😊 তবে আমি আরএস গ্রাফিক্সের সেলস সহকারী নাদিম, আপনাকে প্রিমিয়াম আইডি কার্ড ও ফিতার সেরা কোয়ালিটি ও রেট দিয়ে খুশি করতে প্রস্তুত! আপনার কি কোনো আইডি কার্ডের প্রয়োজন রয়েছে জানাবেন প্লিজ?"
+
+                # 7. Food / Meals
+                elif any(kw in norm_msg for kw in ["খাবার", "ভাত", "নাস্তা", "খাওয়া", "খাইছেন", "খেয়েছেন", "khabar", "bhat", "nasta"]):
                     if "রাতের খাবার" in norm_msg:
                         item_label = "রাতের খাবার"
                     elif "দুপুরের খাবার" in norm_msg:
@@ -639,6 +687,7 @@ class MasterOrchestrator:
                             draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, {item_label} খাওয়া হয়েছে। আপনি খাবার খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
                         else:
                             draft_reply = f"আলহামদুলিল্লাহ {honorific}, {item_label} খাওয়া হয়েছে। আপনি খাবার খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                # 8. General well-being
                 else:
                     if has_salam:
                         draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
@@ -957,7 +1006,7 @@ class MasterOrchestrator:
                     draft_reply = f"জি {honorific}, অবশ্যই। আপনি কত পিস আইডি কার্ড করতে চান এবং কার্ডের সঙ্গে ফিতা ও কভারও নিতে চান কি?"
                 response_source = "product_inquiry_quantity_prompt"
 
-            # S. UNKNOWN / KNOWLEDGE ENGINE RETRIEVAL / TEAM ESCALATION
+            # S. UNKNOWN / KNOWLEDGE ENGINE RETRIEVAL / CONVERSATIONAL BRAIN / TEAM ESCALATION
             else:
                 selected_tools.append("knowledge_engine")
                 k_res = KnowledgeEngine.retrieve_relevant_knowledge(customer_message, workspace_id=ws_id)
@@ -970,16 +1019,60 @@ class MasterOrchestrator:
                     draft_reply = f"জি {honorific}, {r_faq.get('answer', '')}"
                     response_source = "faq_answer"
                 else:
-                    unk = KnowledgeEngine.handle_unknown_inquiry(
-                        customer_message=customer_message,
-                        sender_id=s_id,
-                        detected_topic="unknown_inquiry",
-                        workspace_id=ws_id,
-                        customer_name=customer_name,
-                        channel=channel
-                    )
-                    draft_reply = unk["reply_text"]
-                    response_source = "no_guess_team_escalation"
+                    norm_unhandled = (customer_message or "").strip().lower()
+                    is_business_inquiry = any(kw in norm_unhandled for kw in [
+                        "শাখা", "branch", "শোরুম", "দোকান", "অর্ডার", "টাকা", "বিল", "ইনভয়েস",
+                        "অভিযোগ", "সমস্যা", "কাস্টম", "মালিক", "টাকা ফেরত", "রিফান্ড", "ওয়ারেন্টি",
+                        "গ্যারান্টি", "চুক্তি"
+                    ])
+
+                    gen_reply = ""
+                    if not is_business_inquiry:
+                        try:
+                            from app.database import get_setting
+                            from app.config import settings
+                            from google import genai
+                            from google.genai import types
+
+                            api_key = get_setting("gemini_api_key", settings.GEMINI_API_KEY)
+                            if api_key:
+                                client = genai.Client(api_key=api_key)
+                                prompt = (
+                                    f"Customer ({customer_name}): {customer_message}\n\n"
+                                    f"Respond as Nadim (নাদিম), a smart, polite, and helpful sales assistant at RS Graphics (আরএস গ্রাফিক্স).\n"
+                                    f"Guidelines:\n"
+                                    f"1. Respond in polite, friendly Bengali using '{honorific}' (never 'ভাইয়া/আপু').\n"
+                                    f"2. Answer general questions, curiosity, chit-chat, or knowledge questions warmly, concisely, and intelligently (1-2 sentences).\n"
+                                    f"3. STRICT BUSINESS RULE: Do NOT make up new prices, discounts, delivery fees, or commit to unsupported products.\n"
+                                    f"4. After answering warmly, politely ask if they need help with RS Graphics ID cards, lanyards, or printing services."
+                                )
+                                response = client.models.generate_content(
+                                    model="gemini-2.5-flash",
+                                    contents=prompt,
+                                    config=types.GenerateContentConfig(temperature=0.7)
+                                )
+                                if response and response.text:
+                                    gen_reply = response.text.strip()
+                        except Exception as e:
+                            print(f"[Conversational Gemini Brain Note]: {e}")
+
+                    if gen_reply:
+                        draft_reply = gen_reply
+                        response_source = "conversational_ai_brain"
+                    elif is_business_inquiry:
+                        unk = KnowledgeEngine.handle_unknown_inquiry(
+                            customer_message=customer_message,
+                            sender_id=s_id,
+                            detected_topic="unknown_business_inquiry",
+                            workspace_id=ws_id,
+                            customer_name=customer_name,
+                            channel=channel
+                        )
+                        draft_reply = unk["reply_text"]
+                        response_source = "no_guess_team_escalation"
+                    else:
+                        draft_reply = f"জি {honorific}, আমি আরএস গ্রাফিক্সের সেলস সহকারী নাদিম। আমাদের আইডি কার্ড, ফিতা ও প্রিন্টিং সংক্রান্ত যেকোনো তথ্যে আপনাকে সহযোগিতা করতে প্রস্তুত। আপনার কি কোনো আইডি কার্ড বা ফিতার প্রয়োজন রয়েছে জানাবেন প্লিজ?"
+                        response_source = "conversational_friendly_fallback"
 
             # -------------------------------------------------------------
             # STEP 5: UNIVERSAL RESPONSE VALIDATION & POLICY GUARD
