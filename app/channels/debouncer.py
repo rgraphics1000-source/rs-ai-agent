@@ -67,10 +67,11 @@ class MessageDebouncer:
     - Priority 0 immediate cancellation upon Admin Takeover.
     - Idempotency against duplicate webhook messages.
     """
-    def __init__(self, debounce_seconds: float = 3.0):
+    def __init__(self, debounce_seconds: float = 3.5):
         self.debounce_seconds = debounce_seconds
         self._batches: Dict[str, PendingBatch] = {}
         self._processed_batches: Set[str] = set()
+        self._last_processed_turns: Dict[str, Dict[str, Any]] = {}
         self._lock = asyncio.Lock()
 
     def _get_key(self, channel: str, workspace_id: int, sender_id: str) -> str:
@@ -243,6 +244,19 @@ class MessageDebouncer:
                 f"customer_turn_version={customer_turn_ver}"
             )
 
+            # Content Duplicate Check: If user sent the exact same text within 15 seconds
+            combined_batch_text = " ".join([m.get("text", "") for m in batch.messages if m.get("text")]).strip()
+            has_media = any(m.get("image_bytes") or m.get("audio_bytes") for m in batch.messages)
+            last_turn_data = self._last_processed_turns.get(key)
+            if combined_batch_text and not has_media and last_turn_data:
+                last_text = last_turn_data.get("text", "")
+                last_time = last_turn_data.get("timestamp", 0)
+                if combined_batch_text == last_text and (now - last_time) < 15.0:
+                    batch.status = "PROCESSED"
+                    mark_turn_responded(batch.channel, batch.sender_id, customer_turn_ver, batch.workspace_id)
+                    print(f"[DUPLICATE_TURN_SUPPRESSED] conversation_id={batch.conversation_id} length={len(combined_batch_text)} reason=identical_message_within_15s")
+                    return
+
             # Acquire Exclusive Per-Conversation Generation Lock
             has_gen_lock = await acquire_generation_lock(batch.conversation_id)
             if not has_gen_lock:
@@ -259,6 +273,11 @@ class MessageDebouncer:
 
                 # Mark turn as responded
                 mark_turn_responded(batch.channel, batch.sender_id, customer_turn_ver, batch.workspace_id)
+                self._last_processed_turns[key] = {
+                    "text": combined_batch_text,
+                    "timestamp": time.time(),
+                    "turn_version": customer_turn_ver
+                }
                 batch.status = "PROCESSED"
                 print(f"[GENERATION_END] conversation_id={batch.conversation_id} batch_id={batch.batch_id}")
 

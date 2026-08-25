@@ -30,6 +30,7 @@ from app.ai_agent.gemini_brain import process_customer_message, detect_customer_
 
 GRAPH_API_URL = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}"
 PROCESSED_WA_MESSAGE_IDS = set()
+_RECENT_OUTBOUND_WA_MESSAGES = {}
 
 def mask_phone_number(raw_phone: str) -> str:
     """Masks a phone number for secure logging (e.g. 88018****4097)."""
@@ -441,6 +442,29 @@ def send_whatsapp_message_detailed(to_number: str, message_text: str, phone_id: 
         }
 
     norm_to = normalize_whatsapp_phone_number(to_number)
+
+    # Outbound duplicate message guard (prevents dual identical replies within 12s)
+    clean_text = str(message_text or "").strip()
+    if clean_text:
+        out_key = f"{norm_to}:{hash(clean_text)}"
+        now = time.time()
+        last_time = _RECENT_OUTBOUND_WA_MESSAGES.get(out_key)
+        if last_time and (now - last_time) < 12.0:
+            print(f"[WhatsApp Duplicate Guard] Suppressed duplicate outbound message to {masked_rec} within 12s window.")
+            return {
+                "success": True,
+                "http_status": 200,
+                "message_id": "duplicate_suppressed",
+                "phone_number_id": phone_id or "",
+                "token_source": "explicit",
+                "token_valid": True,
+                "token_preview": "",
+                "recipient": masked_rec
+            }
+        _RECENT_OUTBOUND_WA_MESSAGES[out_key] = now
+        if len(_RECENT_OUTBOUND_WA_MESSAGES) > 2000:
+            for k in list(_RECENT_OUTBOUND_WA_MESSAGES.keys())[:500]:
+                _RECENT_OUTBOUND_WA_MESSAGES.pop(k, None)
 
     # Determine priority list of phone_ids to try (handles both 15-digit and 16-digit variants)
     target_phone_ids = [phone_id]

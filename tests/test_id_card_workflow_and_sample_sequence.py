@@ -60,11 +60,28 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIn("সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস", res["reply_text"])
         self.assertEqual(len(res["media_sequence"]), 0)
 
-    def test_05_quantity_80_to_100_triggers_full_sequence_with_review_link_packages_and_voice(self):
-        """Quantity >= 80 (e.g. 80, 90, 100 pcs) sends: Cards -> Fita -> Covers -> Voice -> Review -> Packages."""
+    def test_05_stating_quantity_asks_sample_permission(self):
+        """Stating quantity (e.g. 50, 100, 500 pcs) asks permission: 'আমাদের স্যাম্পলগুলো পাঠাবো কি?'."""
         res = evaluate_id_card_workflow(
             message_text="১০০ পিস বানাবো",
             customer_name="Al-Amin",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res)
+        self.assertIn("আমাদের স্যাম্পলগুলো পাঠাবো কি", res["reply_text"])
+        self.assertEqual(len(res["media_sequence"]), 0)
+        self.assertEqual(res["response_source"], "id_card_ask_sample_permission")
+
+    def test_06_confirming_permission_triggers_full_sequence(self):
+        """Replying 'হ্যাঁ পাঠান' after permission request triggers full sequence with review and packages."""
+        history = [
+            {"sender": "user", "content": "১০০ পিস আইডি কার্ড করব"},
+            {"sender": "bot", "content": "জি স্যার, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?"}
+        ]
+        res = evaluate_id_card_workflow(
+            message_text="হ্যাঁ পাঠান",
+            customer_name="Al-Amin",
+            conversation_history=history,
             workspace_id=1
         )
         self.assertIsNotNone(res)
@@ -106,45 +123,20 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(voice_seq[0]["url"], VOICE_PACKAGE_SPECIAL_OFFER)
         self.assertEqual(res["voice_url"], VOICE_PACKAGE_SPECIAL_OFFER)
 
-    def test_06_quantity_30_to_40_triggers_sequence_with_10tk_rule_and_no_voice(self):
-        """Quantity 30-40 pcs sends sequence with +10 TK rule explanation and NO voice note."""
+    def test_07_package_pricing_inquiry_returns_breakdown(self):
+        """Asking package price states price is written on images and gives 7-package text breakdown."""
         res = evaluate_id_card_workflow(
-            message_text="৪০ পিস আইডি কার্ড বানাবো",
+            message_text="প্যাকেজের দাম কত",
             customer_name="Kawsar Ahmed",
             workspace_id=1
         )
         self.assertIsNotNone(res)
-        seq = res["media_sequence"]
-        
-        # Verify NO voice note
-        voice_seq = [s for s in seq if s["type"] == "voice"]
-        self.assertEqual(len(voice_seq), 0)
-        self.assertEqual(res["voice_url"], "")
-        
-        # Verify +10 TK rule explanation text
-        text_contents = [s.get("text", "") for s in seq if s["type"] == "text"]
-        self.assertTrue(any("১০ টাকা করে বেশি হবে" in t for t in text_contents))
-        self.assertTrue(any(REVIEW_FACEBOOK_POST_URL in t for t in text_contents))
-
-    def test_07_quantity_50_to_60_triggers_sequence_with_fixed_catalog_rate_and_no_voice(self):
-        """Quantity 50-60 pcs sends sequence with fixed regular rate explanation and NO voice note."""
-        res = evaluate_id_card_workflow(
-            message_text="৫০ পিস বানাবো",
-            customer_name="Kawsar Ahmed",
-            workspace_id=1
-        )
-        self.assertIsNotNone(res)
-        seq = res["media_sequence"]
-        
-        # Verify NO voice note
-        voice_seq = [s for s in seq if s["type"] == "voice"]
-        self.assertEqual(len(voice_seq), 0)
-        self.assertEqual(res["voice_url"], "")
-        
-        # Verify fixed regular rate text
-        text_contents = [s.get("text", "") for s in seq if s["type"] == "text"]
-        self.assertTrue(any("রেগুলার মূল্যে" in t for t in text_contents))
-        self.assertTrue(any(REVIEW_FACEBOOK_POST_URL in t for t in text_contents))
+        self.assertIn("প্রতিটি প্যাকেজের ছবির সাথে দাম লেখা আছে", res["reply_text"])
+        self.assertIn("প্যাকেজ ১", res["reply_text"])
+        self.assertIn("৫৮ টাকা", res["reply_text"])
+        self.assertIn("প্যাকেজ ৭", res["reply_text"])
+        self.assertIn("৩৬ টাকা", res["reply_text"])
+        self.assertEqual(res["response_source"], "id_card_package_pricing_breakdown")
 
     def test_08_direct_package_request(self):
         """Customer asking 'প্যাকেজের ছবি দিন' receives full sequence with Review Link and Packages."""

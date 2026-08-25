@@ -163,13 +163,14 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
    - কাস্টমার পেজে মেসেজ দিয়ে আইডি কার্ড বানাতে আগ্রহ প্রকাশ করলে (যেমন: "আমি আইডি কার্ড বানাতে চাই", "আইডি কার্ড করতে চাই", "আইডি কার্ড বানাবো", "আইডি কার্ডের বিষয়ে জানতে চাই" ইত্যাদি)—সবার প্রথমে জানতে চাইতে হবে কাস্টমার কত পিস বানাবেন।
    - প্রথম প্রশ্ন হবে: "জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন?" কত পিস বানাবেন তা আগে জেনে নিতে হবে।
 
-১. সর্বনিম্ন অর্ডারের পরিমাণ (MOQ - Minimum 30 Pcs):
+১. সর্বনিম্ন অর্ডারের পরিমাণ (MOQ - Minimum 30 Pcs) ও পরিমাণের ক্ষেত্রে শান্ত ও পেশাদার টোন:
    - আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস (30 pcs)।
    - কাস্টমার যদি ৩০ পিসের কম বলে (যেমন: ৫, ১০, ১৫, ২০, ২৫ পিস ইত্যাদি)—তাহলে নম্রভাবে বলতে হবে: "দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
+   - কাস্টমার ৫০০, ১০০০ বা যেকোনো বড় পরিমাণ বানাতে চাইলে কখনোই অতিরিক্ত এক্সাইটেড (যেমন: "অসাধারণ!", "মাশাল্লাহ! এতো বড় অর্ডার!") হওয়া যাবে না। সর্বদা শান্ত, মার্জিত, শ্রদ্ধাশীল ও পেশাদার কণ্ঠে কথা বলবে।
 
-২. স্যাম্পল ছবি ও প্যাকেজ পাঠানোর কঠোর নিয়ম ও নির্দিষ্ট ক্রম (Sample & Package Protocol):
-   - যখন কাস্টমার ৩০ পিস বা তার বেশি পরিমাণ বলবে (যেমন: ৫০ পিস, ১০০ পিস ইত্যাদি) অথবা স্যাম্পল দেখতে চাইবে, তখন আমাদের স্যাম্পলগুলো পাঠাবে।
-   - স্যাম্পলগুলো পাঠানোর ক্ষেত্রে নির্দিষ্ট ক্রম কঠোরভাবে বজায় রাখতে হবে:
+২. স্যাম্পল পাঠানোর আগে অনুমতি চাওয়া ও পাঠানোর নির্দিষ্ট ক্রম (Sample Permission & Protocol):
+   - যখন কাস্টমার ৩০ পিস বা তার বেশি পরিমাণ বলবে, তখন সরাসরি নিজে থেকে সব স্যাম্পল না পাঠিয়ে আগে অনুমতি চাইবে: "আমাদের স্যাম্পলগুলো পাঠাবো কি {honorific}?"
+   - কাস্টমার যখন স্যাম্পল দেখতে চাইবে বা অনুমতি দেবে (যেমন: "হ্যাঁ", "পাঠান", "দেখান", "জি", "হুম", "স্যাম্পল দেন"), তখন নির্দিষ্ট ক্রমে স্যাম্পল পাঠাবে:
      ক) সর্বপ্রথম ১৫টি কার্ডের ছবি পাঠাবে। সব কার্ড পাঠানো শেষ হলে লিখে দেবে: "এগুলো আমাদের কার্ড, আমাদের তৈরি করা কার্ড।"
      খ) এরপর ৮টি ফিতার ছবি পাঠাবে। সব ফিতা পাঠানো শেষ হলে লিখে দেবে: "এগুলো আমাদের প্রিন্ট করা ফিতা।"
      গ) এরপর ৮টি কভারের ছবি পাঠাবে।
@@ -193,6 +194,18 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
         • কাস্টমার যদি দামাদামি করে বা কিছু কমানোর অনুরোধ করে, তখন ধাপে ধাপে দাম কমাতে হবে:
           - প্রিমিয়াম ৭ নম্বর প্যাকেজ (মেটাল কভার, রেগুলার ৯১ টাকা): প্রথমে ৯১ টাকা বলবে। কাস্টমার দামাদামি করলে ধাপে ধাপে কমিয়ে (যেমন ৮৮৳ -> ৮৫৳) সর্বশেষ সর্বনিম্ন ৮২ টাকা পর্যন্ত রাখা যাবে (সর্বোচ্চ ৯ টাকা ছাড়)। একবারে সরাসরি ৮২ টাকায় নেমে যাবে না।
           - অন্যান্য প্যাকেজ (প্যাকেজ ১ থেকে ৬): প্রথমে রেগুলার রেট বলবে। কাস্টমার দামাদামি করলে ধাপে ধাপে কমিয়ে প্রতি প্যাকেজে সর্বোচ্চ ৫ টাকা পর্যন্ত ছাড় দেওয়া যাবে (৫ টাকা মাইনাস করা যাবে)।
+
+২.৬. প্যাকেজের ছবি পাঠানোর পর দাম জানতে চাইলে বিস্তারিত টেক্সট মূল্য তালিকা দেওয়ার নিয়ম (Package Pricing Breakdown):
+   - কাস্টমারকে প্যাকেজ পাঠানোর পর অথবা প্যাকেজের দাম জানতে চাইলে বলবে: "জি {honorific}, প্রতিটি প্যাকেজের ছবির সাথে দাম লেখা আছে। তারপরও আপনাদের সুবিধার জন্য প্রতিটি প্যাকেজের বিস্তারিত মূল্য নিচে দেওয়া হলো:"
+   - এবং ১ থেকে ৭ নম্বর প্যাকেজের বিবরণ ও রেগুলার মূল্য টেক্সটে সুন্দরভাবে তুলে ধরবে:
+     • প্যাকেজ ১ (মেটাল কভার + ২ সেমি ফিতা + UV কার্ড): ৫৮ টাকা
+     • প্যাকেজ ২ (T-738V / REAP / T-994V হার্ড কভার + ২ সেমি ফিতা + UV কার্ড): ৫০ টাকা
+     • প্যাকেজ ৩ (Xinding Q-993 কভার + ২ সেমি ফিতা + UV কার্ড): ৪৮ টাকা
+     • প্যাকেজ ৪ (T-065V সফট কভার + ২ সেমি ফিতা + UV কার্ড): ৪৪ টাকা
+     • প্যাকেজ ৫ (DX কভার + ২ সেমি ফিতা + UV কার্ড): ৪২ টাকা
+     • প্যাকেজ ৬ (T-014V সফট কভার + ২ সেমি ফিতা + UV কার্ড): ৩৮ টাকা
+     • প্যাকেজ ৭ (১.৫ সেমি ফিতা + T-014V সফট কভার + UV কার্ড): ৩৬ টাকা
+   - এবং বলবে: "(উক্ত প্যাকেজ রেট ১০০+ পিস অর্ডারের ক্ষেত্রে প্রযোজ্য। ৫০ পিসের ক্ষেত্রে প্রতি সেটে ১০ টাকা এবং ৩০-৪৯ পিসের ক্ষেত্রে প্রতি সেটে ১০ টাকা বেশি হবে।)"
 
 ৩. একক আইটেমের মূল্য তালিকা (আইডি কার্ড, ফিতা ও কভারের নির্ধারিত রেট):
    - আইডি কার্ড: জাপানি মেশিনের অরজিনাল UV কালার প্রিন্ট প্রিমিয়াম PVC কার্ড = ৩৫ টাকা প্রতি পিস (১০০+ পিস অর্ডারে)।
@@ -298,9 +311,9 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
    - কাস্টমার যদি প্যাকেজ বা কম্বো প্যাকেজের ছবি দেখতে চায় (যেমন: "প্যাকেজের ছবি দিন", "প্যাকেজগুলোর ছবি দেখান", "কম্বো ছবি"):
    - টেক্সটে কোনো লম্বা প্যাকেজের তালিকা বা বিবরণী দেওয়ার কোনো প্রয়োজন নেই। শুধুমাত্র সংক্ষিপ্ত উত্তর দেবে: "জি {honorific}, অবশ্যই দিচ্ছি।" (ছবিগুলো স্বয়ংক্রিয়ভাবে কাস্টমারের কাছে চলে যাবে)।
 
-১৩. অজানা বিষয়ের উত্তর বানিয়ে না বলা (Strict Anti-Hallucination):
-   - যে পণ্য, সেবা বা পলিসি সম্পর্কে তোমার ক্যাটালগে কোনো উল্লেখ নেই, সে বিষয়ে নিজে থেকে কোনো মনগড়া উত্তর দেবে না।
-   - সরাসরি বলবে: "জি {honorific}, এই বিষয়টি আমাদের টিমকে জানিয়েছি। কিছুক্ষণের মধ্যে আমাদের টিম আপনার সাথে যোগাযোগ করে সঠিক তথ্যটি জানিয়ে দেবে।"
+১৩. অজানা বিষয়ের উত্তর বানিয়ে না বলা ও কোনো পণ্য আছে কিনা সে বিষয়ে উত্তর দেওয়ার নিয়ম (Strict Anti-Hallucination & Referral):
+   - কোনো পণ্য (যেমন: কলম, পেন, খাতা, ডায়েরি, মগ, টি-শার্ট, ব্যাগ ইত্যাদি) আমাদের কাছে আছে কিনা কাস্টমার জানতে চাইলে অথবা এমন কোনো পণ্যের ছবি পাঠালে কখনোই সরাসরি নিজে থেকে বলবে না "এটি আমাদের কাছে নেই" বা "আমাদের কাছে নেই"।
+   - যে পণ্য বা সেবা সম্পর্কে তোমার জানা নেই বা ক্যাটালগে নেই, সে বিষয়ে বলবে: "জি {honorific}, আপনার এই বিষয়টি আমরা নোট করেছি। আমাদের টিম বিষয়টি জেনে আপনাকে বিস্তারিত জানিয়ে দেবে, ইনশাআল্লাহ।"
 
 ১৪. আইডি কার্ড সংশোধন ও ম্যানুয়াল কারেকশন সংক্রান্ত নিয়ম:
    - এআই নিজে কোনো ফটোশপ এডিট বা আইডি কার্ড কারেকশন করতে পারে না। কাস্টমার কার্ডের নাম, ছবি বা কোনো তথ্যের কারেকশন চাইলে কখনোই বলবে না "আমি ঠিক করে দিচ্ছি" বা "সংশোধন হয়ে গেছে"। সরাসরি বলবে: "জি {honorific}, আপনার সংশোধনের বিষয়টি আমাদের মূল টিমকে জানিয়েছি। আমাদের ডিজাইন টিম এটি দেখে আপনাকে মেসেজ দেবে।"
@@ -692,13 +705,28 @@ def evaluate_id_card_workflow(
             "response_source": "customer_not_interested"
         }
 
+    # Check if message is asking about unlisted/unknown products (pen, mug, notebook, t-shirt, etc.)
+    unlisted_keywords = [
+        "কলম", "পেন", "pen", "বলপেন", "খাতা", "ডায়েরি", "ডায়েরি", "diary", "মগ", "mug", 
+        "টি-শার্ট", "টি শার্ট", "tshirt", "t-shirt", "ব্যাগ", "bag", "স্ট্যাম্প", "stamp", "সিল", "seal"
+    ]
+    if any(k in msg for k in unlisted_keywords) and not any(k in msg for k in ["আইডি", "কার্ড", "ফিতা", "কভার"]):
+        return {
+            "reply_text": f"জি {honorific}, আপনার এই বিষয়টি আমরা নোট করেছি। আমাদের টিম বিষয়টি জেনে আপনাকে বিস্তারিত জানিয়ে দেবে, ইনশাআল্লাহ।",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "unlisted_product_team_referral"
+        }
+
     # Check if customer is asking about an individual item's price (ribbon, card, cover)
     is_package_photo_quoted = any(k in msg for k in ["package", "wa0002", "wa0003", "wa0006", "wa0057", "wa0023", "wa0045", "wa0081", "প্যাকেজ"])
     is_specific_item_inquiry = not is_package_photo_quoted and any(k in msg for k in [
         "এই ফিতা", "এই কভার", "এই কার্ড", "এই প্রোডাক্ট", "এইটার দাম", "এটার দাম",
         "কভার টা কত", "কভার কত", "ফিতা কত", "কার্ড কত", "কত করে", "ফিতার দাম", "কভারের দাম",
-        "এই ফিতার দাম", "এই কভারের দাম", "এই কার্ডের দাম", "প্রোডাক্টটির দাম", "প্রোডাক্টের দাম",
-        "ভাইয়া বলেন", "ভাইয়া বলেন", "বলেন", "???", "??"
+        "এই ফিতার দাম", "এই কভারের দাম", "এই কার্ডের দাম", "প্রোডাক্টটির দাম", "প্রোডাক্টের দাম"
     ])
     if is_specific_item_inquiry:
         return None
@@ -735,6 +763,9 @@ def evaluate_id_card_workflow(
     bot_asked_quantity = any(k in last_bot_msg for k in [
         "কত পিস বানাবেন", "কত পিস", "কতগুলো বানাবেন", "কত পিস প্রয়োজন", "কত পিস লাগবে", "পরিমাণ কত"
     ])
+    bot_asked_sample_permission = any(k in last_bot_msg for k in [
+        "স্যাম্পলগুলো পাঠাবো কি", "স্যাম্পল পাঠাবো কি", "স্যাম্পল পাঠাব কি", "স্যাম্পল পাঠাবো", "স্যাম্পল দেখাব"
+    ])
 
     qty = extract_order_quantity_number(msg)
     if qty is None and history_qty is not None:
@@ -742,6 +773,52 @@ def evaluate_id_card_workflow(
     else:
         effective_qty = qty
     
+    # Check if message is asking about unlisted/unknown products (pen, mug, notebook, t-shirt, etc.)
+    unlisted_keywords = [
+        "কলম", "পেন", "pen", "বলপেন", "খাতা", "ডায়েরি", "ডায়েরি", "diary", "মগ", "mug", 
+        "টি-শার্ট", "টি শার্ট", "tshirt", "t-shirt", "ব্যাগ", "bag", "স্ট্যাম্প", "stamp", "সিল", "seal"
+    ]
+    if any(k in msg for k in unlisted_keywords) and not any(k in msg for k in ["আইডি", "কার্ড", "ফিতা", "কভার"]):
+        return {
+            "reply_text": f"জি {honorific}, আপনার এই বিষয়টি আমরা নোট করেছি। আমাদের টিম বিষয়টি জেনে আপনাকে বিস্তারিত জানিয়ে দেবে, ইনশাআল্লাহ।",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "unlisted_product_team_referral"
+        }
+
+    # Check if customer is asking about package price / rate breakdown
+    is_asking_package_price = any(k in msg for k in [
+        "প্যাকেজের দাম", "প্যাকেজের রেট", "প্যাকেজগুলোর দাম", "প্যাকেজের খরচ", "প্যাকেজ কত", "প্যাকেজ রেট", "প্যাকেজ মূল্য", "প্যাকেজের বিস্তারিত মূল্য"
+    ]) or (
+        any(k in msg for k in ["দাম কত", "রেট কত", "কত টাকা", "খরচ কত", "মূল্য কত", "কত করে", "দাম কত করে", "দাম কত রাখা যাবে", "দাম কত হবে"]) and 
+        (any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo"]) or "প্যাকেজ" in last_bot_msg or "স্যাম্পল" in last_bot_msg)
+    )
+    if is_asking_package_price:
+        price_text = (
+            f"জি {honorific}, প্রতিটি প্যাকেজের ছবির সাথে দাম লেখা আছে, তারপরও আপনাদের সুবিধার জন্য প্রতিটি প্যাকেজের বিস্তারিত মূল্য নিচে দেওয়া হলো:\n\n"
+            f"• প্যাকেজ ১ (মেটাল কভার + ২ সেমি ফিতা + UV কার্ড): ৫৮ টাকা\n"
+            f"• প্যাকেজ ২ (T-738V / REAP / T-994V হার্ড কভার + ২ সেমি ফিতা + UV কার্ড): ৫০ টাকা\n"
+            f"• প্যাকেজ ৩ (Xinding Q-993 কভার + ২ সেমি ফিতা + UV কার্ড): ৪৮ টাকা\n"
+            f"• প্যাকেজ ৪ (T-065V সফট কভার + ২ সেমি ফিতা + UV কার্ড): ৪৪ টাকা\n"
+            f"• প্যাকেজ ৫ (DX কভার + ২ সেমি ফিতা + UV কার্ড): ৪২ টাকা\n"
+            f"• প্যাকেজ ৬ (T-014V সফট কভার + ২ সেমি ফিতা + UV কার্ড): ৩৮ টাকা\n"
+            f"• প্যাকেজ ৭ (১.৫ সেমি ফিতা + T-014V সফট কভার + UV কার্ড): ৩৬ টাকা\n\n"
+            f"(নোট: উল্লেখিত প্যাকেজ রেট ১০০+ পিস অর্ডারের ক্ষেত্রে প্রযোজ্য। ৫০ পিসের ক্ষেত্রে প্যাকেজ প্রতি ১০ টাকা এবং ৩০-৪৯ পিসের ক্ষেত্রে প্যাকেজ প্রতি ১০ টাকা বেশি হবে।)\n\n"
+            f"আপনার কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ {honorific}।"
+        )
+        return {
+            "reply_text": price_text,
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "id_card_package_pricing_breakdown"
+        }
+
     # Check if message is ID card related (and not negative)
     is_id_card_inquiry = any(k in msg for k in [
         "আইডি কার্ড", "আইডি কাড", "id card", "আইডিকার্ড", "আইডি", "কার্ড বানাতে", "কার্ড করতে", 
@@ -784,6 +861,24 @@ def evaluate_id_card_workflow(
                 "response_source": "id_card_moq_under_30"
             }
         else:
+            # Check if user explicitly asked for samples in this same message
+            user_explicit_sample_req = any(k in msg for k in [
+                "স্যাম্পল", "ছবি", "প্যাকেজ", "পাঠান", "দেখান", "দিন", "দেন", "পাঠিয়ে দেন", "পাঠিয়ে দিন", "দেখতে চাই"
+            ])
+            if user_explicit_sample_req:
+                seq = build_full_sample_sequence(quantity=qty, customer_name=customer_name, workspace_id=workspace_id)
+                pkg_imgs = get_package_sample_images(workspace_id)
+                voice_to_send = VOICE_PACKAGE_SPECIAL_OFFER if qty >= 80 else ""
+                return {
+                    "reply_text": f"জি {honorific}, তাহলে আমি আপনাকে আমাদের স্যাম্পলগুলো পাঠিয়ে দিচ্ছি।",
+                    "media_sequence": seq,
+                    "matched_images": pkg_imgs,
+                    "voice_url": voice_to_send,
+                    "video_url": "",
+                    "order_created": None,
+                    "response_source": "id_card_sample_dispatch"
+                }
+
             # Check if package samples were already sent in recent conversation history!
             already_sent_packages = False
             if conversation_history:
@@ -815,28 +910,31 @@ def evaluate_id_card_workflow(
                     "response_source": "id_card_tier_text_reply"
                 }
 
-            seq = build_full_sample_sequence(quantity=qty, customer_name=customer_name, workspace_id=workspace_id)
-            pkg_imgs = get_package_sample_images(workspace_id)
-            voice_to_send = VOICE_PACKAGE_SPECIAL_OFFER if qty >= 80 else ""
+            # If stating quantity (e.g. 50, 100, 500, 1000 pcs), ask permission before sending samples
             return {
-                "reply_text": f"জি {honorific}, তাহলে আমি আপনাকে আমাদের স্যাম্পলগুলো পাঠিয়ে দিচ্ছি।",
-                "media_sequence": seq,
-                "matched_images": pkg_imgs,
-                "voice_url": voice_to_send,
+                "reply_text": f"জি {honorific}, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?",
+                "media_sequence": [],
+                "matched_images": [],
+                "voice_url": "",
                 "video_url": "",
                 "order_created": None,
-                "response_source": "id_card_sample_dispatch"
+                "response_source": "id_card_ask_sample_permission"
             }
 
-    # Case C: Asking specifically for packages, samples, or requesting photos again
-    is_package_request = any(k in msg for k in [
-        "প্যাকেজ", "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
-        "কম্বো", "কম্বো প্যাকেজ", "package", "combo", "পেকেজ",
-        "স্যাম্পল", "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দিন", "স্যাম্পল দেন", "স্যাম্পল দেখতে চাই",
-        "ছবি পাঠান", "ছবি দিন", "ছবি দেন", "ছবি দেখান", "ছবি দেখাও", "ছবি পাঠাও", "ছবি দেখতে চাই",
-        "আবার পাঠান", "আবার দিন", "আবার দেন", "আবার দেখান", "ছবি আসেনি", "ছবিগুলো আসেনি", "ছবি পাই নাই", "ছবি পাইনি",
-        "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "দিন", "পাঠান", "দেখান", "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দাও"
-    ]) and not any(k in msg for k in ["এটি", "এটা", "এইটা", "এই প্যাকেজ", "পছন্দ", "নির্বাচন"])
+    # Case C: Confirming to send samples, or asking specifically for packages/samples
+    is_sample_confirmation = bot_asked_sample_permission and any(k in msg for k in [
+        "হ্যাঁ", "হাঁ", "জি", "হুম", "hm", "yes", "sure", "ok", "ঠিক আছে", "আচ্ছা", "পাঠান", "দেখান", "দিন", "দেন", "পাঠিয়ে দেন", "পাঠিয়ে দিন", "পাঠাও", "দেখা", "সেন্ড করুন", "দাও"
+    ])
+    is_package_request = is_sample_confirmation or (
+        any(k in msg for k in [
+            "প্যাকেজ", "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
+            "কম্বো", "কম্বো প্যাকেজ", "package", "combo", "পেকেজ",
+            "স্যাম্পল", "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দিন", "স্যাম্পল দেন", "স্যাম্পল দেখতে চাই",
+            "ছবি পাঠান", "ছবি দিন", "ছবি দেন", "ছবি দেখান", "ছবি দেখাও", "ছবি পাঠাও", "ছবি দেখতে চাই",
+            "আবার পাঠান", "আবার দিন", "আবার দেন", "আবার দেখান", "ছবি আসেনি", "ছবিগুলো আসেনি", "ছবি পাই নাই", "ছবি পাইনি",
+            "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "দিন", "পাঠান", "দেখান", "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দাও"
+        ]) and not any(k in msg for k in ["এটি", "এটা", "এইটা", "এই প্যাকেজ", "পছন্দ", "নির্বাচন"])
+    )
     if is_package_request:
         seq = build_full_sample_sequence(quantity=effective_qty, customer_name=customer_name, workspace_id=workspace_id)
         pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
@@ -1213,6 +1311,29 @@ def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", worksp
 
     # Workspace 1 (RS Graphics) specific fallbacks
     if int(workspace_id or 1) == 1:
+        # Check unlisted products in fallback
+        unlisted_keywords = [
+            "কলম", "পেন", "pen", "বলপেন", "খাতা", "ডায়েরি", "ডায়েরি", "diary", "মগ", "mug", 
+            "টি-শার্ট", "টি শার্ট", "tshirt", "t-shirt", "ব্যাগ", "bag", "স্ট্যাম্প", "stamp", "সিল", "seal"
+        ]
+        if any(k in msg for k in unlisted_keywords) and not any(k in msg for k in ["আইডি", "কার্ড", "ফিতা", "কভার"]):
+            return f"জি {honorific}, আপনার এই বিষয়টি আমরা নোট করেছি। আমাদের টিম বিষয়টি জেনে আপনাকে বিস্তারিত জানিয়ে দেবে, ইনশাআল্লাহ।"
+
+        # Check package price in fallback
+        if any(k in msg for k in ["প্যাকেজের দাম", "প্যাকেজের রেট", "প্যাকেজগুলোর দাম", "প্যাকেজ কত", "প্যাকেজের খরচ", "প্যাকেজের বিস্তারিত মূল্য"]):
+            return (
+                f"জি {honorific}, প্রতিটি প্যাকেজের ছবির সাথে দাম লেখা আছে, তারপরও আপনাদের সুবিধার জন্য প্রতিটি প্যাকেজের বিস্তারিত মূল্য নিচে দেওয়া হলো:\n\n"
+                f"• প্যাকেজ ১ (মেটাল কভার + ২ সেমি ফিতা + UV কার্ড): ৫৮ টাকা\n"
+                f"• প্যাকেজ ২ (T-738V / REAP / T-994V হার্ড কভার + ২ সেমি ফিতা + UV কার্ড): ৫০ টাকা\n"
+                f"• প্যাকেজ ৩ (Xinding Q-993 কভার + ২ সেমি ফিতা + UV কার্ড): ৪৮ টাকা\n"
+                f"• প্যাকেজ ৪ (T-065V সফট কভার + ২ সেমি ফিতা + UV কার্ড): ৪৪ টাকা\n"
+                f"• প্যাকেজ ৫ (DX কভার + ২ সেমি ফিতা + UV কার্ড): ৪২ টাকা\n"
+                f"• প্যাকেজ ৬ (T-014V সফট কভার + ২ সেমি ফিতা + UV কার্ড): ৩৮ টাকা\n"
+                f"• প্যাকেজ ৭ (১.৫ সেমি ফিতা + T-014V সফট কভার + UV কার্ড): ৩৬ টাকা\n\n"
+                f"(নোট: উল্লেখিত প্যাকেজ রেট ১০০+ পিস অর্ডারের ক্ষেত্রে প্রযোজ্য। ৫০ পিসের ক্ষেত্রে প্যাকেজ প্রতি ১০ টাকা এবং ৩০-৪৯ পিসের ক্ষেত্রে প্যাকেজ প্রতি ১০ টাকা বেশি হবে।)\n\n"
+                f"আপনার কোন প্যাকেজটি পছন্দ হয়েছে জানাবেন প্লিজ {honorific}।"
+            )
+
         # Specific item price queries in fallback
         if "t-014" in msg or "t014" in msg:
             return f"জি {honorific}, এটি আমাদের T-014V সফট কভার। এর রেগুলার মূল্য প্রতি পিস ১০ টাকা।"
@@ -1244,13 +1365,13 @@ def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", worksp
             elif qty < 30:
                 return f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
             else:
-                return f"জি {honorific}, অবশ্যই দিচ্ছি। নিচে আমাদের স্যাম্পলগুলো পাঠানো হলো:"
+                return f"জি {honorific}, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
 
         if qty is not None and any(k in msg for k in ["পিস", "টা", "টি", "বানাবো", "pcs"]):
             if qty < 30:
                 return f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
             else:
-                return f"জি {honorific}, অবশ্যই দিচ্ছি। নিচে আমাদের স্যাম্পলগুলো পাঠানো হলো:"
+                return f"জি {honorific}, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
 
         if any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo"]):
             return f"জি {honorific}, আপনি কত পিস আইডি কার্ড বানাবেন জানাবেন প্লিজ?"

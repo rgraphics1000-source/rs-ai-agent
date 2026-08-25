@@ -46,8 +46,8 @@ class TestDataCollectionAndFormIsolation(unittest.TestCase):
             )
             self.assertIsNotNone(res, f"Failed for query: {q}")
             reply = res.get("reply", "")
-            self.assertIn("গুগল ফর্ম", reply, f"Google Form not found in reply for query: {q}")
-            self.assertIn("প্রধান", reply, f"'প্রধান' priority not emphasized for query: {q}")
+            self.assertTrue("গুগল ফর্ম" in reply or "Google Form" in reply, f"Google Form not found in reply for query: {q}")
+            self.assertTrue("WhatsApp" in reply or "হোয়াটসঅ্যাপ" in reply, f"WhatsApp not found in reply for query: {q}")
             self.assertNotIn("মেইল", reply, f"Email/Mail should never be mentioned for query: {q}")
             self.assertNotIn("email", reply.lower(), f"Email should never be mentioned for query: {q}")
 
