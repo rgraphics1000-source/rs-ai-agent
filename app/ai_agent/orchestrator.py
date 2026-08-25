@@ -228,10 +228,11 @@ class MasterOrchestrator:
         # A. Agent Identity Inquiry (Bangla + Banglish)
         agent_identity_words = [
             "তোমার নাম", "আপনার নাম", "who are you", "what is your name", "who is this",
-            "কার সাথে কথা", "কার সাথে কথা বলছি", "আপনি কে", "তুমি কে", "কে কথা বলছেন",
-            "কে বলছেন", "apni ke", "apni k", "tumi ke", "apnar nam ki", "tomar nam ki", "ke bolchen"
+            "কার সাথে কথা বলছি", "কার সাথে কথা বলতেছি", "কার সাথে কথা বলতেছেন",
+            "কে কথা বলছেন", "কে কথা বলতেছেন", "কে বলছেন", "কে বলছ",
+            "apni ke", "apni k", "tumi ke", "apnar nam ki", "tomar nam ki", "ke bolchen"
         ]
-        if any(kw in norm_msg for kw in agent_identity_words) or re.search(r'\b(?:আপনি|তুমি)\s*কে\b', norm_msg):
+        if any(kw in norm_msg for kw in agent_identity_words) or re.search(r'(?:^|[\s,।!?])(?:আপনি|তুমি)\s*কে(?:[\s,।!?]|$)', norm_msg):
             detected_intents.append(CustomerIntent.AGENT_IDENTITY_INQUIRY)
 
         # B. Owner Identity Inquiry
@@ -243,12 +244,16 @@ class MasterOrchestrator:
         if any(kw in norm_msg for kw in owner_words) or re.search(r'(?:owner|ওনার|মালিক|বস)[-\s]*(?:এর)?\s*(?:নাম|কে)', norm_msg):
             detected_intents.append(CustomerIntent.OWNER_REQUEST)
 
-        # C. Social Pleasantry (Bangla + Banglish)
+        # C. Social Pleasantry (Bangla + Banglish - Well-being & Friendly Meals)
         pleasantry_phrases = [
             "কেমন আছেন", "কেমন আছ", "কেমন আছো", "কি খবর", "কী খবর", "ভালো আছেন",
             "ভাল আছেন", "ভালো আছো", "ভালো আছ", "কেমন চলছে", "how are you",
-            "আপনি ভালো", "ভালো তো", "সুস্থ আছেন", "মজায় আছেন",
-            "bhalo achen", "kemon achen", "ki khobor", "bhalo asen", "kemon asen", "valo achen"
+            "আপনি কেমন আছেন", "তুমি কেমন আছো", "আপনি ভালো", "ভালো তো", "সুস্থ আছেন", "মজায় আছেন",
+            "খাবার", "ভাত খেয়েছেন", "ভাত খাইছেন", "ভাত খেয়েছেন নাকি", "ভাত খাইছেন নাকি",
+            "নাস্তা করেছেন", "নাস্তা খাইছেন", "খাওয়া দাওয়া", "চা খেয়েছেন", "চা খাইছেন", "কফি খেয়েছেন",
+            "রাতের খাবার", "দুপুরের খাবার", "সকালের নাস্তা",
+            "bhalo achen", "kemon achen", "ki khobor", "bhalo asen", "kemon asen", "valo achen",
+            "apni kemon achen", "khabar kheyechen", "bhat kheyechen"
         ]
         if any(kw in norm_msg for kw in pleasantry_phrases):
             detected_intents.append(CustomerIntent.SOCIAL_PLEASANTRY)
@@ -601,15 +606,44 @@ class MasterOrchestrator:
                     draft_reply = f"জি {honorific}, Owner স্যারের নামের তথ্যটি এই মুহূর্তে আমার কাছে সংরক্ষিত নেই। বিষয়টি আমাদের টিমকে জানাচ্ছি। আমাদের টিম আপনাকে জানাবে।"
                     response_source = "owner_identity_escalation"
 
-            # C. SOCIAL PLEASANTRY ("ভালো আছেন?", "কেমন আছেন?")
+            # C. SOCIAL PLEASANTRY ("ভালো আছেন?", "কেমন আছেন?", "খাবার খেয়েছেন?")
             elif primary_intent == CustomerIntent.SOCIAL_PLEASANTRY:
                 selected_tools.append("conversation_engine")
                 norm_msg = (customer_message or "").strip().lower()
                 has_salam = any(kw in norm_msg for kw in ["সালাম", "salam", "assalam"])
-                if has_salam:
-                    draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                is_food_inquiry = any(kw in norm_msg for kw in [
+                    "খাবার", "ভাত", "নাস্তা", "খাওয়া", "খাইছেন", "খেয়েছেন", "চা খেয়েছেন", "চা খাইছেন", "কফি খেয়েছেন", "khabar", "bhat", "nasta"
+                ])
+                if is_food_inquiry:
+                    if "রাতের খাবার" in norm_msg:
+                        item_label = "রাতের খাবার"
+                    elif "দুপুরের খাবার" in norm_msg:
+                        item_label = "দুপুরের খাবার"
+                    elif "নাস্তা" in norm_msg:
+                        item_label = "নাস্তা"
+                    else:
+                        item_label = "খাওয়া"
+
+                    if item_label == "খাওয়া":
+                        if has_salam:
+                            draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, খাওয়া হয়েছে। আপনি খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                        else:
+                            draft_reply = f"আলহামদুলিল্লাহ {honorific}, খাওয়া হয়েছে। আপনি খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                    elif item_label == "নাস্তা":
+                        if has_salam:
+                            draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, নাস্তা করা হয়েছে। আপনি নাস্তা করেছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                        else:
+                            draft_reply = f"আলহামদুলিল্লাহ {honorific}, নাস্তা করা হয়েছে। আপনি নাস্তা করেছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                    else:
+                        if has_salam:
+                            draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, {item_label} খাওয়া হয়েছে। আপনি খাবার খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                        else:
+                            draft_reply = f"আলহামদুলিল্লাহ {honorific}, {item_label} খাওয়া হয়েছে। আপনি খাবার খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
                 else:
-                    draft_reply = f"আলহামদুলিল্লাহ {honorific}, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                    if has_salam:
+                        draft_reply = f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                    else:
+                        draft_reply = f"আলহামদুলিল্লাহ {honorific}, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
                 response_source = "social_pleasantry_response"
 
             # D. GOOGLE FORM HELP / MEDIA VIDEO REQUEST

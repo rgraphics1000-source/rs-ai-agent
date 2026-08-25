@@ -127,10 +127,10 @@ class KnowledgeEngine:
             "তোমার নাম কি", "তোমার নাম কী", "আপনার নাম কি", "আপনার নাম কী",
             "তোমার নাম", "আপনার নাম", "who are you", "what is your name", "who is this",
             "কার সাথে কথা বলছি", "কার সাথে কথা বলতেছি", "কার সাথে কথা বলতেছেন",
-            "আপনি কে", "তুমি কে", "কে কথা বলছেন", "কে কথা বলতেছেন", "কে বলছেন", "কে বলছ",
+            "কে কথা বলছেন", "কে কথা বলতেছেন", "কে বলছেন", "কে বলছ",
             "apni ke", "apni k", "tumi ke", "apnar nam ki", "tomar nam ki", "ke bolchen"
         ]
-        if any(p in raw_msg for p in agent_name_patterns) or re.search(r'\b(?:আপনি|তুমি)\s*কে\b', raw_msg):
+        if any(p in raw_msg for p in agent_name_patterns) or re.search(r'(?:^|[\s,।!?])(?:আপনি|তুমি)\s*কে(?:[\s,।!?]|$)', raw_msg):
             return {
                 "reply_text": f"জি {honorific}, আমার নাম নাদিম, আমি RS Graphics-এর পক্ষ থেকে আপনাকে সহযোগিতা করছি। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?",
                 "is_handled": True,

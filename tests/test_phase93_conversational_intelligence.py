@@ -358,6 +358,48 @@ class TestPhase93ConversationalIntelligence(unittest.TestCase):
                 f"Failed for message: '{msg}', got {res['primary_intent']} instead of {expected_intent}"
             )
 
+    # -------------------------------------------------------------
+    # 19. FOOD PLEASANTRIES & IDENTITY DISTINCTION
+    # -------------------------------------------------------------
+    def test_19_food_pleasantries_and_identity_distinction(self):
+        """Invariant 19: Food pleasantries answered warmly; 'আপনি কেমন আছেন?' does not trigger identity."""
+        # 1. 'আপনি কেমন আছেন?' -> Social pleasantry, NOT identity
+        r_how_are_you = MasterOrchestrator.execute_decision("আপনি কেমন আছেন?", self.sender_id, "Customer", self.ws_id)
+        self.assertIn("ভালো আছি", r_how_are_you["reply_text"])
+        self.assertNotIn("আমার নাম নাদিম", r_how_are_you["reply_text"])
+        self.assertNotIn("কত পিস", r_how_are_you["reply_text"])
+        self.assertEqual(r_how_are_you["response_source"], "social_pleasantry_response")
+
+        # 2. 'খাবার খেয়েছেন?' -> Food pleasantry
+        r_food = MasterOrchestrator.execute_decision("খাবার খেয়েছেন?", self.sender_id, "Customer", self.ws_id)
+        self.assertTrue("খাওয়া হয়েছে" in r_food["reply_text"] or "খেয়েছি" in r_food["reply_text"])
+        self.assertNotIn("টিমকে জানাচ্ছি", r_food["reply_text"])
+        self.assertNotIn("নিশ্চিতভাবে বুঝতে পারছি না", r_food["reply_text"])
+        self.assertEqual(r_food["response_source"], "social_pleasantry_response")
+
+        # 3. 'রাতের খাবার খেয়েছেন নাকি' -> Night meal pleasantry
+        r_dinner = MasterOrchestrator.execute_decision("রাতের খাবার খেয়েছেন নাকি", self.sender_id, "Customer", self.ws_id)
+        self.assertTrue("খাওয়া হয়েছে" in r_dinner["reply_text"] or "খেয়েছি" in r_dinner["reply_text"])
+        self.assertNotIn("টিমকে জানাচ্ছি", r_dinner["reply_text"])
+        self.assertEqual(r_dinner["response_source"], "social_pleasantry_response")
+
+        # 4. 'ভাত খেয়েছেন?' -> Rice/meal pleasantry
+        r_bhat = MasterOrchestrator.execute_decision("ভাত খেয়েছেন?", self.sender_id, "Customer", self.ws_id)
+        self.assertTrue("খাওয়া হয়েছে" in r_bhat["reply_text"] or "খেয়েছি" in r_bhat["reply_text"])
+        self.assertNotIn("টিমকে জানাচ্ছি", r_bhat["reply_text"])
+        self.assertEqual(r_bhat["response_source"], "social_pleasantry_response")
+
+        # 5. 'নাস্তা করেছেন?' -> Breakfast/snack pleasantry
+        r_nasta = MasterOrchestrator.execute_decision("নাস্তা করেছেন?", self.sender_id, "Customer", self.ws_id)
+        self.assertTrue("নাস্তা" in r_nasta["reply_text"] or "খাওয়া হয়েছে" in r_nasta["reply_text"])
+        self.assertNotIn("টিমকে জানাচ্ছি", r_nasta["reply_text"])
+        self.assertEqual(r_nasta["response_source"], "social_pleasantry_response")
+
+        # 6. 'আপনি কে?' -> True identity inquiry
+        r_identity = MasterOrchestrator.execute_decision("আপনি কে?", self.sender_id, "Customer", self.ws_id)
+        self.assertIn("নাদিম", r_identity["reply_text"])
+        self.assertEqual(r_identity["response_source"], "agent_identity_inquiry")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1864,12 +1864,40 @@ def generate_smart_fallback_reply(
                 return f"জি {honorific}, অবশ্যই। আমাদের স্যাম্পলগুলো পাঠাবো কি?"
 
         # Identity Inquiries in Fallback
-        if any(k in msg for k in ["আপনি কে", "তুমি কে", "আপনার নাম", "তোমার নাম", "who are you", "who is this", "apni ke", "apnar nam"]):
-            return f"জি {honorific}, আমি নাদিম, RS Graphics-এর পক্ষ থেকে আপনাকে সহযোগিতা করছি। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
+        if any(k in msg for k in ["আপনার নাম", "তোমার নাম", "who are you", "who is this", "apni ke", "apnar nam", "tomar nam"]) or re.search(r'(?:^|[\s,।!?])(?:আপনি|তুমি)\s*কে(?:[\s,।!?]|$)', msg):
+            return f"জি {honorific}, আমার নাম নাদিম, RS Graphics-এর পক্ষ থেকে আপনাকে সহযোগিতা করছি। আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ?"
 
-        # Social Pleasantries in Fallback
-        if any(k in msg for k in ["ভালো আছেন", "ভাল আছেন", "কেমন আছেন", "কেমন আছো", "কি খবর", "কী খবর", "bhalo achen", "kemon achen", "ki khobor"]):
+        # Social Pleasantries in Fallback (Well-being and Friendly Meals)
+        if any(k in msg for k in [
+            "ভালো আছেন", "ভাল আছেন", "কেমন আছেন", "কেমন আছো", "কি খবর", "কী খবর",
+            "খাবার", "ভাত খেয়েছেন", "ভাত খাইছেন", "ভাত খেয়েছেন নাকি", "নাস্তা করেছেন", "খাওয়া দাওয়া",
+            "রাতের খাবার", "দুপুরের খাবার", "bhalo achen", "kemon achen", "ki khobor", "khabar kheyechen"
+        ]):
             has_salam = any(k in msg for k in ["সালাম", "salam", "assalam"])
+            is_food = any(k in msg for k in ["খাবার", "ভাত", "নাস্তা", "খাওয়া", "খাইছেন", "খেয়েছেন", "khabar", "bhat"])
+            if is_food:
+                if "রাতের খাবার" in msg:
+                    lbl = "রাতের খাবার"
+                elif "দুপুরের খাবার" in msg:
+                    lbl = "দুপুরের খাবার"
+                elif "নাস্তা" in msg:
+                    lbl = "নাস্তা"
+                else:
+                    lbl = "খাওয়া"
+
+                if lbl == "খাওয়া":
+                    if has_salam:
+                        return f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, খাওয়া হয়েছে। আপনি খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                    return f"আলহামদুলিল্লাহ {honorific}, খাওয়া হয়েছে। আপনি খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                elif lbl == "নাস্তা":
+                    if has_salam:
+                        return f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, নাস্তা করা হয়েছে। আপনি নাস্তা করেছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                    return f"আলহামদুলিল্লাহ {honorific}, নাস্তা করা হয়েছে। আপনি নাস্তা করেছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                else:
+                    if has_salam:
+                        return f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, {lbl} খাওয়া হয়েছে। আপনি খাবার খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+                    return f"আলহামদুলিল্লাহ {honorific}, {lbl} খাওয়া হয়েছে। আপনি খাবার খেয়েছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
+
             if has_salam:
                 return f"ওয়ালাইকুমুস সালাম {honorific}! আলহামদুলিল্লাহ, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
             return f"আলহামদুলিল্লাহ {honorific}, ভালো আছি। আপনি কেমন আছেন? আপনাকে কীভাবে সহযোগিতা করতে পারি জানাবেন প্লিজ।"
