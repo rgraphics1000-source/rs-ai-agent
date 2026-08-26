@@ -190,6 +190,23 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIn("শুরুতে সবসময় প্যাকেজের নির্ধারিত রেগুলার রেট", prompt)
         self.assertIn("৮২ টাকা", prompt)
         self.assertIn("৫ টাকা", prompt)
+        self.assertIn("কালিয়াকৈর কাঁচাবাজার, আকরান, বিরুলিয়া, সাভার, ঢাকা।", prompt)
+
+    def test_13_shop_address_inquiry(self):
+        """Customer asking for shop address/location receives exact Kaliakair, Akran, Birulia, Savar address."""
+        queries = [
+            "আপনাদের ঠিকানা কি?",
+            "আপনাদের লোকেশন কোথায়?",
+            "দোকান কোথায় আপনাদের?",
+            "অফিস কোথায়?",
+            "কোথায় অবস্থিত?"
+        ]
+        for q in queries:
+            res = evaluate_id_card_workflow(message_text=q, customer_name="Masud", workspace_id=1)
+            self.assertIsNotNone(res, f"Failed for query: {q}")
+            self.assertEqual(res["response_source"], "shop_address_inquiry")
+            self.assertIn("কালিয়াকৈর কাঁচাবাজার, আকরান, বিরুলিয়া, সাভার, ঢাকা।", res["reply_text"])
+            self.assertEqual(len(res["matched_images"]), 0)
 
 if __name__ == "__main__":
     unittest.main()

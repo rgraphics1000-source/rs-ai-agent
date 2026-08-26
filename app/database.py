@@ -623,7 +623,7 @@ def init_db():
     default_settings = {
         "shop_name": settings.SHOP_NAME,
         "shop_phone": settings.SHOP_PHONE,
-        "shop_address": "ঢাকা, বাংলাদেশ",
+        "shop_address": settings.SHOP_ADDRESS,
         "delivery_inside_dhaka": str(settings.DELIVERY_FEE_INSIDE_DHAKA),
         "delivery_outside_dhaka": str(settings.DELIVERY_FEE_OUTSIDE_DHAKA),
         "comment_auto_reply": "true",
@@ -657,9 +657,12 @@ def init_db():
     for k, v in default_settings.items():
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
 
-    # Migration: update shop name & phone if default
+    # Migration: update shop name & phone & address if default
     cursor.execute("UPDATE settings SET value = 'RS Graphics (আরএস গ্রাফিক্স)' WHERE key = 'shop_name' AND (value = 'আমার ই-কমার্স শপ' OR value = '')")
     cursor.execute("UPDATE settings SET value = '01816504097' WHERE key = 'shop_phone' AND (value = '01700000000' OR value = '')")
+    cursor.execute("UPDATE settings SET value = ? WHERE key = 'shop_address' AND (value = 'ঢাকা, বাংলাদেশ' OR value = '' OR value IS NULL)", (settings.SHOP_ADDRESS,))
+    cursor.execute("UPDATE workspaces SET shop_address = ? WHERE id = 1 AND (shop_address = 'ঢাকা, বাংলাদেশ' OR shop_address = '' OR shop_address IS NULL)", (settings.SHOP_ADDRESS,))
+    cursor.execute("UPDATE connected_pages SET shop_address = ? WHERE workspace_id = 1 AND (shop_address = 'ঢাকা, বাংলাদেশ' OR shop_address = '' OR shop_address IS NULL)", (settings.SHOP_ADDRESS,))
 
     # Migration: update any stale 17-digit config_id to official 16-digit ID
     cursor.execute("UPDATE settings SET value = '1003403176086013' WHERE key = 'meta_embedded_signup_config_id' AND value = '10034031760860138'")

@@ -87,7 +87,7 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
     config = get_page_ai_config(page_id=page_id, workspace_id=workspace_id)
     shop_name = config.get("shop_name") or "Our Shop"
     shop_phone = config.get("shop_phone") or ""
-    shop_address = config.get("shop_address") or "ঢাকা, বাংলাদেশ"
+    shop_address = config.get("shop_address") or "কালিয়াকৈর কাঁচাবাজার, আকরান, বিরুলিয়া, সাভার, ঢাকা।"
     inside_fee = config.get("delivery_inside_dhaka", "70")
     outside_fee = config.get("delivery_outside_dhaka", "130")
     custom_prompt = config.get("ai_system_prompt", "").strip()
@@ -162,6 +162,10 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
 ০. আইডি কার্ড তৈরির প্রাথমিক প্রশ্ন ও অর্ডার পরিমাণ (Primary Question):
    - কাস্টমার পেজে মেসেজ দিয়ে আইডি কার্ড বানাতে আগ্রহ প্রকাশ করলে (যেমন: "আমি আইডি কার্ড বানাতে চাই", "আইডি কার্ড করতে চাই", "আইডি কার্ড বানাবো", "আইডি কার্ডের বিষয়ে জানতে চাই" ইত্যাদি)—সবার প্রথমে জানতে চাইতে হবে কাস্টমার কত পিস বানাবেন।
    - প্রথম প্রশ্ন হবে: "জি {honorific}, আপনি আইডি কার্ড কত পিস বানাবেন?" কত পিস বানাবেন তা আগে জেনে নিতে হবে।
+
+০.৫. শপের ঠিকানা ও লোকেশন জানার নিয়ম (Shop Address & Location Rule):
+   - কাস্টমার যদি আমাদের শপের ঠিকানা, লোকেশন বা অফিস/দোকান কোথায় জানতে চায় (যেমন: "আপনাদের ঠিকানা কি?", "আপনাদের ঠিকানা কোথায়?", "লোকেশন কোথায়?", "অফিস কোথায়?", "দোকান কোথায়?", "কোথায় অবস্থিত?", "address", "location"):
+     সরাসরি ও স্পষ্টভাবে বলবে: "জি {honorific}, আমাদের ঠিকানা: কালিয়াকৈর কাঁচাবাজার, আকরান, বিরুলিয়া, সাভার, ঢাকা।"
 
 ১. সর্বনিম্ন অর্ডারের পরিমাণ (MOQ - Minimum 30 Pcs):
    - আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস (30 pcs)।
@@ -742,6 +746,24 @@ def evaluate_id_card_workflow(
             "response_source": "customer_not_interested"
         }
 
+    # 0.15 Check Shop Address / Location Inquiry
+    is_asking_address = any(k in msg for k in [
+        "ঠিকানা কি", "ঠিকানা কোথায়", "ঠিকানা কোথায়", "আপনাদের ঠিকানা", "আপনার ঠিকানা", "ঠিকানাটা কি",
+        "লোকেশন কোথায়", "লোকেশন কোথায়", "আপনাদের লোকেশন", "শপ লোকেশন", "শপ কোথায়", "শপ কোথায়",
+        "দোকান কোথায়", "দোকান কোথায়", "অফিস কোথায়", "অফিস কোথায়", "কোথায় অবস্থিত", "কোথায় অবস্থিত",
+        "কোথায় আপনাদের", "কোথায় আপনাদের", "কোথায় বসেন", "কোথায় বসেন", "লোকেশন দেন", "ঠিকানা দেন", "ঠিকানা দিন"
+    ]) or (any(k in msg for k in ["ঠিকানা", "address", "location", "লোকেশন"]) and any(q in msg for q in ["কি", "কী", "কোথায়", "কোথায়", "কোন", "কোথা", "বলেন", "জানান", "?"]))
+    if is_asking_address:
+        return {
+            "reply_text": f"জি {honorific}, আমাদের ঠিকানা: কালিয়াকৈর কাঁচাবাজার, আকরান, বিরুলিয়া, সাভার, ঢাকা।",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "shop_address_inquiry"
+        }
+
     # Check if customer is asking about an individual item's price (ribbon, card, cover)
     is_package_photo_quoted = any(k in msg for k in ["package", "wa0002", "wa0003", "wa0006", "wa0057", "wa0023", "wa0045", "wa0081", "প্যাকেজ"])
     is_specific_item_inquiry = not is_package_photo_quoted and any(k in msg for k in [
@@ -1281,6 +1303,10 @@ def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", worksp
 
     # Workspace 1 (RS Graphics) specific fallbacks
     if int(workspace_id or 1) == 1:
+        # Shop address inquiry fallback
+        if any(k in msg for k in ["ঠিকানা", "লোকেশন", "কোথায় অবস্থিত", "কোথায় অবস্থিত", "অফিস কোথায়", "দোকান কোথায়", "address", "location"]):
+            return f"জি {honorific}, আমাদের ঠিকানা: কালিয়াকৈর কাঁচাবাজার, আকরান, বিরুলিয়া, সাভার, ঢাকা।"
+
         # Specific item price queries in fallback
         if "t-014" in msg or "t014" in msg:
             return f"জি {honorific}, এটি আমাদের T-014V সফট কভার। এর রেগুলার মূল্য প্রতি পিস ১০ টাকা।"
