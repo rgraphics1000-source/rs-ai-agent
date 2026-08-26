@@ -712,13 +712,18 @@ def evaluate_id_card_workflow(
     ]) and not any(k in msg for k in ["প্যাকেজ", "প্যাকেজের", "দাম কত", "কত করে", "খরচ কত"])
     if is_asking_quality:
         return {
-            "reply_text": f"জি {honorific}, আমাদের কার্ড ও ফিতার কোয়ালিটি ও বৈশিষ্ট্য কেমন হবে সে সম্পর্কে বিস্তারিত জানতে নিচের ভয়েস বার্তাটি শুনুন:",
+            "reply_text": (
+                f"জি {honorific}, আমাদের আইডি কার্ড ও ফিতার কোয়ালিটি অত্যন্ত প্রিমিয়াম:\n\n"
+                "• **আইডি কার্ড:** জাপানি মেশিনের অরিজিনাল ইউভি (UV) কালার প্রিন্ট পিভিসি কার্ড, যা ১০০% ওয়াটারপ্রুফ এবং দীর্ঘস্থায়ী। কার্ডের লেখা ও ডিজাইনগুলো স্পর্শ করলে কিছুটা এমবসড বা উঁচু অনুভূত হয়।\n"
+                "• **ফিতা:** প্রিমিয়াম ডিজিটাল সাবলিমেশন প্রিন্ট এবং সবচেয়ে ভালো মানের টেকসই 'দাদা হুক' ব্যবহার করা হয়।\n\n"
+                f"আপনার প্রতিষ্ঠানের জন্য কত পিস আইডি কার্ড তৈরি করতে চাচ্ছেন {honorific}?"
+            ),
             "media_sequence": [],
             "matched_images": [],
-            "voice_url": "/static/uploads/media/id_card_and_fita_quality.aac",
+            "voice_url": "",
             "video_url": "",
             "order_created": None,
-            "response_source": "id_card_quality_voice_dispatch"
+            "response_source": "id_card_quality_text_reply"
         }
 
     # Check history context for bot questions and prior quantity
@@ -817,12 +822,11 @@ def evaluate_id_card_workflow(
 
             seq = build_full_sample_sequence(quantity=qty, customer_name=customer_name, workspace_id=workspace_id)
             pkg_imgs = get_package_sample_images(workspace_id)
-            voice_to_send = VOICE_PACKAGE_SPECIAL_OFFER if qty >= 80 else ""
             return {
                 "reply_text": f"জি {honorific}, তাহলে আমি আপনাকে আমাদের স্যাম্পলগুলো পাঠিয়ে দিচ্ছি।",
                 "media_sequence": seq,
                 "matched_images": pkg_imgs,
-                "voice_url": voice_to_send,
+                "voice_url": "",
                 "video_url": "",
                 "order_created": None,
                 "response_source": "id_card_sample_dispatch"
@@ -840,13 +844,12 @@ def evaluate_id_card_workflow(
     if is_package_request:
         seq = build_full_sample_sequence(quantity=effective_qty, customer_name=customer_name, workspace_id=workspace_id)
         pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
-        voice_to_send = VOICE_PACKAGE_SPECIAL_OFFER if (effective_qty is None or effective_qty >= 80) else ""
 
         return {
             "reply_text": f"জি {honorific}, তাহলে আমি আপনাকে আমাদের স্যাম্পলগুলো পাঠিয়ে দিচ্ছি।",
             "media_sequence": seq,
             "matched_images": pkg_imgs,
-            "voice_url": voice_to_send,
+            "voice_url": "",
             "video_url": "",
             "order_created": None,
             "response_source": "package_sample_dispatch"
@@ -1168,24 +1171,8 @@ def detect_saved_media_to_send(user_msg: str, bot_reply: str = "", workspace_id:
         if not res["video_url"]:
             res["video_url"] = "/static/uploads/media/google_form_submission_guide.mp4"
             
-    # 2. Voice matching - ONLY if user explicitly asked about quality / features
-    is_asking_quality_voice = any(k in msg for k in [
-        "কোয়ালিটি কেমন হবে", "কোয়ালিটি কেমন হবে", "কোয়ালিটি কেমন", "কোয়ালিটি কেমন",
-        "মান কেমন", "কোয়ালিটি জানতে চাই", "কোয়ালিটি জানতে চাই", "কোয়ালিটির ভয়েস", "বৈশিষ্ট্য",
-        "কোয়ালিটি সম্পরকে", "কোয়ালিটি সম্পরকে", "কোয়ালিটি সম্পর্কে", "কোয়ালিটি সম্পর্কে",
-        "কার্ড ও ফিতা এর কোয়ালিটি", "কার্ড ও ফিতা এর কোয়ালিটি"
-    ])
-    if is_asking_quality_voice:
-        all_voices = get_saved_media("voice", workspace_id=workspace_id)
-        for v in all_voices:
-            title_desc = (v.get("title", "") + " " + v.get("description", "") + " " + v.get("file_url", "")).lower()
-            if "কোয়ালিটি" in title_desc or "কোয়ালিটি" in title_desc or "বৈশিষ্ট্য" in title_desc or "quality" in title_desc or "feature" in title_desc:
-                res["voice_url"] = v["file_url"]
-                break
-        if not res["voice_url"] and all_voices:
-            res["voice_url"] = all_voices[0]["file_url"]
-        if not res["voice_url"]:
-            res["voice_url"] = "/static/uploads/media/id_card_and_fita_quality.aac"
+    # 2. Voice matching disabled by user instruction - pure text only
+    res["voice_url"] = ""
             
     return res
 
@@ -1600,7 +1587,7 @@ async def process_customer_message(
 
         return {
             "reply_text": clean_reply,
-            "voice_url": matched_voice_url or ((await generate_bangla_voice(clean_reply)) if generate_voice_reply else ""),
+            "voice_url": "",
             "video_url": matched_video_url,
             "order_created": order_created,
             "matched_images": matched_images

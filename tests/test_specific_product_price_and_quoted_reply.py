@@ -72,8 +72,8 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
     def test_06_quality_inquiry_sends_quality_voice_note(self):
         res = evaluate_id_card_workflow("আপনাদের কার্ড ও ফিতার কোয়ালিটি কেমন হবে?", workspace_id=1)
         self.assertIsNotNone(res)
-        self.assertIn("id_card_and_fita_quality.aac", res.get("voice_url"))
-        self.assertIn("কোয়ালিটি ও বৈশিষ্ট্য", res.get("reply_text"))
+        self.assertEqual(res.get("voice_url"), "")
+        self.assertIn("কোয়ালিটি", res.get("reply_text"))
 
     def test_07_phone_numbers_never_trigger_sample_or_quantity_workflow(self):
         # Sending a phone number must NEVER blast photos or be parsed as order quantity
@@ -113,7 +113,7 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
         for query in variations:
             res = evaluate_id_card_workflow(query, workspace_id=1)
             self.assertIsNotNone(res, f"Failed for query: {query}")
-            self.assertIn("id_card_and_fita_quality.aac", res.get("voice_url"), f"Voice URL missing for query: {query}")
+            self.assertEqual(res.get("voice_url"), "", f"Voice URL should be empty for query: {query}")
             self.assertEqual(len(res.get("matched_images", [])), 0, f"Must not blast images for query: {query}")
 
     def test_11_salam_is_only_returned_if_customer_gave_salam(self):

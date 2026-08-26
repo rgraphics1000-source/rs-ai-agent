@@ -100,11 +100,8 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(cover_seq), 1)
         self.assertGreaterEqual(len(cover_seq[0]["urls"]), 8)
         
-        # Verify voice note in sequence
-        voice_seq = [s for s in seq if s["type"] == "voice"]
-        self.assertEqual(len(voice_seq), 1)
-        self.assertEqual(voice_seq[0]["url"], VOICE_PACKAGE_SPECIAL_OFFER)
-        self.assertEqual(res["voice_url"], VOICE_PACKAGE_SPECIAL_OFFER)
+        # Verify voice note is empty (outbound voice disabled)
+        self.assertEqual(res["voice_url"], "")
 
     def test_06_quantity_30_to_40_triggers_sequence_with_10tk_rule_and_no_voice(self):
         """Quantity 30-40 pcs sends sequence with +10 TK rule explanation and NO voice note."""

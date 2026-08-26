@@ -662,9 +662,9 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
             res2 = detect_saved_media_to_send("তথ্য দেওয়ার পর কোনো ভুল হলে সংশোধন কিভাবে করব?", workspace_id=1)
             self.assertEqual(res2["video_url"], "/static/uploads/media/edit_guide.mp4")
 
-            # 3. Features voice note
+            # 3. Features voice note (disabled outbound - text only)
             res3 = detect_saved_media_to_send("আপনাদের আইডি কার্ড ও ফিতার বৈশিষ্ট্য এবং কোয়ালিটি কেমন?", workspace_id=1)
-            self.assertEqual(res3["voice_url"], "/static/uploads/media/voice_sample.mp3")
+            self.assertEqual(res3["voice_url"], "")
         finally:
             delete_saved_media(id1)
             delete_saved_media(id2)

@@ -746,22 +746,8 @@ async def process_facebook_batch(batch: PendingBatch):
                 page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
             )
 
-    # Send voice note if requested / generated
-    voice_url = ai_result.get("voice_url", "")
-    if voice_url:
-        voice_sent = send_fb_audio_message(
-            recipient_id=sender_id,
-            audio_url=voice_url,
-            page_token=page_token,
-            page_id=page_id,
-            workspace_id=workspace_id,
-            batch_id=batch.batch_id
-        )
-        if voice_sent:
-            record_conversation_message(
-                "facebook", sender_id, customer_name, "bot", "[Voice Note]", voice_url,
-                page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
-            )
+    # Outbound voice note disabled by user directive - text only
+    voice_url = ""
 
 
 async def handle_facebook_webhook_event(data: dict):

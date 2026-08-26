@@ -1019,19 +1019,8 @@ async def process_whatsapp_batch(batch: PendingBatch):
                 page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
             )
 
-    # Send voice note if requested / generated
-    voice_url = ai_result.get("voice_url", "")
-    if voice_url:
-        print(f"[WhatsApp Voice on Workspace {workspace_id}] Sending voice note to {sender_phone}...")
-        a_ok = send_whatsapp_audio(
-            sender_phone, voice_url,
-            phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
-        )
-        if a_ok:
-            record_conversation_message(
-                "whatsapp", sender_phone, customer_name, "bot", "[Voice Note]", voice_url,
-                page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
-            )
+    # Outbound voice note disabled by user directive - text only
+    voice_url = ""
 
 
 async def handle_whatsapp_webhook_event(data: dict):
