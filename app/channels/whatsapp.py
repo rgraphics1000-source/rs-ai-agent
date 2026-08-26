@@ -1224,13 +1224,15 @@ async def handle_whatsapp_webhook_event(data: dict):
                         audio_id = msg.get("audio", {}).get("id") or msg.get("voice", {}).get("id")
                         if audio_id and effective_token:
                             try:
-                                media_meta = requests.get(f"{GRAPH_API_URL}/{audio_id}", headers={"Authorization": f"Bearer {effective_token}"}, timeout=10).json()
+                                media_meta = requests.get(f"{GRAPH_API_URL}/{audio_id}", headers={"Authorization": f"Bearer {effective_token}", "User-Agent": "Mozilla/5.0"}, timeout=12).json()
                                 media_url = media_meta.get("url")
                                 if media_url:
-                                    aud_resp = requests.get(media_url, headers={"Authorization": f"Bearer {effective_token}"}, timeout=10)
-                                    if aud_resp.status_code == 200:
+                                    aud_resp = requests.get(media_url, headers={"Authorization": f"Bearer {effective_token}", "User-Agent": "Mozilla/5.0"}, timeout=15)
+                                    if aud_resp.status_code == 200 and len(aud_resp.content) > 50:
                                         audio_bytes = aud_resp.content
-                                        audio_mime = aud_resp.headers.get("content-type", "audio/mp4").split(";")[0].strip()
+                                        audio_mime = aud_resp.headers.get("content-type", "audio/ogg").split(";")[0].strip()
+                                        if not msg_text:
+                                            msg_text = "[কাস্টমার একটি ভয়েস অডিও বার্তা পাঠিয়েছেন]"
                             except Exception as dl_err:
                                 print(f"[WhatsApp Audio DL Error]: {dl_err}")
 

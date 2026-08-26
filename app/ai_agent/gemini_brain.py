@@ -2075,11 +2075,9 @@ async def process_customer_message(
         if sample_batch:
             matched_images = sample_batch
 
-        # Clean robotic voice acknowledgement and asking for type
+        # Clean robotic repetitive voice prefixes
         clean_reply = re.sub(r'^(জি\s+)?(ভাইয়া|আপু|স্যার|ম্যাম)?[,\s]*আপনার\s+ভয়েস\s+(মেসেজটি|বার্তাটি)?\s*(পেয়েছি|শুনেছি)[।,\.\s]*', '', clean_reply, flags=re.IGNORECASE)
-        clean_reply = re.sub(r'আপনার\s+ভয়েস\s+(মেসেজটি|বার্তাটি)?\s*(পেয়েছি|শুনেছি)[।,\.\s]*', '', clean_reply, flags=re.IGNORECASE)
         clean_reply = re.sub(r'ভয়েস\s+মেসেজের\s+জন্য\s+ধন্যবাদ[।,\.\s]*', '', clean_reply, flags=re.IGNORECASE)
-        clean_reply = re.sub(r'(একটু\s+)?টাইপ\s+করে\s+(দিলে|দিতেন|দিন)[^\n।]*', '', clean_reply, flags=re.IGNORECASE)
 
         # If sample images are being sent, eliminate redundant question 'আমি কি স্যাম্পল পাঠাবো?'
         if matched_images:
@@ -2102,13 +2100,15 @@ async def process_customer_message(
             if "প্যাকেজ ০১" in clean_reply or "প্যাকেজ ০২" in clean_reply or "•" in clean_reply or "প্যাকেজ" in clean_reply or len(clean_reply) > 40:
                 clean_reply = f"জি {honorific}, অবশ্যই দিচ্ছি।"
 
-        # If clean_reply became too brief after cleaning, provide polite human greeting
+        # If clean_reply became too brief after cleaning, provide polite human response
         if not clean_reply or len(clean_reply) < 6:
             if matched_images:
                 if any("pakage" in str(u).lower() or "pkg" in str(u).lower() for u in matched_images):
                     clean_reply = f"জি {honorific}, অবশ্যই দিচ্ছি।"
                 else:
                     clean_reply = f"জি {honorific}, নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো পাঠানো হলো।"
+            elif audio_bytes:
+                clean_reply = f"জি {honorific}, আপনার অডিও বার্তাটি পেয়েছি। আইডি কার্ড, ফিতা বা প্রিন্টিং সংক্রান্ত যেকোনো প্রশ্ন বা অর্ডার তথ্যে আমি সহযোগিতা করছি।"
             else:
                 clean_reply = f"জি {honorific}, আমাদের প্রডাক্ট ও অর্ডার সম্পর্কে যেকোনো তথ্য প্রয়োজন হলে জানাবেন প্লিজ।"
 
