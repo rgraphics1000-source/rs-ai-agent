@@ -532,17 +532,17 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
         for i in range(5):
             self.assertIn(f"FAKE_IMAGE_DATA_BYTES_{i+1}".encode("utf-8"), passed_images[i]["bytes"])
 
-    async def test_12_whatsapp_mobile_status_callback_triggers_takeover(self):
+    async def test_12_whatsapp_mobile_status_callback_does_not_accidentally_block_customer(self):
         """
-        Validates that when the shop owner replies from their WhatsApp Business mobile app,
-        Meta's status callback (status='sent') triggers immediate set_admin_takeover,
-        and follow-up customer messages receive 0 AI replies and 0 Gemini calls.
+        Validates User Requirement 7:
+        Meta's status callbacks (status='sent', 'delivered', 'read') are delivery receipts
+        and must NEVER trigger accidental admin takeover or block the customer.
+        AI remains active unless the admin explicitly blocks/takes over.
         """
         enable_conversation_ai(sender_id=self.cust_a, workspace_id=1)
         self.assertTrue(is_conversation_ai_active(sender_id=self.cust_a, workspace_id=1))
 
-        status_mid = f"wamid.mobile_admin_{uuid.uuid4().hex[:6]}"
-        # Simulate Meta status webhook for message sent from mobile app (NOT AI sent)
+        status_mid = f"wamid.status_{uuid.uuid4().hex[:6]}"
         status_payload = {
             "object": "whatsapp_business_account",
             "entry": [{
@@ -556,7 +556,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
                         },
                         "statuses": [{
                             "id": status_mid,
-                            "status": "sent",
+                            "status": "delivered",
                             "timestamp": str(int(time.time())),
                             "recipient_id": self.cust_a
                         }]
@@ -568,10 +568,8 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
 
         await handle_whatsapp_webhook_event(status_payload)
 
-        # Assert AI is now permanently TAKEN OVER / SILENT for this customer
-        state = get_conversation_state(sender_id=self.cust_a, workspace_id=1)
-        self.assertEqual(state.get("admin_takeover"), 1)
-        self.assertFalse(is_conversation_ai_active(sender_id=self.cust_a, workspace_id=1))
+        # Assert AI remains ACTIVE (Not blocked by delivery receipts)
+        self.assertTrue(is_conversation_ai_active(sender_id=self.cust_a, workspace_id=1))
 
         # Now simulate 5 customer messages arriving
         gemini_mock = MagicMock()
@@ -604,8 +602,8 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
                 await handle_whatsapp_webhook_event(cust_payload)
                 await message_debouncer.flush("whatsapp", 1, self.cust_a)
 
-        # Assert 0 Gemini calls occurred
-        self.assertEqual(gemini_mock.call_count, 0)
+        # Assert Gemini calls occurred because AI is ACTIVE (not blocked)
+        self.assertGreater(gemini_mock.call_count, 0)
 
     def test_13_ai_agent_persona_nadim_and_owner_rashed(self):
         """

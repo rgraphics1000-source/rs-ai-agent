@@ -1058,27 +1058,15 @@ async def handle_whatsapp_webhook_event(data: dict):
 
                 print(f"[WhatsApp Routing] matched_account_id={wa_account.get('id')} workspace_id={workspace_id} workspace={workspace_name}")
 
-                # 1. Process WhatsApp status callbacks (sent, delivered, read) to detect Human Admin / Shop Owner messages from Phone/Web
+                # 1. Process WhatsApp status callbacks (sent, delivered, read) for logging only - NEVER trigger takeover on status receipts!
                 statuses = value.get("statuses", [])
                 for st in statuses:
                     st_id = str(st.get("id", "")).strip()
                     st_status = str(st.get("status", "")).strip()
                     st_rec_raw = str(st.get("recipient_id", "")).strip()
                     st_rec_phone = normalize_whatsapp_phone_number(st_rec_raw)
-                    
-                    if st_rec_phone and not is_own_whatsapp_number(st_rec_phone):
-                        # If this status callback is for a message NOT sent by our AI engine:
-                        # It was sent by the Shop Owner / Main Admin (মুহা. রাশেদুল ইসলাম / রাশেদ) from the WhatsApp Business mobile app or WhatsApp Web!
-                        if st_id and not is_outbound_ai_message("whatsapp", st_id):
-                            new_v = set_admin_takeover(
-                                sender_id=st_rec_phone,
-                                workspace_id=workspace_id,
-                                takeover_by="human_admin_whatsapp_phone",
-                                takeover_reason=f"human_admin_status_{st_status}"
-                            )
-                            message_debouncer.cancel_batch("whatsapp", workspace_id, st_rec_phone)
-                            print(f"[ADMIN_TAKEOVER] workspace_id={workspace_id} conversation_id=whatsapp_{st_rec_phone} customer_id={st_rec_phone} source=whatsapp_phone_status status={st_status} mid={st_id} conversation_version={new_v}")
-                            print(f"[ADMIN_MESSAGE] sender_role=ADMIN channel=whatsapp customer_id={st_rec_phone} mid={st_id}")
+                    if st_rec_phone:
+                        print(f"[WhatsApp Status] mid={st_id} recipient={mask_phone_number(st_rec_phone)} status={st_status}")
 
                 # Drop WhatsApp status callbacks if no customer message entries are present
                 if not value.get("messages"):
@@ -1241,14 +1229,14 @@ async def handle_whatsapp_webhook_event(data: dict):
                         direction="INBOUND", sender_role="CUSTOMER"
                     )
 
-                    # Check for Admin / Customer AI Control Commands (Direct inside WhatsApp)
+                    # Check for Admin / Customer AI Control Commands (Explicit commands only)
                     clean_cmd = msg_text.strip().lower()
-                    if clean_cmd in ["#ai", "[ai]", "start ai", "#start", "#unmute", "#resume", "এআই চালু", "এআই অন", "চালু", "অন"]:
+                    if clean_cmd in ["#ai", "[ai]", "#start", "#unmute", "#resume", "এআই চালু", "এআই অন"]:
                         enable_conversation_ai(sender_id=sender_phone, workspace_id=workspace_id)
                         remove_muted_number(sender_phone)
                         send_whatsapp_message(sender_phone, "জি স্যার, আপনার জন্য এআই অটোমেশন পুনরায় চালু করা হয়েছে।", phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id)
                         continue
-                    elif clean_cmd in ["#pause", "[pause]", "[stop]", "#stop", "#mute", "#block", "stop", "mute", "block", "এআই বন্ধ", "এআই অফ", "আমি কথা বলছি", "বন্ধ", "ব্লক", "স্টপ"]:
+                    elif clean_cmd in ["#pause", "[pause]", "[stop]", "#stop", "#mute", "#block", "এআই বন্ধ", "এআই অফ", "আমি কথা বলছি"]:
                         set_admin_takeover(sender_id=sender_phone, workspace_id=workspace_id, takeover_by="customer_command", takeover_reason="command_pause")
                         add_muted_number(sender_phone)
                         send_whatsapp_message(sender_phone, "জি স্যার, এআই অটোমেশন সাময়িকভাবে বন্ধ (Paused/Blocked) করা হয়েছে। আপনি সরাসরি কথা বলতে পারবেন।", phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id)

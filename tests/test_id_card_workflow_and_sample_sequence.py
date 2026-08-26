@@ -60,91 +60,62 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIn("সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস", res["reply_text"])
         self.assertEqual(len(res["media_sequence"]), 0)
 
-    def test_05_quantity_80_to_100_triggers_full_sequence_with_review_link_packages_and_voice(self):
-        """Quantity >= 80 (e.g. 80, 90, 100 pcs) sends: Cards -> Fita -> Covers -> Voice -> Review -> Packages."""
+    def test_05_quantity_80_to_100_prompts_permission_with_special_rate(self):
+        """Quantity >= 80 (e.g. 100 pcs) calculates rate (45 TK) and prompts customer permission before sending samples."""
         res = evaluate_id_card_workflow(
             message_text="১০০ পিস বানাবো",
             customer_name="Al-Amin",
             workspace_id=1
         )
         self.assertIsNotNone(res)
-        self.assertIn("স্যাম্পলগুলো পাঠিয়ে দিচ্ছি", res["reply_text"])
-        seq = res["media_sequence"]
-        
-        # Verify sequence components
-        types = [s["type"] for s in seq]
-        self.assertIn("images", types)
-        self.assertIn("text", types)
-        self.assertIn("voice", types)
-        
-        # Verify review link presence
-        text_contents = [s.get("text", "") for s in seq if s["type"] == "text"]
-        self.assertTrue(any(REVIEW_FACEBOOK_POST_URL in t for t in text_contents))
-        self.assertTrue(any("এগুলো আমাদের কার্ড" in t for t in text_contents))
-        self.assertTrue(any("এগুলো আমাদের প্রিন্ট করা ফিতা" in t for t in text_contents))
-        
-        # Verify card, fita, cover, package images in sequence
-        pkg_seq = [s for s in seq if s.get("category") == "package"]
-        self.assertEqual(len(pkg_seq), 1)
-        self.assertEqual(len(pkg_seq[0]["urls"]), 7)
-        
-        card_seq = [s for s in seq if s.get("category") == "id_card"]
-        self.assertEqual(len(card_seq), 1)
-        self.assertGreaterEqual(len(card_seq[0]["urls"]), 15)
+        self.assertEqual(res["response_source"], "id_card_quantity_permission_prompt")
+        self.assertEqual(len(res["matched_images"]), 0)
+        self.assertIn("৪৫ টাকা", res["reply_text"])
+        self.assertIn("4500", res["reply_text"])
+        self.assertIn("স্যাম্পল ছবিগুলো পাঠাবো", res["reply_text"])
 
-        fita_seq = [s for s in seq if s.get("category") == "fita"]
-        self.assertEqual(len(fita_seq), 1)
-        self.assertGreaterEqual(len(fita_seq[0]["urls"]), 8)
+        # Turn 2: Customer agrees -> 7 package images dispatched
+        res2 = evaluate_id_card_workflow(
+            message_text="হ্যাঁ পাঠান",
+            conversation_history=[
+                {"sender": "user", "content": "১০০ পিস বানাবো"},
+                {"sender": "bot", "content": res["reply_text"]}
+            ],
+            customer_name="Al-Amin",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res2)
+        self.assertEqual(res2["response_source"], "package_sample_dispatch")
+        self.assertEqual(len(res2["matched_images"]), 7)
 
-        cover_seq = [s for s in seq if s.get("category") == "cover"]
-        self.assertEqual(len(cover_seq), 1)
-        self.assertGreaterEqual(len(cover_seq[0]["urls"]), 8)
-        
-        # Verify voice note is empty (outbound voice disabled)
-        self.assertEqual(res["voice_url"], "")
-
-    def test_06_quantity_30_to_40_triggers_sequence_with_10tk_rule_and_no_voice(self):
-        """Quantity 30-40 pcs sends sequence with +10 TK rule explanation and NO voice note."""
+    def test_06_quantity_30_to_40_prompts_permission_with_10tk_rule(self):
+        """Quantity 30-40 pcs prompts permission with +10 TK rule explanation."""
         res = evaluate_id_card_workflow(
             message_text="৪০ পিস আইডি কার্ড বানাবো",
             customer_name="Kawsar Ahmed",
             workspace_id=1
         )
         self.assertIsNotNone(res)
-        seq = res["media_sequence"]
-        
-        # Verify NO voice note
-        voice_seq = [s for s in seq if s["type"] == "voice"]
-        self.assertEqual(len(voice_seq), 0)
-        self.assertEqual(res["voice_url"], "")
-        
-        # Verify +10 TK rule explanation text
-        text_contents = [s.get("text", "") for s in seq if s["type"] == "text"]
-        self.assertTrue(any("১০ টাকা করে বেশি হবে" in t for t in text_contents))
-        self.assertTrue(any(REVIEW_FACEBOOK_POST_URL in t for t in text_contents))
+        self.assertEqual(res["response_source"], "id_card_quantity_permission_prompt")
+        self.assertEqual(len(res["matched_images"]), 0)
+        self.assertIn("১০ টাকা বেশি", res["reply_text"])
+        self.assertIn("স্যাম্পল ছবিগুলো পাঠাবো", res["reply_text"])
 
-    def test_07_quantity_50_to_60_triggers_sequence_with_fixed_catalog_rate_and_no_voice(self):
-        """Quantity 50-60 pcs sends sequence with fixed regular rate explanation and NO voice note."""
+    def test_07_quantity_50_to_60_prompts_permission_with_fixed_catalog_rate(self):
+        """Quantity 50-60 pcs prompts permission with fixed regular rate (50 TK/pc = 2500 TK)."""
         res = evaluate_id_card_workflow(
             message_text="৫০ পিস বানাবো",
             customer_name="Kawsar Ahmed",
             workspace_id=1
         )
         self.assertIsNotNone(res)
-        seq = res["media_sequence"]
-        
-        # Verify NO voice note
-        voice_seq = [s for s in seq if s["type"] == "voice"]
-        self.assertEqual(len(voice_seq), 0)
-        self.assertEqual(res["voice_url"], "")
-        
-        # Verify fixed regular rate text
-        text_contents = [s.get("text", "") for s in seq if s["type"] == "text"]
-        self.assertTrue(any("রেগুলার মূল্যে" in t for t in text_contents))
-        self.assertTrue(any(REVIEW_FACEBOOK_POST_URL in t for t in text_contents))
+        self.assertEqual(res["response_source"], "id_card_quantity_permission_prompt")
+        self.assertEqual(len(res["matched_images"]), 0)
+        self.assertIn("৫০ টাকা করে মোট 2500 টাকা", res["reply_text"])
+        self.assertIn("স্যাম্পল ছবিগুলো পাঠাবো", res["reply_text"])
 
     def test_08_direct_package_request(self):
-        """Customer asking 'প্যাকেজের ছবি দিন' receives full sequence with Review Link and Packages."""
+        """Customer asking 'প্যাকেজের ছবি দিন' receives 7 package images directly."""
         res = evaluate_id_card_workflow(
             message_text="প্যাকেজের ছবি দিন",
             customer_name="Mamun",
@@ -152,12 +123,57 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNotNone(res)
         self.assertEqual(res["response_source"], "package_sample_dispatch")
-        seq = res["media_sequence"]
-        text_contents = [s.get("text", "") for s in seq if s["type"] == "text"]
-        self.assertTrue(any(REVIEW_FACEBOOK_POST_URL in t for t in text_contents))
-        pkg_seq = [s for s in seq if s.get("category") == "package"]
-        self.assertEqual(len(pkg_seq), 1)
-        self.assertEqual(len(pkg_seq[0]["urls"]), 7)
+        self.assertEqual(len(res["matched_images"]), 7)
+        for img in res["matched_images"]:
+            self.assertIn("package", img.lower())
+
+    def test_10_specific_package_request_returns_single_image(self):
+        """Customer asking for specific package (e.g. 'প্যাকেজ ৩') receives only Package 03 photo."""
+        res = evaluate_id_card_workflow(
+            message_text="প্যাকেজ ৩ দেখান",
+            customer_name="Mamun",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "specific_package_03_dispatch")
+        self.assertEqual(len(res["matched_images"]), 1)
+        self.assertEqual(res["matched_images"][0], "/static/uploads/package/IMG-20260113-WA0006.jpg")
+        self.assertIn("প্যাকেজ ০৩", res["reply_text"])
+
+    def test_11_specific_category_requests(self):
+        """Customer asking for cards only, ribbons only, or covers only receives only those images."""
+        # Cards only
+        res_card = evaluate_id_card_workflow("শুধু কার্ডের ছবি দেখান", workspace_id=1)
+        self.assertIsNotNone(res_card)
+        self.assertEqual(res_card["response_source"], "id_card_sample_dispatch")
+        self.assertGreaterEqual(len(res_card["matched_images"]), 1)
+        for img in res_card["matched_images"]:
+            self.assertIn("id_card", img.lower())
+
+        # Ribbons only
+        res_fita = evaluate_id_card_workflow("শুধু ফিতার ছবি দেন", workspace_id=1)
+        self.assertIsNotNone(res_fita)
+        self.assertEqual(res_fita["response_source"], "fita_sample_dispatch")
+        self.assertGreaterEqual(len(res_fita["matched_images"]), 1)
+        for img in res_fita["matched_images"]:
+            self.assertIn("fita", img.lower())
+
+        # Covers only
+        res_cov = evaluate_id_card_workflow("শুধু কভারের ছবি দিন", workspace_id=1)
+        self.assertIsNotNone(res_cov)
+        self.assertEqual(res_cov["response_source"], "cover_sample_dispatch")
+        self.assertGreaterEqual(len(res_cov["matched_images"]), 1)
+        for img in res_cov["matched_images"]:
+            self.assertIn("cover", img.lower())
+
+    def test_12_top_premium_quality_request(self):
+        """Customer asking for top premium quality receives only Package 07 photo."""
+        res = evaluate_id_card_workflow("সবচেয়ে প্রিমিয়াম কোয়ালিটির কোনটা", workspace_id=1)
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "premium_package_07_dispatch")
+        self.assertEqual(len(res["matched_images"]), 1)
+        self.assertEqual(res["matched_images"][0], "/static/uploads/package/IMG-20260121-WA0081.jpg")
+        self.assertIn("প্যাকেজ ০৭", res["reply_text"])
 
     def test_09_master_prompt_persona_and_negotiation_rules(self):
         """Verify Nadim persona, Owner Sir addressing protocol, and Step-by-step negotiation."""

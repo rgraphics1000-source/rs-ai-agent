@@ -93,12 +93,24 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
         self.assertEqual(len(res.get("matched_images", [])), 0)
         self.assertEqual(len(res.get("media_sequence", [])), 0)
 
-    def test_09_quantity_answer_sends_packages_only_not_all_28_images(self):
-        res = evaluate_id_card_workflow("৫০ পিস বানাবো", workspace_id=1)
-        self.assertIsNotNone(res)
-        # Must only send package photos (7 photos), NOT all 28 photos of cards/ribbons/covers
-        self.assertEqual(len(res.get("matched_images", [])), 7)
-        for img in res.get("matched_images", []):
+    def test_09_quantity_answer_prompts_permission_and_sends_packages_on_agreement(self):
+        res1 = evaluate_id_card_workflow("৫০ পিস বানাবো", workspace_id=1)
+        self.assertIsNotNone(res1)
+        self.assertEqual(len(res1.get("matched_images", [])), 0)
+        self.assertIn("স্যাম্পল ছবিগুলো পাঠাবো", res1.get("reply_text"))
+
+        # Customer agrees
+        res2 = evaluate_id_card_workflow(
+            "হ্যাঁ পাঠান",
+            conversation_history=[
+                {"sender": "user", "content": "৫০ পিস বানাবো"},
+                {"sender": "bot", "content": res1.get("reply_text")}
+            ],
+            workspace_id=1
+        )
+        self.assertIsNotNone(res2)
+        self.assertEqual(len(res2.get("matched_images", [])), 7)
+        for img in res2.get("matched_images", []):
             self.assertIn("package", img.lower())
 
     def test_10_quality_spelling_variations_send_voice_note(self):
