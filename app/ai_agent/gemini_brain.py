@@ -2124,7 +2124,7 @@ async def process_customer_message(
 
         draft_out = {
             "reply_text": clean_reply,
-            "voice_url": matched_voice_url or (generate_bangla_voice(clean_reply) if generate_voice_reply else ""),
+            "voice_url": matched_voice_url or ((await generate_bangla_voice(clean_reply)) if generate_voice_reply else ""),
             "video_url": matched_video_url,
             "order_created": order_created,
             "matched_images": matched_images
