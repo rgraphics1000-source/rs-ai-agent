@@ -1814,41 +1814,42 @@ async def process_customer_message(
             "response_source": "admin_takeover_silence"
         }
 
-    # 1. HIGHEST-PRIORITY: Deterministic Google Form Creation Workflow (Only for AI-Enabled customers)
-    try:
-        workflow_res = resolve_google_form_workflow(
-            user_message=message_text,
-            conversation_history=conversation_history,
-            customer_phone=sender_id,
-            customer_name=customer_name,
-            workspace_id=ws_id
-        )
-        if workflow_res and workflow_res.get("reply"):
-            return {
-                "reply_text": workflow_res["reply"],
-                "voice_url": workflow_res.get("voice_url", ""),
-                "video_url": workflow_res.get("video_url", ""),
-                "order_created": None,
-                "matched_images": [],
-                "response_source": "deterministic_google_form",
-                "google_form_workflow": workflow_res
-            }
-    except Exception as e:
-        print(f"[Google Form Workflow Early Resolution Error]: {e}")
+    # 1. HIGHEST-PRIORITY: Deterministic Google Form Creation Workflow (Only for text messages)
+    if not audio_bytes:
+        try:
+            workflow_res = resolve_google_form_workflow(
+                user_message=message_text,
+                conversation_history=conversation_history,
+                customer_phone=sender_id,
+                customer_name=customer_name,
+                workspace_id=ws_id
+            )
+            if workflow_res and workflow_res.get("reply"):
+                return {
+                    "reply_text": workflow_res["reply"],
+                    "voice_url": workflow_res.get("voice_url", ""),
+                    "video_url": workflow_res.get("video_url", ""),
+                    "order_created": None,
+                    "matched_images": [],
+                    "response_source": "deterministic_google_form",
+                    "google_form_workflow": workflow_res
+                }
+        except Exception as e:
+            print(f"[Google Form Workflow Early Resolution Error]: {e}")
 
-    # 2. Priority ID Card Inquiry, MOQ Check, and Phased Sample Delivery Workflow
-    try:
-        id_flow_res = evaluate_id_card_workflow(
-            message_text=message_text,
-            conversation_history=conversation_history,
-            customer_name=customer_name,
-            workspace_id=ws_id,
-            sender_id=sender_id
-        )
-        if id_flow_res:
-            return id_flow_res
-    except Exception as e:
-        print(f"[ID Card Workflow Early Resolution Warning]: {e}")
+        # 2. Priority ID Card Inquiry, MOQ Check, and Phased Sample Delivery Workflow
+        try:
+            id_flow_res = evaluate_id_card_workflow(
+                message_text=message_text,
+                conversation_history=conversation_history,
+                customer_name=customer_name,
+                workspace_id=ws_id,
+                sender_id=sender_id
+            )
+            if id_flow_res:
+                return id_flow_res
+        except Exception as e:
+            print(f"[ID Card Workflow Early Resolution Warning]: {e}")
 
     # Check if API key is provided
     if not api_key:
@@ -1907,18 +1908,24 @@ async def process_customer_message(
 
         # Add audio attachment (Voice Note)
         if audio_bytes:
-            detected_audio_mime = audio_mime or "audio/ogg"
+            detected_audio_mime = audio_mime or "audio/mp4"
             if audio_bytes.startswith(b"RIFF"):
                 detected_audio_mime = "audio/wav"
             elif audio_bytes.startswith(b"OggS"):
                 detected_audio_mime = "audio/ogg"
             elif audio_bytes.startswith(b"\xff\xfb") or audio_bytes.startswith(b"\xff\xf3") or audio_bytes.startswith(b"ID3"):
                 detected_audio_mime = "audio/mp3"
-            elif b"ftyp" in audio_bytes[:20] or b"M4A" in audio_bytes[:20]:
+            elif audio_bytes.startswith(b"\xff\xf1") or audio_bytes.startswith(b"\xff\xf9"):
+                detected_audio_mime = "audio/aac"
+            elif audio_bytes.startswith(b"\x1a\x45\xdf\xa3"):
+                detected_audio_mime = "audio/webm"
+            elif audio_bytes.startswith(b"fLaC"):
+                detected_audio_mime = "audio/flac"
+            elif b"ftyp" in audio_bytes[:20] or b"M4A" in audio_bytes[:20] or audio_bytes.startswith(b"\x00\x00\x00"):
                 detected_audio_mime = "audio/mp4"
 
             contents.append(types.Part.from_bytes(data=audio_bytes, mime_type=detected_audio_mime))
-            message_text = "কাস্টমার একটি ভয়েস অডিও বার্তা পাঠিয়েছেন। অডিওটি মনোযোগ দিয়ে শুনুন এবং কাস্টমার যা বলেছেন/চেয়েছেন তার সরাসরি সঠিক ও সংক্ষিপ্ত উত্তর দিন। কখনোই কাস্টমারকে 'টাইপ করে দিন' বা 'ভয়েস পেয়েছি' বলবেন না।"
+            message_text = "কাস্টমার একটি ভয়েস অডিও বার্তা পাঠিয়েছেন। অডিওটি মনোযোগ দিয়ে শুনে কাস্টমার যা বলেছেন বা জানতে চেয়েছেন, ঠিক তার সরাসরি ও সঠিক উত্তর দিন। কখনোই কাস্টমারকে 'টাইপ করে দিন' বা 'ভয়েস পেয়েছি' বলবেন না।"
 
         if message_text:
             contents.append(f"কাস্টমারের বার্তা ({customer_name}): {message_text}")

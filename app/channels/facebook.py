@@ -860,25 +860,42 @@ async def handle_facebook_webhook_event(data: dict):
                     audio_mime = "audio/mp3"
 
                     # Process attachments (Voice Note or Photo)
+                    fb_headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    }
                     for att in attachments:
-                        att_type = att.get("type")
-                        att_url = att.get("payload", {}).get("url")
+                        att_type = str(att.get("type") or "").lower().strip()
+                        att_payload = att.get("payload") or {}
+                        att_url = att_payload.get("url") or att.get("url") or att_payload.get("preview_url")
                         if not att_url:
                             continue
 
+                        is_audio_att = (
+                            att_type in ["audio", "voice"] or
+                            "audio" in att_type or
+                            "voice" in att_type or
+                            "audioclip" in str(att_url).lower() or
+                            any(str(att_url).lower().endswith(ext) or f"{ext}?" in str(att_url).lower() for ext in [".mp4", ".aac", ".m4a", ".ogg", ".opus", ".wav", ".mp3"])
+                        )
+                        is_image_att = (
+                            att_type in ["image", "photo"] or
+                            "image" in att_type or
+                            any(str(att_url).lower().endswith(ext) or f"{ext}?" in str(att_url).lower() for ext in [".jpg", ".jpeg", ".png", ".webp", ".gif"])
+                        )
+
                         try:
-                            if att_type == "image":
-                                r = requests.get(att_url, timeout=12)
-                                if r.status_code != 200 and page_token:
-                                    r = requests.get(att_url, params={"access_token": page_token}, timeout=12)
-                                if r.status_code == 200 and len(r.content) > 0:
+                            if is_image_att:
+                                r = requests.get(att_url, headers=fb_headers, timeout=15)
+                                if r.status_code != 200 and page_token and "graph.facebook.com" in att_url:
+                                    r = requests.get(att_url, params={"access_token": page_token}, headers=fb_headers, timeout=15)
+                                if r.status_code == 200 and len(r.content) > 50 and not r.content.startswith(b"<html") and not r.content.startswith(b"<!DOCTYPE"):
                                     image_bytes = r.content
                                     image_mime = r.headers.get("content-type", "image/jpeg").split(";")[0].strip()
-                            elif att_type in ["audio", "voice"]:
-                                r = requests.get(att_url, timeout=12)
-                                if r.status_code != 200 and page_token:
-                                    r = requests.get(att_url, params={"access_token": page_token}, timeout=12)
-                                if r.status_code == 200 and len(r.content) > 0:
+                            elif is_audio_att:
+                                r = requests.get(att_url, headers=fb_headers, timeout=15)
+                                if r.status_code != 200 and page_token and "graph.facebook.com" in att_url:
+                                    r = requests.get(att_url, params={"access_token": page_token}, headers=fb_headers, timeout=15)
+                                if r.status_code == 200 and len(r.content) > 50 and not r.content.startswith(b"<html") and not r.content.startswith(b"<!DOCTYPE"):
                                     audio_bytes = r.content
                                     audio_mime = r.headers.get("content-type", "audio/mp4").split(";")[0].strip()
                                     if not msg_text:
