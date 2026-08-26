@@ -1208,33 +1208,57 @@ async def handle_whatsapp_webhook_event(data: dict):
                         msg_text = msg.get("text", {}).get("body", "")
                     elif msg_type == "image":
                         image_id = msg.get("image", {}).get("id")
-                        if image_id and effective_token:
+                        clean_wa_token = str(effective_token or "").strip().strip('"').strip("'")
+                        if clean_wa_token.lower().startswith("bearer "):
+                            clean_wa_token = clean_wa_token[7:].strip()
+                        if image_id and clean_wa_token:
                             try:
-                                media_meta = requests.get(f"{GRAPH_API_URL}/{image_id}", headers={"Authorization": f"Bearer {effective_token}"}, timeout=10).json()
-                                media_url = media_meta.get("url")
-                                if media_url:
-                                    img_resp = requests.get(media_url, headers={"Authorization": f"Bearer {effective_token}"}, timeout=10)
-                                    if img_resp.status_code == 200:
-                                        image_bytes = img_resp.content
-                                        image_mime = img_resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+                                wa_headers = {
+                                    "Authorization": f"Bearer {clean_wa_token}",
+                                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                                }
+                                meta_res = requests.get(f"{GRAPH_API_URL}/{image_id}", headers=wa_headers, timeout=12)
+                                if meta_res.status_code == 200:
+                                    media_meta = meta_res.json()
+                                    media_url = media_meta.get("url")
+                                    if media_url:
+                                        img_resp = requests.get(media_url, headers=wa_headers, timeout=15)
+                                        if img_resp.status_code == 200 and len(img_resp.content) > 50:
+                                            image_bytes = img_resp.content
+                                            image_mime = img_resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
                             except Exception as dl_err:
                                 print(f"[WhatsApp Image DL Error]: {dl_err}")
                         msg_text = msg.get("image", {}).get("caption", "")
                     elif msg_type in ["audio", "voice"]:
                         audio_id = msg.get("audio", {}).get("id") or msg.get("voice", {}).get("id")
-                        if audio_id and effective_token:
+                        clean_wa_token = str(effective_token or "").strip().strip('"').strip("'")
+                        if clean_wa_token.lower().startswith("bearer "):
+                            clean_wa_token = clean_wa_token[7:].strip()
+                        if audio_id and clean_wa_token:
                             try:
-                                media_meta = requests.get(f"{GRAPH_API_URL}/{audio_id}", headers={"Authorization": f"Bearer {effective_token}", "User-Agent": "Mozilla/5.0"}, timeout=12).json()
-                                media_url = media_meta.get("url")
-                                if media_url:
-                                    aud_resp = requests.get(media_url, headers={"Authorization": f"Bearer {effective_token}", "User-Agent": "Mozilla/5.0"}, timeout=15)
-                                    if aud_resp.status_code == 200 and len(aud_resp.content) > 50:
-                                        audio_bytes = aud_resp.content
-                                        audio_mime = aud_resp.headers.get("content-type", "audio/ogg").split(";")[0].strip()
-                                        if not msg_text:
-                                            msg_text = "[কাস্টমার একটি ভয়েস অডিও বার্তা পাঠিয়েছেন]"
+                                wa_headers = {
+                                    "Authorization": f"Bearer {clean_wa_token}",
+                                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                                }
+                                meta_res = requests.get(f"{GRAPH_API_URL}/{audio_id}", headers=wa_headers, timeout=12)
+                                if meta_res.status_code == 200:
+                                    media_meta = meta_res.json()
+                                    media_url = media_meta.get("url")
+                                    if media_url:
+                                        aud_resp = requests.get(media_url, headers=wa_headers, timeout=15)
+                                        if aud_resp.status_code == 200 and len(aud_resp.content) > 50:
+                                            audio_bytes = aud_resp.content
+                                            raw_ct = aud_resp.headers.get("content-type", "audio/ogg")
+                                            audio_mime = raw_ct.split(";")[0].strip() if raw_ct else "audio/ogg"
+                                            if not msg_text:
+                                                msg_text = "[কাস্টমার একটি ভয়েস অডিও বার্তা পাঠিয়েছেন]"
+                                            print(f"[WhatsApp Audio DL Success]: downloaded {len(audio_bytes)} bytes, mime={audio_mime}")
+                                        else:
+                                            print(f"[WhatsApp Audio DL File Error]: status={aud_resp.status_code} body={aud_resp.text[:100]}")
+                                else:
+                                    print(f"[WhatsApp Audio DL Meta Error]: status={meta_res.status_code} body={meta_res.text[:100]}")
                             except Exception as dl_err:
-                                print(f"[WhatsApp Audio DL Error]: {dl_err}")
+                                print(f"[WhatsApp Audio DL Exception]: {dl_err}")
 
                     # Check for Quoted / Contextual Replied Message (e.g. customer replies to a product photo)
                     context_data = msg.get("context")
