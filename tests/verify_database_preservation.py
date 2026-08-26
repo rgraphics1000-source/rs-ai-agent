@@ -12,8 +12,8 @@ def audit_database_preservation():
     cursor = conn.cursor()
 
     tables = [
-        "conversations", "messages", "products", "orders",
-        "ai_training_rules", "faqs", "saved_media", "comment_logs",
+        "conversations", "messages", "products", "orders", 
+        "ai_training_rules", "faqs", "saved_media", "comment_logs", 
         "settings", "connected_pages", "whatsapp_accounts"
     ]
 
@@ -27,7 +27,7 @@ def audit_database_preservation():
     # Verify Page 1 credentials preserved
     pages = get_all_connected_pages()
     print(f"\nConnected Page 1: ID={pages[0]['page_id']}, Name={pages[0]['page_name']}")
-
+    
     # Verify WhatsApp 1 credentials preserved
     wa = get_all_whatsapp_accounts()
     print(f"Connected WhatsApp 1: PhoneID={wa[0]['phone_number_id']}, Display={wa[0]['display_phone_number']}")

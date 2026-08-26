@@ -30,7 +30,6 @@ from app.ai_agent.gemini_brain import process_customer_message, detect_customer_
 
 GRAPH_API_URL = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}"
 PROCESSED_WA_MESSAGE_IDS = set()
-_RECENT_OUTBOUND_WA_MESSAGES = {}
 
 def mask_phone_number(raw_phone: str) -> str:
     """Masks a phone number for secure logging (e.g. 88018****4097)."""
@@ -186,13 +185,13 @@ def resolve_whatsapp_token_info(wa_account: Optional[dict] = None, workspace_id:
     5. settings.whatsapp_access_token / settings.whatsapp_token (Settings table)
     6. settings.meta_access_token (Settings table)
     7. settings.meta_system_user_access_token (Settings table)
-
+    
     A candidate is usable ONLY after Meta live validation confirms access to the Phone Number ID.
     If no candidate is valid, returns is_valid=False and token="" with full rejection diagnostics.
     Guarantees that Facebook Page tokens (fb_page_access_token / FB_PAGE_ACCESS_TOKEN) are NEVER used.
     """
     canonical_phone_id = (
-        phone_number_id
+        phone_number_id 
         or (wa_account.get("phone_number_id") if wa_account else None)
         or get_setting("whatsapp_phone_number_id")
         or "4184514263660680"
@@ -323,18 +322,18 @@ def resolve_whatsapp_token(wa_account: Optional[dict] = None, workspace_id: int 
         return acc_tok
 
     setting_tok = str(
-        get_setting("whatsapp_access_token")
+        get_setting("whatsapp_access_token") 
         or get_setting("meta_system_user_access_token")
     ).strip()
     if is_valid_meta_token(setting_tok):
         return setting_tok
 
     env_tok = str(
-        os.getenv("WHATSAPP_ACCESS_TOKEN")
-        or os.getenv("META_SYSTEM_USER_ACCESS_TOKEN")
-        or os.getenv("WHATSAPP_TOKEN")
+        os.getenv("WHATSAPP_ACCESS_TOKEN") 
+        or os.getenv("META_SYSTEM_USER_ACCESS_TOKEN") 
+        or os.getenv("WHATSAPP_TOKEN") 
         or os.getenv("META_ACCESS_TOKEN")
-        or settings.WHATSAPP_ACCESS_TOKEN
+        or settings.WHATSAPP_ACCESS_TOKEN 
         or settings.META_SYSTEM_USER_ACCESS_TOKEN
         or ""
     ).strip()
@@ -442,29 +441,6 @@ def send_whatsapp_message_detailed(to_number: str, message_text: str, phone_id: 
         }
 
     norm_to = normalize_whatsapp_phone_number(to_number)
-
-    # Outbound duplicate message guard (prevents dual identical replies within 12s)
-    clean_text = str(message_text or "").strip()
-    if clean_text:
-        out_key = f"{norm_to}:{hash(clean_text)}"
-        now = time.time()
-        last_time = _RECENT_OUTBOUND_WA_MESSAGES.get(out_key)
-        if last_time and (now - last_time) < 12.0:
-            print(f"[WhatsApp Duplicate Guard] Suppressed duplicate outbound message to {masked_rec} within 12s window.")
-            return {
-                "success": True,
-                "http_status": 200,
-                "message_id": "duplicate_suppressed",
-                "phone_number_id": phone_id or "",
-                "token_source": "explicit",
-                "token_valid": True,
-                "token_preview": "",
-                "recipient": masked_rec
-            }
-        _RECENT_OUTBOUND_WA_MESSAGES[out_key] = now
-        if len(_RECENT_OUTBOUND_WA_MESSAGES) > 2000:
-            for k in list(_RECENT_OUTBOUND_WA_MESSAGES.keys())[:500]:
-                _RECENT_OUTBOUND_WA_MESSAGES.pop(k, None)
 
     # Determine priority list of phone_ids to try (handles both 15-digit and 16-digit variants)
     target_phone_ids = [phone_id]
@@ -847,7 +823,7 @@ async def process_whatsapp_batch(batch: PendingBatch):
 
     text_parts = [m.get("text", "") for m in batch.messages if m.get("text")]
     combined_text = "\n".join([t for t in text_parts if t.strip()]).strip()
-
+    
     images = [m for m in batch.messages if m.get("image_bytes")]
     audios = [m for m in batch.messages if m.get("audio_bytes")]
 
@@ -903,7 +879,7 @@ async def process_whatsapp_batch(batch: PendingBatch):
         return
 
     reply_text = ai_result.get("reply_text", "")
-
+    
     # Structured Production Transition Logging (Google Form & AI routing tracking)
     gw = ai_result.get("google_form_workflow") or {}
     gw_status = gw.get("status", "none")
@@ -1065,7 +1041,7 @@ async def handle_whatsapp_webhook_event(data: dict):
         for entry in entries:
             for change in entry.get("changes", []):
                 value = change.get("value", {})
-
+                
                 # Identify exact recipient WhatsApp Phone Number ID from metadata
                 metadata = value.get("metadata", {})
                 meta_phone_id = str(metadata.get("phone_number_id", "")).strip()
@@ -1100,7 +1076,7 @@ async def handle_whatsapp_webhook_event(data: dict):
                     st_status = str(st.get("status", "")).strip()
                     st_rec_raw = str(st.get("recipient_id", "")).strip()
                     st_rec_phone = normalize_whatsapp_phone_number(st_rec_raw)
-
+                    
                     if st_rec_phone and not is_own_whatsapp_number(st_rec_phone):
                         # If this status callback is for a message NOT sent by our AI engine:
                         # It was sent by the Shop Owner / Main Admin (মুহা. রাশেদুল ইসলাম / রাশেদ) from the WhatsApp Business mobile app or WhatsApp Web!
@@ -1123,7 +1099,7 @@ async def handle_whatsapp_webhook_event(data: dict):
 
                 messages = value.get("messages", [])
                 contacts = value.get("contacts", [])
-
+                
                 raw_customer_name = contacts[0].get("profile", {}).get("name", "") if contacts else ""
 
                 for msg in messages:
@@ -1252,13 +1228,8 @@ async def handle_whatsapp_webhook_event(data: dict):
                                             audio_mime = raw_ct.split(";")[0].strip() if raw_ct else "audio/ogg"
                                             if not msg_text:
                                                 msg_text = "[কাস্টমার একটি ভয়েস অডিও বার্তা পাঠিয়েছেন]"
-                                            print(f"[WhatsApp Audio DL Success]: downloaded {len(audio_bytes)} bytes, mime={audio_mime}")
-                                        else:
-                                            print(f"[WhatsApp Audio DL File Error]: status={aud_resp.status_code} body={aud_resp.text[:100]}")
-                                else:
-                                    print(f"[WhatsApp Audio DL Meta Error]: status={meta_res.status_code} body={meta_res.text[:100]}")
                             except Exception as dl_err:
-                                print(f"[WhatsApp Audio DL Exception]: {dl_err}")
+                                print(f"[WhatsApp Audio DL Error]: {dl_err}")
 
                     # Check for Quoted / Contextual Replied Message (e.g. customer replies to a product photo)
                     context_data = msg.get("context")

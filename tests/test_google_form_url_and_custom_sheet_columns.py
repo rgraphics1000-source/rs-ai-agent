@@ -35,7 +35,7 @@ class TestGoogleFormUrlAndCustomSheetColumns(unittest.TestCase):
         mock_root.return_value = "root_folder_1"
         mock_folder.return_value = "inst_folder_1"
         mock_copy.return_value = {"form_id": "cloned_form_999", "success": True}
-
+        
         selected_fields = ["student_name", "father_name", "class_name", "roll", "student_photo"]
         mock_custom.return_value = {
             "success": True,
@@ -59,24 +59,24 @@ class TestGoogleFormUrlAndCustomSheetColumns(unittest.TestCase):
 
         self.assertTrue(res.get("success"))
         self.assertEqual(res.get("responder_url"), "https://docs.google.com/forms/d/cloned_form_999/viewform")
-
+        
         # Verify create_institution_response_sheet was called with exact column_headers
         mock_sheet.assert_called_once()
         args, kwargs = mock_sheet.call_args
         headers = kwargs.get("column_headers", [])
-
+        
         self.assertIn("Submission ID", headers)
         self.assertIn("Timestamp", headers)
         self.assertIn("শিক্ষার্থীর নাম", headers)
         self.assertIn("পিতার নাম", headers)
         self.assertTrue(any("ছবি" in h for h in headers))
-
+        
         # Verify unrequested columns are ABSENT
         self.assertNotIn("মাতার নাম", headers)
         self.assertNotIn("জন্মতারিখ", headers)
         self.assertNotIn("রক্তের গ্রুপ", headers)
         self.assertNotIn("ঠিকানা", headers)
-
+        
         print("✓ Test 2 Passed: Google Sheet columns strictly match customer requested fields without extra columns.")
 
 if __name__ == "__main__":

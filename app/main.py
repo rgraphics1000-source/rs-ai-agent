@@ -12,7 +12,7 @@ if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-from fastapi import FastAPI, Request, Response, status, Form, File, UploadFile, Query, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, Request, Response, Form, File, UploadFile, Query, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, PlainTextResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -37,8 +37,8 @@ from app.database import (
 from app.ai_agent.gemini_brain import process_customer_message
 from app.ai_agent.voice_engine import generate_bangla_voice, list_available_voices
 from app.ai_agent.order_engine import list_orders, update_order_status, create_order
-from datetime import datetime, timezone
-from app.services.cloud_sync_service import sync_cold_start_if_configured
+from datetime import datetime
+import time
 from app.channels.facebook import (
     send_fb_text_message,
     send_fb_media_message,
@@ -62,7 +62,7 @@ from app.channels.whatsapp import (
     clear_token_validation_cache
 )
 from app.channels.omnichat import (
-    get_all_conversations,
+    get_all_conversations, 
     get_conversation_messages,
     record_conversation_message,
     send_whatsapp_media,
@@ -94,17 +94,13 @@ templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
 from app.google_integration.routes import router as google_router
 app.include_router(google_router)
 
-# Ensure database tables are created on startup and state is restored
+# Ensure database tables are created on startup
 @app.on_event("startup")
 def startup_event():
     try:
         init_db()
     except Exception as e:
         print(f"[DB Startup Exception]: {e}")
-    try:
-        sync_cold_start_if_configured()
-    except Exception as e:
-        print(f"[Cloud Sync Startup Notice]: {e}")
     try:
         ensure_facebook_page_consistency()
     except Exception as e:
@@ -123,50 +119,34 @@ def startup_event():
             print(f"[Facebook Auto-Subscribe on Startup Exception]: {e}")
     threading.Thread(target=_bg_subscribe, daemon=True).start()
 
-    # Optional self-ping keepalive loop if explicitly configured
-    if os.getenv("ENABLE_KEEPALIVE_PING", "false").lower() == "true":
-        def _bg_keepalive():
-            import time, urllib.request
-            time.sleep(180)
-            while True:
-                try:
-                    server_domain = os.getenv("RENDER_EXTERNAL_URL") or "https://rs-ai-agent.onrender.com"
-                    url = f"{server_domain.rstrip('/')}/health"
-                    req = urllib.request.Request(url, headers={"User-Agent": "RS-AI-Agent-KeepAlive/1.0"})
-                    with urllib.request.urlopen(req, timeout=30) as resp:
-                        print(f"[KeepAlive Ping]: HTTP {resp.getcode()} to {url}")
-                except Exception as k_err:
-                    print(f"[KeepAlive Ping Notice]: {k_err}")
-                time.sleep(540)
-        threading.Thread(target=_bg_keepalive, daemon=True).start()
+    # Self-ping keepalive loop to prevent Render free-tier idle spin-down
+    def _bg_keepalive():
+        import time, urllib.request
+        time.sleep(180)
+        while True:
+            try:
+                server_domain = os.getenv("RENDER_EXTERNAL_URL") or "https://rs-ai-agent.onrender.com"
+                url = f"{server_domain.rstrip('/')}/health"
+                req = urllib.request.Request(url, headers={"User-Agent": "RS-AI-Agent-KeepAlive/1.0"})
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    print(f"[KeepAlive Ping]: HTTP {resp.getcode()} to {url}")
+            except Exception as k_err:
+                print(f"[KeepAlive Ping Notice]: {k_err}")
+            time.sleep(540)  # Ping every 9 minutes (Render sleeps at 15 minutes)
+    threading.Thread(target=_bg_keepalive, daemon=True).start()
 
     print(f"[{settings.PROJECT_NAME}] Server started successfully on port {os.getenv('PORT', 8000)}.")
 
 # Lightweight Health Check Endpoints
 @app.get("/health")
 @app.get("/api/health")
-async def health_check(response: Response):
-    """Health check endpoint checking live database connectivity and system status."""
-    db_ok = False
-    try:
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("SELECT 1")
-        c.fetchone()
-        conn.close()
-        db_ok = True
-    except Exception:
-        db_ok = False
-
-    if not db_ok:
-        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-
+async def health_check():
+    """Lightweight health check endpoint returning HTTP 200 without blocking or credentials requirement."""
     return {
-        "status": "healthy" if db_ok else "unhealthy",
+        "status": "healthy",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
-        "database": "connected" if db_ok else "unavailable",
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.utcnow().isoformat()
     }
 
 # Root manifest and favicon
@@ -216,7 +196,7 @@ async def dashboard_home(request: Request):
 async def get_overview_stats(workspace_id: Optional[int] = Query(None)):
     conn = get_db_connection()
     cursor = conn.cursor()
-
+    
     if workspace_id is not None:
         ws_id = int(workspace_id)
         cursor.execute("SELECT COUNT(*) FROM orders WHERE workspace_id = ?", (ws_id,))
@@ -311,7 +291,7 @@ async def api_update_order_status(order_id: int, request: Request):
     new_status = body.get("status")
     if not new_status:
         raise HTTPException(status_code=400, detail="Status is required")
-
+    
     success = update_order_status(order_id, new_status)
     if not success:
         raise HTTPException(status_code=400, detail="Invalid status")
@@ -331,7 +311,7 @@ async def export_orders_csv(workspace_id: Optional[int] = Query(None)):
     orders = list_orders(workspace_id=workspace_id)
     output = io.StringIO()
     writer = csv.writer(output)
-
+    
     writer.writerow(["Order Code", "Customer Name", "Phone", "Address", "Items", "Subtotal", "Delivery Fee", "Total", "Channel", "Status", "Date"])
     for o in orders:
         writer.writerow([
@@ -468,7 +448,7 @@ async def api_edit_product(
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        UPDATE products
+        UPDATE products 
         SET name = ?, code = ?, price = ?, discount_price = ?, stock = ?, category = ?, description = ?, tags = ?, image_url = ?, gallery_images = ?
         WHERE id = ?
     """, (name, code, price, discount_price, stock, category, description, tags, primary_image_url, gallery_images_json, product_id))
@@ -544,7 +524,7 @@ async def api_add_faq(request: Request):
     ws_id = int(data.get("workspace_id", 1) or 1)
     if not q or not a:
         raise HTTPException(status_code=400, detail="Question and answer required")
-
+    
     faq_id = create_faq(question=q, answer=a, category=cat, workspace_id=ws_id)
     return {"success": True, "message": "FAQ added", "id": faq_id}
 
@@ -574,7 +554,7 @@ async def api_synthesize_training(request: Request):
     ws_id = int(data.get("workspace_id", 1) or 1)
     if not raw_text:
         raise HTTPException(status_code=400, detail="Raw training text is required")
-
+    
     rules = synthesize_training_text_to_rules(raw_text)
     # Save extracted rules with workspace_id
     for r in rules:
@@ -658,7 +638,7 @@ async def api_upload_saved_media(
 
     if not target_url:
         raise HTTPException(status_code=400, detail="File or file_url is required")
-
+    
     media_id = create_saved_media(
         title=title or "Saved Media",
         media_type=media_type,
@@ -680,25 +660,25 @@ async def api_send_saved_media(request: Request):
     media_id = data.get("media_id")
     if not cid or not media_id:
         raise HTTPException(status_code=400, detail="Missing conversation_id or media_id")
-
+    
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM conversations WHERE id = ?", (cid,))
     conv = cursor.fetchone()
     cursor.execute("SELECT * FROM saved_media WHERE id = ?", (media_id,))
     med = cursor.fetchone()
-
+    
     if not conv or not med:
         conn.close()
         raise HTTPException(status_code=404, detail="Conversation or Media not found")
-
+    
     channel = conv["channel"]
     sender_id = conv["sender_id"]
     page_id = conv["page_id"] if "page_id" in conv.keys() else ""
     m_type = med["media_type"]
     m_url = med["file_url"]
     m_title = med["title"]
-
+    
     ws_id = conv["workspace_id"] if "workspace_id" in conv.keys() else 1
     if channel == "whatsapp":
         if m_type in ["voice", "audio"]:
@@ -716,18 +696,18 @@ async def api_send_saved_media(request: Request):
             send_ok = send_fb_media_message(sender_id, "image", m_url, page_id=page_id, workspace_id=ws_id)
     else:
         send_ok = True
-
+        
     if not send_ok:
         conn.close()
         return JSONResponse(status_code=500, content={"success": False, "error": "Failed to deliver media to recipient via API"})
-
+        
     cursor.execute("""
         INSERT INTO messages (conversation_id, sender_type, message_type, content, media_url, direction, sender_role)
         VALUES (?, 'admin', ?, ?, ?, 'OUTBOUND', 'ADMIN')
     """, (cid, m_type, f"[{m_type.upper()}] {m_title}", m_url))
     conn.commit()
     conn.close()
-
+    
     new_v = set_admin_takeover(
         conversation_id=cid,
         sender_id=sender_id,
@@ -738,154 +718,6 @@ async def api_send_saved_media(request: Request):
     print(f"[ADMIN_TAKEOVER] workspace_id={ws_id} conversation_id={cid} customer_id={sender_id} source=omnichat_media takeover_by=admin_ui_media conversation_version={new_v}")
     print(f"[ADMIN_MESSAGE] sender_role=ADMIN channel={channel} customer_id={sender_id}")
     return {"success": True}
-
-# ==========================================
-# 5.3 OWNER APPROVAL & ESCALATION APIS (Phase 7.1)
-# ==========================================
-@app.get("/api/admin/approvals")
-async def api_get_admin_approvals(
-    status: Optional[str] = Query(None),
-    workspace_id: Optional[int] = Query(None)
-):
-    from app.ai_agent.owner_approval import OwnerApprovalEngine
-    ws_id = int(workspace_id or 1)
-    status_filter = status.upper() if status and status.upper() != "ALL" else None
-    approvals = OwnerApprovalEngine.list_approvals(workspace_id=ws_id, status_filter=status_filter)
-    return {"success": True, "approvals": approvals}
-
-
-@app.get("/api/admin/approvals/{approval_id}")
-async def api_get_admin_approval_detail(approval_id: str):
-    from app.ai_agent.owner_approval import OwnerApprovalEngine
-    appr = OwnerApprovalEngine.get_approval_by_id(approval_id)
-    if not appr:
-        raise HTTPException(status_code=404, detail="Approval request not found")
-    return {"success": True, "approval": appr}
-
-
-@app.post("/api/admin/approvals/{approval_id}/approve")
-async def api_approve_admin_approval(approval_id: str, request: Request):
-    from app.ai_agent.owner_approval import OwnerApprovalEngine, ApprovalStatus
-    # Security check for customer role header
-    client_role = request.headers.get("x-user-role", "admin").lower()
-    if client_role == "customer":
-        raise HTTPException(status_code=403, detail="Unauthorized: Customers cannot resolve approval requests")
-
-    data = {}
-    try:
-        data = await request.json()
-    except Exception:
-        pass
-
-    actor = data.get("actor") or "owner_admin"
-    reason = data.get("reason") or "Approved by owner via dashboard"
-
-    appr = OwnerApprovalEngine.get_approval_by_id(approval_id)
-    if not appr:
-        raise HTTPException(status_code=404, detail="Approval request not found")
-
-    req_ws = data.get("workspace_id") or request.headers.get("x-workspace-id")
-    if req_ws and int(req_ws) != int(appr.get("workspace_id", 1)):
-        raise HTTPException(status_code=403, detail="Cross-workspace approval resolution forbidden")
-
-    if appr["status"] != ApprovalStatus.PENDING.value:
-        raise HTTPException(status_code=400, detail=f"Approval is already resolved as {appr['status']}")
-
-    success, updated = OwnerApprovalEngine.resolve_approval(
-        approval_id=approval_id,
-        decision=ApprovalStatus.APPROVED,
-        actor=actor,
-        approved_value=appr["requested_value"],
-        reason=reason
-    )
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to resolve approval")
-
-    return {"success": True, "message": "Approval granted successfully", "approval": updated}
-
-
-@app.post("/api/admin/approvals/{approval_id}/modify")
-async def api_modify_admin_approval(approval_id: str, request: Request):
-    from app.ai_agent.owner_approval import OwnerApprovalEngine, ApprovalStatus
-    # Security check for customer role header
-    client_role = request.headers.get("x-user-role", "admin").lower()
-    if client_role == "customer":
-        raise HTTPException(status_code=403, detail="Unauthorized: Customers cannot resolve approval requests")
-
-    data = await request.json()
-    approved_val = data.get("approved_value")
-    if approved_val is None:
-        raise HTTPException(status_code=400, detail="approved_value is required for modification")
-    try:
-        approved_val = float(approved_val)
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Invalid approved_value format")
-
-    actor = data.get("actor") or "owner_admin"
-    reason = data.get("reason") or f"Counter-offered {approved_val} Tk by owner"
-
-    appr = OwnerApprovalEngine.get_approval_by_id(approval_id)
-    if not appr:
-        raise HTTPException(status_code=404, detail="Approval request not found")
-
-    req_ws = data.get("workspace_id") or request.headers.get("x-workspace-id")
-    if req_ws and int(req_ws) != int(appr.get("workspace_id", 1)):
-        raise HTTPException(status_code=403, detail="Cross-workspace approval resolution forbidden")
-
-    if appr["status"] != ApprovalStatus.PENDING.value:
-        raise HTTPException(status_code=400, detail=f"Approval is already resolved as {appr['status']}")
-
-    success, updated = OwnerApprovalEngine.resolve_approval(
-        approval_id=approval_id,
-        decision=ApprovalStatus.MODIFIED,
-        actor=actor,
-        approved_value=approved_val,
-        reason=reason
-    )
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to modify approval")
-
-    return {"success": True, "message": "Approval modified with counter-offer", "approval": updated}
-
-
-@app.post("/api/admin/approvals/{approval_id}/reject")
-async def api_reject_admin_approval(approval_id: str, request: Request):
-    from app.ai_agent.owner_approval import OwnerApprovalEngine, ApprovalStatus
-    # Security check for customer role header
-    client_role = request.headers.get("x-user-role", "admin").lower()
-    if client_role == "customer":
-        raise HTTPException(status_code=403, detail="Unauthorized: Customers cannot resolve approval requests")
-
-    data = {}
-    try:
-        data = await request.json()
-    except Exception:
-        pass
-
-    actor = data.get("actor") or "owner_admin"
-    reason = data.get("reason") or "Rejected by owner"
-
-    appr = OwnerApprovalEngine.get_approval_by_id(approval_id)
-    if not appr:
-        raise HTTPException(status_code=404, detail="Approval request not found")
-
-    req_ws = data.get("workspace_id") or request.headers.get("x-workspace-id")
-    if req_ws and int(req_ws) != int(appr.get("workspace_id", 1)):
-        raise HTTPException(status_code=403, detail="Cross-workspace approval resolution forbidden")
-
-    if appr["status"] != ApprovalStatus.PENDING.value:
-        raise HTTPException(status_code=400, detail=f"Approval is already resolved as {appr['status']}")
-
-    success, updated = OwnerApprovalEngine.resolve_approval(
-        approval_id=approval_id,
-        decision=ApprovalStatus.REJECTED,
-        actor=actor,
-        reason=reason
-    )
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to reject approval")
-
-    return {"success": True, "message": "Approval rejected", "approval": updated}
 
 # ==========================================
 # 5.2 OMNICHAT (INBOX) APIS (MULTI-PAGE & WORKSPACE AWARE)
@@ -913,7 +745,7 @@ async def api_admin_send_reply(request: Request):
     data = await request.json()
     cid = data.get("conversation_id")
     reply_text = (data.get("message") or data.get("content") or "").strip()
-
+    
     if not cid or not reply_text:
         raise HTTPException(status_code=400, detail="conversation_id and message are required")
 
@@ -921,7 +753,7 @@ async def api_admin_send_reply(request: Request):
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM conversations WHERE id = ?", (cid,))
     conv = cursor.fetchone()
-
+    
     if not conv:
         conn.close()
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -949,7 +781,7 @@ async def api_admin_send_reply(request: Request):
     """, (cid, reply_text))
     conn.commit()
     conn.close()
-
+    
     new_v = set_admin_takeover(
         conversation_id=cid,
         sender_id=sender_id,
@@ -959,7 +791,7 @@ async def api_admin_send_reply(request: Request):
     )
     print(f"[ADMIN_TAKEOVER] workspace_id={workspace_id} conversation_id={cid} customer_id={sender_id} source=omnichat_ui takeover_by=admin_ui conversation_version={new_v}")
     print(f"[ADMIN_MESSAGE] sender_role=ADMIN channel={channel} customer_id={sender_id}")
-
+            
     return {"success": True, "message": "Reply delivered successfully"}
 
 @app.post("/api/omnichat/toggle-ai")
@@ -1090,7 +922,7 @@ async def api_connect_page(request: Request):
         raise HTTPException(status_code=400, detail="page_id and page_access_token are required")
 
     page_pk = save_connected_page(data)
-
+    
     # Also optionally connect WhatsApp number if provided
     wa_phone_id = data.get("whatsapp_phone_number_id", "").strip()
     if wa_phone_id:
@@ -1224,7 +1056,7 @@ async def api_save_settings(request: Request):
     data = await request.json()
     for k, v in data.items():
         set_setting(k, str(v))
-
+    
     # Immediately cancel any pending in-flight batches if global AI Master switch was turned OFF
     if "ai_enabled" in data:
         val = str(data["ai_enabled"]).lower()
@@ -1324,7 +1156,7 @@ async def api_remove_muted_contact(request: Request):
 @app.get("/api/diagnostics/meta")
 async def api_diagnostics_meta():
     """
-    Comprehensive, secure diagnostic endpoint returning Facebook Page and WhatsApp
+    Comprehensive, secure diagnostic endpoint returning Facebook Page and WhatsApp 
     configuration, routing health, and token status with sensitive tokens masked.
     """
     ensure_facebook_page_consistency()
@@ -1349,7 +1181,7 @@ async def api_diagnostics_meta():
         page_id = str(p_dict.get("page_id") or "").strip()
         is_real_token = len(token) > 30 and not token.startswith("EAATest") and not token.startswith("EAA_")
         is_w1 = p_dict.get("workspace_id") == 1 or page_id == "105116472071659"
-
+        
         diag = {
             "id": p_dict.get("id"),
             "workspace_id": p_dict.get("workspace_id"),
@@ -1416,7 +1248,7 @@ async def api_diagnostics_meta():
 
     return {
         "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.utcnow().isoformat(),
         "meta_graph_version": settings.META_GRAPH_VERSION,
         "rs_graphics_workspace_1": {
             "canonical_facebook_page_id": "105116472071659",
@@ -1444,7 +1276,7 @@ async def api_get_diagnostics_whatsapp():
     Never exposes raw tokens or full customer numbers.
     """
     ensure_whatsapp_account_consistency()
-
+    
     wa_account = get_whatsapp_account_by_phone_id(settings.WHATSAPP_PHONE_NUMBER_ID)
     phone_id = wa_account.get("phone_number_id", settings.WHATSAPP_PHONE_NUMBER_ID) if wa_account else settings.WHATSAPP_PHONE_NUMBER_ID
     display_phone = wa_account.get("display_phone_number", "+8801816504097") if wa_account else "+8801816504097"
@@ -1533,7 +1365,7 @@ async def api_get_diagnostics_facebook():
     connected_pages mapping, token presence, and live Meta Graph API read access.
     """
     ensure_facebook_page_consistency()
-
+    
     page = get_connected_page("105116472071659")
     token = page.get("page_access_token") if page else get_setting("fb_page_access_token")
     clean_tok = str(token or "").strip().strip('"').strip("'")
@@ -1545,7 +1377,7 @@ async def api_get_diagnostics_facebook():
     token_suffix = clean_tok[-4:] if token_len > 10 else ""
 
     is_real = len(clean_tok) > 30 and not clean_tok.startswith("EAATest") and not clean_tok.startswith("EAA_")
-
+    
     meta_val = None
     if is_real:
         try:
@@ -1583,7 +1415,7 @@ async def api_get_diagnostics():
     workspaces = get_all_workspaces()
     pages = get_all_connected_pages()
     whatsapp_accounts = get_all_whatsapp_accounts()
-
+    
     masked_pages = []
     for p in pages:
         p_dict = dict(p)
@@ -1600,7 +1432,7 @@ async def api_get_diagnostics():
 
     return {
         "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.utcnow().isoformat(),
         "workspaces": workspaces,
         "connected_pages": masked_pages,
         "whatsapp_accounts": masked_wa,
@@ -1619,20 +1451,20 @@ async def api_whatsapp_embedded_config():
     app_id = get_setting("meta_app_id", settings.META_APP_ID)
     raw_config_id = get_setting("meta_embedded_signup_config_id", settings.META_EMBEDDED_SIGNUP_CONFIG_ID)
     config_id = "1003403176086013" if raw_config_id in ["10034031760860138", ""] else raw_config_id
-
+    
     waba_id = get_setting("whatsapp_waba_id", settings.WHATSAPP_WABA_ID)
     saved_phone_id = get_setting("whatsapp_phone_number_id", "")
     saved_phone_num = get_setting("whatsapp_display_phone_number", "+8801816504097")
     saved_status = get_setting("whatsapp_connection_status", "not_connected")
-
+    
     # Target phone 01816504097 validation
     is_target_verified = (
-        saved_status == "connected"
-        and saved_phone_id != ""
+        saved_status == "connected" 
+        and saved_phone_id != "" 
         and saved_phone_id != "1265595526643418"
         and normalize_whatsapp_phone_number(saved_phone_num) == "8801816504097"
     )
-
+    
     return {
         "app_id": app_id,
         "config_id": config_id,
@@ -1689,10 +1521,10 @@ async def api_whatsapp_embedded_signup(request: Request):
             print(f"[WhatsApp Embedded Signup] Token Exchange Error: {e}")
 
     effective_token = (
-        access_token
-        or get_setting("meta_system_user_access_token")
-        or settings.META_SYSTEM_USER_ACCESS_TOKEN
-        or get_setting("whatsapp_access_token")
+        access_token 
+        or get_setting("meta_system_user_access_token") 
+        or settings.META_SYSTEM_USER_ACCESS_TOKEN 
+        or get_setting("whatsapp_access_token") 
         or settings.WHATSAPP_ACCESS_TOKEN
     )
     effective_waba = waba_id or get_setting("whatsapp_waba_id", settings.WHATSAPP_WABA_ID)
@@ -1739,7 +1571,7 @@ async def api_whatsapp_embedded_signup(request: Request):
         set_setting("whatsapp_connection_mode", "business_app_coexistence")
         set_setting("whatsapp_coexistence_active", "true")
         set_setting("whatsapp_connection_status", "connected")
-        set_setting("whatsapp_connected_at", datetime.now(timezone.utc).isoformat())
+        set_setting("whatsapp_connected_at", datetime.utcnow().isoformat())
         if matched_display_name:
             set_setting("whatsapp_verified_name", matched_display_name)
         if access_token:
@@ -1834,16 +1666,13 @@ async def facebook_verify(request: Request):
     if mode == "subscribe" and (token in valid_tokens or token == "rs_secure_verify_token_2026"):
         print(f"[Facebook Webhook] Handshake verified successfully with challenge: {challenge}")
         return PlainTextResponse(content=str(challenge))
-
+    
     print(f"[Facebook Webhook] Verification failed. Received token: {token}, Expected: {valid_tokens}")
     return PlainTextResponse(content="Verification failed", status_code=403)
 
 @app.post("/webhook/facebook")
 async def facebook_events(request: Request, background_tasks: BackgroundTasks):
-    try:
-        data = await request.json()
-    except Exception:
-        return JSONResponse(content={"status": "INVALID_JSON"}, status_code=400)
+    data = await request.json()
     background_tasks.add_task(handle_facebook_webhook_event, data)
     return JSONResponse(content={"status": "EVENT_RECEIVED"})
 
@@ -1861,15 +1690,12 @@ async def whatsapp_verify(request: Request):
     if mode == "subscribe" and (token in valid_tokens or token == "rs_whatsapp_token_2026"):
         print(f"[WhatsApp Webhook] Handshake verified successfully with challenge: {challenge}")
         return PlainTextResponse(content=str(challenge))
-
+    
     print(f"[WhatsApp Webhook] Verification failed. Received token: {token}, Expected: {valid_tokens}")
     return PlainTextResponse(content="Verification failed", status_code=403)
 
 @app.post("/webhook/whatsapp")
 async def whatsapp_events(request: Request, background_tasks: BackgroundTasks):
-    try:
-        data = await request.json()
-    except Exception:
-        return JSONResponse(content={"status": "INVALID_JSON"}, status_code=400)
+    data = await request.json()
     background_tasks.add_task(handle_whatsapp_webhook_event, data)
     return JSONResponse(content={"status": "EVENT_RECEIVED"})

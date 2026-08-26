@@ -109,8 +109,6 @@ class TestGoogleAIToolAndWhatsApp(unittest.TestCase):
         }
 
         user_message = "জামিয়া রাহমানিয়া আরাবিয়া, মোবাইল: 01712345678, এর জন্য ID Card Form বানাও, তথ্য লাগবে নাম ও ছবি"
-        from app.database import enable_conversation_ai
-        enable_conversation_ai(sender_id="01712345678", workspace_id=self.workspace_id, enabled_by="test_setup")
         res = asyncio.run(
             process_customer_message(
                 message_text=user_message,

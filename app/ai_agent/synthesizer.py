@@ -27,7 +27,7 @@ def synthesize_training_text_to_rules(raw_text: str) -> list:
     client = genai.Client(api_key=api_key)
 
     prompt = f"""
-তুমি একজন সিনিয়র এআই সেলস ট্রেইনার।
+তুমি একজন সিনিয়র এআই সেলস ট্রেইনার। 
 নিচে একজন বিজনেস ওনারের দেওয়া অসংগঠিত/এলোমেলো ট্রেইনিং নোট দেওয়া হলো।
 এলোমেলো কথাগুলো থেকে আলাদা আলাদা বাস্তবসম্মত ব্যবসায়িক সেলস ও বিহেভিয়ার রুলস এক্সট্রাক্ট করে নিচের JSON ফরম্যাটে রিটার্ন করো:
 
@@ -80,7 +80,7 @@ def synthesize_training_text_to_rules(raw_text: str) -> list:
                     rule_content = item.get("response_or_rule", "").strip()
                     cat = item.get("category", "General").strip()
                     trigger = item.get("question_or_trigger", "").strip()
-
+                    
                     if title and rule_content:
                         rid = create_training_rule(
                             title=title,

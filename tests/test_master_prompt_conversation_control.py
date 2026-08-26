@@ -47,14 +47,14 @@ class TestMasterPromptConversationControl(unittest.TestCase):
         self.cust_b = "8801700000002"
         self.fb_cust_a = "fb_user_test_001"
         self.fb_cust_b = "fb_user_test_002"
-
+        
         # Clean up database records
         conn = get_db_connection()
         conn.execute("DELETE FROM conversations WHERE sender_id IN (?, ?, ?, ?)", (self.cust_a, self.cust_b, self.fb_cust_a, self.fb_cust_b))
         conn.execute("DELETE FROM processed_webhook_events WHERE event_id LIKE 'wam_%'")
         conn.commit()
         conn.close()
-
+        
         from app.channels.whatsapp import PROCESSED_WA_MESSAGE_IDS
         PROCESSED_WA_MESSAGE_IDS.clear()
 
@@ -92,7 +92,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
             await debouncer.add_message("whatsapp", 1, self.cust_a, "Customer A", text="হ্যালো", callback=callback)
             await debouncer.add_message("whatsapp", 1, self.cust_a, "Customer A", text="আইডি কার্ডের দাম কত?", callback=callback)
             await debouncer.add_message("whatsapp", 1, self.cust_a, "Customer A", text="৫০ পিস লাগবে", callback=callback)
-
+            
             # Wait for debounce timer to fire
             await asyncio.sleep(0.2)
 
@@ -113,7 +113,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
 
         # 2. Admin replies
         record_conversation_message("whatsapp", self.cust_a, "Customer A", "admin", "জি আমি শপ ওনার বলছি।", workspace_id=1)
-
+        
         takeover_state = get_conversation_state(sender_id=self.cust_a, workspace_id=1)
         self.assertTrue(takeover_state["admin_takeover"], "Admin message must set admin_takeover to True.")
         self.assertFalse(takeover_state["ai_enabled"], "Admin message must set ai_enabled to False.")
@@ -126,7 +126,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
     # -------------------------------------------------------------
     def test_04_after_takeover_single_message_complete_silence(self):
         set_admin_takeover(sender_id=self.cust_a, workspace_id=1)
-
+        
         with patch("app.channels.whatsapp.send_whatsapp_message") as mock_send:
             payload = {
                 "entry": [{
@@ -154,7 +154,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
     # -------------------------------------------------------------
     def test_05_after_takeover_ten_messages_complete_silence(self):
         set_admin_takeover(sender_id=self.cust_a, workspace_id=1)
-
+        
         with patch("app.channels.whatsapp.send_whatsapp_message") as mock_send:
             for i in range(10):
                 payload = {
@@ -175,7 +175,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
                     }]
                 }
                 asyncio.run(handle_whatsapp_webhook_event(payload))
-
+            
             mock_send.assert_not_called()
         print("✓ Test 05 Passed: 10 customer messages after takeover resulted in 0 AI replies.")
 
@@ -184,7 +184,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
     # -------------------------------------------------------------
     def test_06_after_takeover_customer_image_silence(self):
         set_admin_takeover(sender_id=self.cust_a, workspace_id=1)
-
+        
         with patch("app.channels.whatsapp.send_whatsapp_message") as mock_send, \
              patch("app.ai_agent.gemini_brain.genai.Client") as mock_genai:
             payload = {
@@ -263,12 +263,12 @@ class TestMasterPromptConversationControl(unittest.TestCase):
         async def run_test():
             callback = lambda b: executed.append(b)
             await debouncer.add_message("whatsapp", 1, self.cust_a, "Customer A", text="হ্যালো", callback=callback)
-
+            
             # Admin takes over during the 0.2s debounce window
             await asyncio.sleep(0.05)
             set_admin_takeover(sender_id=self.cust_a, workspace_id=1)
             debouncer.cancel_batch("whatsapp", 1, self.cust_a)
-
+            
             # Wait for original debounce timer to elapse
             await asyncio.sleep(0.2)
 
@@ -281,7 +281,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
     # -------------------------------------------------------------
     def test_09_admin_takeover_customer_google_form_silent(self):
         set_admin_takeover(sender_id=self.cust_a, workspace_id=1)
-
+        
         with patch("app.google_integration.form_manager.create_institution_form") as mock_form, \
              patch("app.channels.whatsapp.send_whatsapp_message") as mock_send:
             payload = {
@@ -311,7 +311,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
     # -------------------------------------------------------------
     def test_10_admin_takeover_customer_screenshot_silent(self):
         set_admin_takeover(sender_id=self.cust_a, workspace_id=1)
-
+        
         res = asyncio.run(process_customer_message(
             message_text="",
             image_bytes=b"fake_screenshot_data",
@@ -329,7 +329,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
     # -------------------------------------------------------------
     def test_11_ai_enabled_customer_screenshot_processed(self):
         enable_conversation_ai(sender_id=self.cust_a, workspace_id=1)
-
+        
         with patch("app.ai_agent.gemini_brain.genai.Client") as mock_genai:
             mock_client = MagicMock()
             mock_resp = MagicMock()
@@ -371,7 +371,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
         record_conversation_message("whatsapp", self.cust_a, "Customer A", "user", "হ্যালো", workspace_id=1)
         record_conversation_message("whatsapp", self.cust_a, "Customer A", "admin", "জি আমি শপ ওনার", workspace_id=1)
         record_conversation_message("whatsapp", self.cust_a, "Customer A", "bot", "আমি এআই সহকারী", workspace_id=1)
-
+        
         history = get_conversation_history("whatsapp", self.cust_a, limit=10, workspace_id=1)
         sender_types = [m["sender_type"] for m in history]
         self.assertIn("user", sender_types)
@@ -384,7 +384,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
     # -------------------------------------------------------------
     def test_14_webhook_idempotency_prevents_duplicates(self):
         enable_conversation_ai(sender_id=self.cust_a, workspace_id=1)
-
+        
         with patch("app.channels.whatsapp.send_whatsapp_message") as mock_send, \
              patch("app.ai_agent.gemini_brain.genai.Client") as mock_genai:
             mock_client = MagicMock()
@@ -435,13 +435,13 @@ class TestMasterPromptConversationControl(unittest.TestCase):
         set_admin_takeover(sender_id=self.cust_a, workspace_id=1)
         # Enable Customer B
         enable_conversation_ai(sender_id=self.cust_b, workspace_id=1)
-
+        
         state_a = get_conversation_state(sender_id=self.cust_a, workspace_id=1)
         state_b = get_conversation_state(sender_id=self.cust_b, workspace_id=1)
-
+        
         self.assertTrue(state_a["admin_takeover"])
         self.assertFalse(state_a["ai_enabled"])
-
+        
         self.assertFalse(state_b["admin_takeover"])
         self.assertTrue(state_b["ai_enabled"])
         print("✓ Test 15 Passed: Admin takeover on Customer A leaves Customer B 100% active.")
@@ -453,7 +453,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
         # 1. Takeover
         set_admin_takeover(sender_id=self.cust_a, workspace_id=1)
         self.assertFalse(is_conversation_ai_active(sender_id=self.cust_a, workspace_id=1))
-
+        
         # 2. Re-enable AI
         new_v = enable_conversation_ai(sender_id=self.cust_a, workspace_id=1, enabled_by="admin_ui")
         state = get_conversation_state(sender_id=self.cust_a, workspace_id=1)
@@ -468,15 +468,15 @@ class TestMasterPromptConversationControl(unittest.TestCase):
     # -------------------------------------------------------------
     def test_17_stale_job_cannot_send_if_version_mismatch(self):
         initial_v = enable_conversation_ai(sender_id=self.cust_a, workspace_id=1)
-
+        
         # Simulate stale batch created at v1
         stale_batch = PendingBatch("whatsapp", 1, self.cust_a, "Customer A", initial_version=initial_v)
         stale_batch.messages.append({"text": "পুরাতন বার্তা"})
-
+        
         # Admin triggers takeover and re-enables (increments version)
         set_admin_takeover(sender_id=self.cust_a, workspace_id=1)
         enable_conversation_ai(sender_id=self.cust_a, workspace_id=1)
-
+        
         current_v = get_conversation_state(sender_id=self.cust_a, workspace_id=1)["conversation_version"]
         self.assertNotEqual(stale_batch.initial_version, current_v)
         print(f"✓ Test 17 Passed: Stale job token (v{stale_batch.initial_version}) detected against current (v{current_v}).")
@@ -486,7 +486,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
     # -------------------------------------------------------------
     def test_18_google_form_workflow_preservation(self):
         enable_conversation_ai(sender_id=self.cust_a, workspace_id=1)
-
+        
         with patch("app.google_integration.ai_tool.create_institution_form") as mock_create:
             mock_create.return_value = {
                 "success": True,
@@ -503,7 +503,7 @@ class TestMasterPromptConversationControl(unittest.TestCase):
                 customer_name="Customer A",
                 workspace_id=1
             ))
-
+            
             self.assertIn("https://docs.google.com/forms/d/e/18/viewform", res.get("reply_text", ""))
             self.assertEqual(res.get("response_source"), "deterministic_google_form")
         print("✓ Test 18 Passed: Deterministic Google Form workflow preserved and active for AI-enabled customer.")

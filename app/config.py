@@ -9,21 +9,21 @@ load_dotenv(BASE_DIR / ".env")
 class Settings:
     PROJECT_NAME: str = "RS_AI Agent"
     VERSION: str = "1.0.0"
-
+    
     # Base Directories
     BASE_DIR: Path = BASE_DIR
     STATIC_DIR: Path = BASE_DIR / "static"
     TEMPLATES_DIR: Path = BASE_DIR / "templates"
     UPLOADS_DIR: Path = BASE_DIR / "static" / "uploads"
     AUDIO_DIR: Path = BASE_DIR / "static" / "audio"
-
+    
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/rs_ai.db")
-
+    
     # Gemini AI
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-
+    
     # Meta & Facebook Graph API
     META_APP_ID: str = os.getenv("META_APP_ID") or "1274136137801052"
     META_EMBEDDED_SIGNUP_CONFIG_ID: str = os.getenv("META_EMBEDDED_SIGNUP_CONFIG_ID") or "10034031760860138"
@@ -31,7 +31,7 @@ class Settings:
     FB_VERIFY_TOKEN: str = os.getenv("FB_VERIFY_TOKEN", "rs_secure_verify_token_2026")
     FB_PAGE_ID: str = os.getenv("FB_PAGE_ID", "105116472071659")
     FB_APP_SECRET: str = os.getenv("FB_APP_SECRET", "")
-
+    
     # WhatsApp Cloud API & Coexistence
     META_SYSTEM_USER_ACCESS_TOKEN: str = os.getenv("META_SYSTEM_USER_ACCESS_TOKEN", "")
     WHATSAPP_WABA_ID: str = os.getenv("WHATSAPP_WABA_ID", "271335301757320")
@@ -40,7 +40,7 @@ class Settings:
     WHATSAPP_VERIFY_TOKEN: str = os.getenv("WHATSAPP_VERIFY_TOKEN", "rs_whatsapp_token_2026")
     WHATSAPP_DISPLAY_PHONE_NUMBER: str = os.getenv("WHATSAPP_DISPLAY_PHONE_NUMBER", "+8801816504097")
     META_GRAPH_VERSION: str = os.getenv("META_GRAPH_VERSION", "v23.0")
-
+    
     # Google Workspace & Forms Automation
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")

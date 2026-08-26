@@ -93,13 +93,13 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
         self.assertEqual(len(res.get("matched_images", [])), 0)
         self.assertEqual(len(res.get("media_sequence", [])), 0)
 
-    def test_09_quantity_answer_asks_sample_permission_with_zero_photos(self):
+    def test_09_quantity_answer_sends_packages_only_not_all_28_images(self):
         res = evaluate_id_card_workflow("৫০ পিস বানাবো", workspace_id=1)
         self.assertIsNotNone(res)
-        self.assertIn("আমাদের স্যাম্পলগুলো পাঠাবো কি", res.get("reply_text"))
-        self.assertEqual(len(res.get("matched_images", [])), 0)
-        self.assertEqual(len(res.get("media_sequence", [])), 0)
-        self.assertEqual(res.get("response_source"), "id_card_ask_sample_permission")
+        # Must only send package photos (7 photos), NOT all 28 photos of cards/ribbons/covers
+        self.assertEqual(len(res.get("matched_images", [])), 7)
+        for img in res.get("matched_images", []):
+            self.assertIn("package", img.lower())
 
     def test_10_quality_spelling_variations_send_voice_note(self):
         variations = [
@@ -173,7 +173,7 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
     def test_15_specific_category_photo_requests(self):
         from app.ai_agent.gemini_brain import detect_sample_photos_to_send
         bot_cover_reply = "জি স্যার, অবশ্যই দিচ্ছি। আমাদের কাছে বেশ কয়েকটি প্রিমিয়াম ও চমৎকার মানের কভার রয়েছে। নিচে ছবিগুলো দেওয়া হলো স্যার:"
-
+        
         # 1. Cover photo request with count and 'দিয়েন'
         imgs_cover = detect_sample_photos_to_send("দুইটা ভালো মানের কভারের ছবি দিয়েন তো", bot_reply=bot_cover_reply, workspace_id=1)
         self.assertEqual(len(imgs_cover), 2)
@@ -192,49 +192,6 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
         self.assertEqual(len(imgs_fita), 2)
         for img in imgs_fita:
             self.assertIn("fita", img.lower())
-
-    def test_16_unlisted_product_team_referral_and_never_says_nei(self):
-        """When customer asks about unlisted product (e.g. pens, mugs, notebooks), never say 'আমাদের কাছে নেই', refer to team."""
-        res_pen = evaluate_id_card_workflow(
-            message_text="এই কলম গুলো আছে??",
-            customer_name="Customer",
-            workspace_id=1
-        )
-        self.assertIsNotNone(res_pen)
-        self.assertIn("আমাদের টিম বিষয়টি জেনে আপনাকে বিস্তারিত জানিয়ে দেবে", res_pen["reply_text"])
-        self.assertNotIn("আমাদের কাছে নেই", res_pen["reply_text"])
-        self.assertNotIn("নেই", res_pen["reply_text"])
-
-        res_mug = evaluate_id_card_workflow(
-            message_text="মগ প্রিন্ট করা যাবে?",
-            customer_name="Customer",
-            workspace_id=1
-        )
-        self.assertIsNotNone(res_mug)
-        self.assertIn("আমাদের টিম বিষয়টি জেনে আপনাকে বিস্তারিত জানিয়ে দেবে", res_mug["reply_text"])
-        self.assertNotIn("নেই", res_mug["reply_text"])
-
-    def test_17_calm_quantity_tone_500_1000_pcs(self):
-        """When customer asks for 500 or 1000 pcs, reply politely without over-excitement and ask sample permission."""
-        res_500 = evaluate_id_card_workflow(
-            message_text="৫০০ পিস কার্ড বানাবো",
-            customer_name="Abdur Rahman",
-            workspace_id=1
-        )
-        self.assertIsNotNone(res_500)
-        self.assertIn("আমাদের স্যাম্পলগুলো পাঠাবো কি", res_500["reply_text"])
-        self.assertEqual(res_500["response_source"], "id_card_ask_sample_permission")
-        self.assertNotIn("মাশাল্লাহ", res_500["reply_text"])
-        self.assertNotIn("অসাধারণ", res_500["reply_text"])
-
-        res_1000 = evaluate_id_card_workflow(
-            message_text="১০০০ পিস বানাতে চাই",
-            customer_name="Abdur Rahman",
-            workspace_id=1
-        )
-        self.assertIsNotNone(res_1000)
-        self.assertIn("আমাদের স্যাম্পলগুলো পাঠাবো কি", res_1000["reply_text"])
-        self.assertEqual(res_1000["response_source"], "id_card_ask_sample_permission")
 
 if __name__ == "__main__":
     unittest.main()

@@ -35,7 +35,7 @@ class TestGoogleOAuthAndCrypto(unittest.TestCase):
         raw_token = "ya29.a0AWY7Ckm_SecretAccessToken_Example123456789"
         encrypted = encrypt_token(raw_token)
         self.assertNotEqual(raw_token, encrypted)
-
+        
         decrypted = decrypt_token(encrypted)
         self.assertEqual(raw_token, decrypted)
         print("✓ Token encryption at rest & decryption verified.")

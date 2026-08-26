@@ -33,18 +33,13 @@ class TestFacebookMediaIdempotencySuite(unittest.TestCase):
         self.page_id = "105116472071659"
         self.page_token = "EAASValidPageAccessTokenTest123456"
         self.workspace_id = 1
-
+        
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("DELETE FROM facebook_media_deliveries")
         cur.execute("DELETE FROM processed_webhook_events")
-        cur.execute("DELETE FROM conversations WHERE sender_id = ?", (self.recipient_id,))
         conn.commit()
         conn.close()
-        from app.database import remove_muted_number, enable_conversation_ai, set_setting
-        set_setting("blacklisted_ai_numbers", "")
-        remove_muted_number(self.recipient_id)
-        enable_conversation_ai(sender_id=self.recipient_id, workspace_id=self.workspace_id)
 
     def test_01_same_webhook_event_received_twice(self):
         """TEST 1: Same webhook event received twice -> AI/media processing occurs once."""
@@ -62,7 +57,7 @@ class TestFacebookMediaIdempotencySuite(unittest.TestCase):
                 }]
             }]
         }
-
+        
         with patch("app.channels.facebook.process_customer_message") as mock_ai, \
              patch("app.channels.facebook.send_fb_text_message") as mock_send_text:
             mock_ai.return_value = {
@@ -87,7 +82,7 @@ class TestFacebookMediaIdempotencySuite(unittest.TestCase):
     def test_02_same_image_requested_twice_only_one_send(self):
         """TEST 2: Same image requested twice -> only one Facebook send."""
         img_url = "https://example.com/unique_sample_02.jpg"
-
+        
         with patch("requests.post") as mock_post:
             mock_post.return_value.status_code = 200
             mock_post.return_value.json.return_value = {
@@ -240,7 +235,7 @@ class TestFacebookMediaIdempotencySuite(unittest.TestCase):
             with patch("requests.post") as mock_post:
                 mock_post.return_value.status_code = 200
                 mock_post.return_value.json.return_value = {"recipient_id": self.recipient_id, "message_id": "m_bin_11"}
-
+                
                 # First send
                 res1 = send_fb_media_message(self.recipient_id, "image", img_url, page_token=self.page_token, page_id=self.page_id, workspace_id=self.workspace_id)
                 self.assertTrue(res1)
@@ -293,7 +288,7 @@ class TestFacebookMediaIdempotencySuite(unittest.TestCase):
     def test_14_two_simultaneous_workers_only_one_sends(self):
         """TEST 14: Two simultaneous workers -> only one sends."""
         img = "https://example.com/simul_worker_14.jpg"
-
+        
         with patch("requests.post") as mock_post:
             mock_post.return_value.status_code = 200
             mock_post.return_value.json.return_value = {"recipient_id": self.recipient_id, "message_id": "m_14"}
@@ -406,12 +401,12 @@ class TestFacebookMediaIdempotencySuite(unittest.TestCase):
         """TEST 20: No access tokens appear in logs."""
         import io
         import sys
-
+        
         captured_output = io.StringIO()
         old_stdout = sys.stdout
         sys.stdout = captured_output
         secret_token = "EAABSecretTokenMustNeverBePrinted1234567890"
-
+        
         try:
             with patch("requests.post") as mock_post:
                 mock_post.return_value.status_code = 200

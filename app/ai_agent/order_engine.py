@@ -73,7 +73,7 @@ def create_order(
 ) -> dict:
     """Creates and saves a new customer order into SQLite database scoped to a workspace."""
     subtotal, delivery_charge, total_amount = calculate_order_totals(items, customer_address, workspace_id=workspace_id)
-
+    
     # Generate Unique Order Code (e.g., PW-260819-4821)
     timestamp = datetime.now().strftime("%y%m%d")
     random_id = uuid.uuid4().hex[:4].upper()
@@ -87,7 +87,7 @@ def create_order(
         size = f" ({itm['size']})" if itm.get("size") else ""
         color = f" [{itm['color']}]" if itm.get("color") else ""
         items_summary_list.append(f"{name}{size}{color} x {qty} = {price*qty}৳")
-
+    
     items_summary = ", ".join(items_summary_list) if items_summary_list else "1x Product"
 
     conn = None

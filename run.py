@@ -22,17 +22,17 @@ def main():
     print("============================================================")
     print("🚀 Starting RS AI Agent Platform (100% Free)...")
     print("============================================================")
-
+    
     # Initialize DB
     init_db()
-
+    
     port = int(os.getenv("PORT", 8000))
     host = os.getenv("HOST", "0.0.0.0")
-
+    
     print(f"\n📍 Server running at: http://{host}:{port}")
     print(f"🌐 Open http://localhost:{port} in your browser to access the Admin Dashboard.")
     print("=" * 60 + "\n")
-
+    
     uvicorn.run("app.main:app", host=host, port=port, reload=False)
 
 if __name__ == "__main__":

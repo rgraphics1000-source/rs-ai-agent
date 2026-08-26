@@ -724,7 +724,7 @@ class ProductionAdminTakeoverAndMultimodalTests(unittest.IsolatedAsyncioTestCase
         and override authority with zero delay.
         """
         from app.database import create_training_rule, delete_training_rule
-
+        
         # Add a unique new training rule
         unique_token = uuid.uuid4().hex[:6]
         rule_title = f"স্পেশাল ইমার্জেন্সি অফার {unique_token}"
