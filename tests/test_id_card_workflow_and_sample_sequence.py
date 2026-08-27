@@ -208,5 +208,33 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
             self.assertIn("কালিয়াকৈর কাঁচাবাজার, আকরান, বিরুলিয়া, সাভার, ঢাকা।", res["reply_text"])
             self.assertEqual(len(res["matched_images"]), 0)
 
+    def test_14_agreement_variations_dispatch_samples(self):
+        """Verify that multiple agreement variations after permission prompt trigger package images."""
+        variations = ["হ্যাঁ", "জি পাঠান", "আচ্ছা দিন", "পাঠিয়ে দিন", "দেখান", "হুম পাঠান", "হ্যাঁ পাঠান"]
+        for v in variations:
+            res = evaluate_id_card_workflow(
+                message_text=v,
+                conversation_history=[
+                    {"sender": "user", "content": "১০০ পিস বানাবো"},
+                    {"sender": "bot", "content": "আমি কি আমাদের প্যাকেজের স্যাম্পল ছবিগুলো পাঠাবো স্যার?"}
+                ],
+                customer_name="Al-Amin",
+                workspace_id=1
+            )
+            self.assertIsNotNone(res, f"Failed for agreement: {v}")
+            self.assertEqual(res["response_source"], "package_sample_dispatch", f"Failed for {v}")
+            self.assertEqual(len(res["matched_images"]), 7, f"Failed for {v}")
+
+    async def test_15_non_form_inquiry_does_not_trigger_form_error(self):
+        """Verify that general inquiries with institution names and photos do not trigger form upload error."""
+        from app.ai_agent.gemini_brain import process_customer_message
+        res = await process_customer_message(
+            message_text="মাদ্রাসার কার্ড ও ছবি কেমন হবে",
+            customer_name="Zubair",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res)
+        self.assertNotIn("ছবির Upload অপশন সক্রিয় করতে সমস্যা হয়েছে", res["reply_text"])
+
 if __name__ == "__main__":
     unittest.main()

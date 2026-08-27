@@ -887,7 +887,9 @@ def evaluate_id_card_workflow(
         "কত পিস বানাবেন", "কত পিস", "কতগুলো বানাবেন", "কত পিস প্রয়োজন", "কত পিস লাগবে", "পরিমাণ কত"
     ])
     bot_prompted_sample_permission = any(k in last_bot_msg for k in [
-        "স্যাম্পল ছবিগুলো পাঠাবো", "ছবিগুলো পাঠাবো", "স্যাম্পল পাঠাবো", "স্যাম্পল দেব", "ছবি পাঠাব"
+        "স্যাম্পল ছবিগুলো পাঠাবো", "ছবিগুলো পাঠাবো", "স্যাম্পল পাঠাবো", "স্যাম্পল দেব", "ছবি পাঠাব",
+        "স্যাম্পল ছবিগুলো পাঠাব", "ছবি পাঠাবো কি", "স্যাম্পল পাঠাবো কি", "ছবি পাঠাবো", "স্যাম্পল ছবি পাঠাবো",
+        "প্যাকেজের স্যাম্পল ছবিগুলো পাঠাবো", "প্যাকেজ দেখতে চান", "ছবি দেখতে চান"
     ])
 
     qty = extract_order_quantity_number(msg)
@@ -982,8 +984,11 @@ def evaluate_id_card_workflow(
 
     # Case C: Customer grants permission / asks specifically for packages or samples
     agreement_keywords = [
-        "হ্যাঁ", "হ্যা", "পাঠান", "দেখান", "দিন", "দেন", "পাঠাও", "দেখাও", 
-        "আচ্ছা দিন", "আচ্ছা পাঠান", "দিতে পারেন", "পাঠাতে পারেন", "yes", "sure", "ok", "send", "show"
+        "হ্যাঁ", "হ্যা", "জি", "হুম", "পাঠান", "দেখান", "দিন", "দেন", "পাঠাও", "দেখাও", 
+        "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "আচ্ছা", "দিতে পারেন", "পাঠাতে পারেন", 
+        "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দাও", "পাঠিয়ে দিন", "পাঠিয়ে দেন",
+        "হুম পাঠান", "জি পাঠান", "জি দিন", "জি দেন", "হ্যাঁ দিন", "হ্যাঁ পাঠান", "হ্যা পাঠান", "হ্যা দিন",
+        "দিলে ভালো হয়", "দিলে ভালো", "দেখতে চাই", "yes", "sure", "ok", "okay", "send", "show", "ha", "ji", "achha"
     ]
     is_agreeing_to_sample_prompt = bot_prompted_sample_permission and any(k == msg or msg.startswith(k + " ") or msg.endswith(" " + k) or f" {k} " in f" {msg} " for k in agreement_keywords)
 
@@ -1148,11 +1153,15 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
                 break
 
     bot_offered_photos_last_turn = any(k in last_bot_msg for k in [
-        "ছবি দেখতে চান", "স্যাম্পল দেখতে চান", "ছবি পাঠাব", "স্যাম্পল পাঠাব", "ছবি দেব", "পিকচার দেখতে চান", "স্যাম্পল দেব", "ছবি পাঠাবো", "স্যাম্পল ছবিগুলো দিতে সুবিধা হতো", "স্যাম্পল ছবিগুলো দিতে"
+        "ছবি দেখতে চান", "স্যাম্পল দেখতে চান", "ছবি পাঠাব", "স্যাম্পল পাঠাব", "ছবি দেব", 
+        "পিকচার দেখতে চান", "স্যাম্পল দেব", "ছবি পাঠাবো", "স্যাম্পল ছবিগুলো দিতে সুবিধা হতো", 
+        "স্যাম্পল ছবিগুলো দিতে", "স্যাম্পল ছবিগুলো পাঠাবো", "প্যাকেজের স্যাম্পল ছবিগুলো পাঠাবো"
     ])
 
     agreement_keywords = [
-        "হ্যাঁ", "পাঠান", "দেখান", "জি", "হুম", "পাঠাও", "দেখাও", "দিলে ভালো", "দিলে ভালো হয়", "সবই লাগবে", "সব লাগবে", "সবকিছু লাগবে", "কম্বো", "প্যাকেজ",
+        "হ্যাঁ", "হ্যা", "জি", "হুম", "পাঠান", "দেখান", "দিন", "দেন", "পাঠাও", "দেখাও", "দিলে ভালো", "দিলে ভালো হয়", 
+        "সবই লাগবে", "সব লাগবে", "সবকিছু লাগবে", "কম্বো", "প্যাকেজ", "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "আচ্ছা",
+        "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দিন", "পাঠিয়ে দেন", "দিতে পারেন", "পাঠাতে পারেন",
         "yes", "sure", "ok", "okay", "send", "show", "ha", "ji", "achha", "yep", "yeah", "সেন্ড করুন"
     ]
     is_agreeing_to_photo = any(k == msg or msg.startswith(k + " ") or msg.endswith(" " + k) or f" {k} " in f" {msg} " for k in agreement_keywords) and bot_offered_photos_last_turn
@@ -1166,8 +1175,14 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
         "স্যাম্পল নিচে পাঠানো হলো", "ছবি নিচে পাঠানো হলো", "ছবি দেওয়া হলো", "ছবি পাঠানো হলো",
         "স্যাম্পল দেওয়া হলো", "স্যাম্পল পাঠানো হলো", "স্যাম্পলগুলো নিচে পাঠানো হলো",
         "প্যাকেজগুলো পাঠানো হলো", "স্যাম্পল ছবিগুলো নিচে পাঠানো হলো", "ছবিগুলো নিচে পাঠানো হল",
-        "স্যাম্পল পাঠানো হল", "স্যাম্পল ছবিগুলো নিচে পাঠানো হলো স্যার"
-    ])
+        "স্যাম্পল পাঠানো হল", "স্যাম্পল ছবিগুলো নিচে পাঠানো হলো স্যার", "ছবি পাঠিয়ে দিচ্ছি",
+        "ছবি পাঠাচ্ছি", "ছবি দিলাম", "ছবি দিচ্ছি", "স্যাম্পল পাঠিয়ে দিচ্ছি", "স্যাম্পল পাঠাচ্ছি",
+        "স্যাম্পল দিলাম", "স্যাম্পল দিচ্ছি", "নিচে ছবি দেওয়া হলো", "নিচে ছবি দেয়া হলো",
+        "নিচে ছবি পাঠানো হলো", "নিচে স্যাম্পল দেওয়া হলো"
+    ]) or (
+        any(k in b_reply_low for k in ["ছবি", "স্যাম্পল", "প্যাকেজ"]) and 
+        any(a in b_reply_low for a in ["নিচে দেওয়া হলো", "নিচে দেয়া হলো", "নিচে পাঠানো হলো", "পাঠিয়ে দিচ্ছি", "পাঠিয়ে দিলাম", "পাঠাচ্ছি", "দিচ্ছি", "পাঠানো হলো", "পাঠিয়ে দেওয়া হলো", "পাঠিয়ে দেয়া হলো"])
+    )
 
     if not (is_explicit_photo_req or is_agreeing_to_photo or is_bot_sending_photos):
         return []
@@ -1516,13 +1531,11 @@ async def process_customer_message(
         if message_text:
             contents.append(f"কাস্টমারের বার্তা ({customer_name}): {message_text}")
 
-        # Prioritize high-quota active working models
+        # Prioritize high-quota, ultra-fast sub-second working models (gemini-3.5-flash-lite responds in <1s)
         candidate_models = [
-            "gemini-3.5-flash",
             "gemini-3.5-flash-lite",
-            "gemini-3.6-flash",
-            "gemini-3.1-flash-lite",
-            "gemini-2.5-flash"
+            "gemini-3.5-flash",
+            "gemini-3.1-flash-lite"
         ]
 
         response = None
@@ -1583,7 +1596,7 @@ async def process_customer_message(
                 customer_name=customer_name,
                 workspace_id=ws_id
             )
-            if workflow_res and workflow_res.get("reply"):
+            if workflow_res and workflow_res.get("reply") and workflow_res.get("status") != "error":
                 clean_reply = workflow_res["reply"]
         except Exception as e:
             print(f"[Google Form Workflow Error]: {e}")
