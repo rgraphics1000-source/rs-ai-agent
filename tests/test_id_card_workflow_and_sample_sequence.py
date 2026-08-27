@@ -70,8 +70,8 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(res)
         self.assertEqual(res["response_source"], "id_card_quantity_permission_prompt")
         self.assertEqual(len(res["matched_images"]), 0)
-        self.assertIn("৪৫ টাকা", res["reply_text"])
-        self.assertIn("4500", res["reply_text"])
+        self.assertIn("রেগুলার পাইকারি রেট", res["reply_text"])
+        self.assertIn("৩৫ টাকা", res["reply_text"])
         self.assertIn("স্যাম্পল ছবিগুলো পাঠাবো", res["reply_text"])
 
         # Turn 2: Customer agrees -> 7 package images dispatched
@@ -102,7 +102,7 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIn("স্যাম্পল ছবিগুলো পাঠাবো", res["reply_text"])
 
     def test_07_quantity_50_to_60_prompts_permission_with_fixed_catalog_rate(self):
-        """Quantity 50-60 pcs prompts permission with fixed regular rate (50 TK/pc = 2500 TK)."""
+        """Quantity 50-60 pcs prompts permission with fixed regular wholesale rate."""
         res = evaluate_id_card_workflow(
             message_text="৫০ পিস বানাবো",
             customer_name="Kawsar Ahmed",
@@ -111,7 +111,7 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(res)
         self.assertEqual(res["response_source"], "id_card_quantity_permission_prompt")
         self.assertEqual(len(res["matched_images"]), 0)
-        self.assertIn("৫০ টাকা করে মোট 2500 টাকা", res["reply_text"])
+        self.assertIn("রেগুলার পাইকারি রেট", res["reply_text"])
         self.assertIn("স্যাম্পল ছবিগুলো পাঠাবো", res["reply_text"])
 
     def test_08_direct_package_request(self):
@@ -250,6 +250,47 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         
         self.assertEqual(followup_msg, "আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন স্যার।")
         self.assertNotIn("কত পিস", followup_msg)
+
+    def test_17_quantity_200_states_regular_rates_without_43_taka(self):
+        """Verify 200 pcs (and 100+ pcs) offers packages and states regular wholesale rates / 35৳, never 43৳."""
+        res = evaluate_id_card_workflow(
+            message_text="200",
+            conversation_history=[
+                {"sender": "user", "content": "আইডি কার্ড বানাবো"},
+                {"sender": "bot", "content": "জি স্যার, অবশ্যই। আপনি আমাদের কাছ থেকে আইডি কার্ড, ফিতা এবং কভারের ফুল প্যাকেজ নিতে পারবেন। আপনার কত পিস প্রয়োজন জানাবেন প্লিজ?"}
+            ],
+            customer_name="Rashed",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "id_card_quantity_permission_prompt")
+        self.assertNotIn("৪৩ টাকা", res["reply_text"])
+        self.assertNotIn("8600", res["reply_text"])
+        self.assertIn("প্যাকেজ", res["reply_text"])
+        self.assertIn("স্যাম্পল ছবিগুলো পাঠাবো", res["reply_text"])
+
+    def test_18_reject_package_and_request_card_sample(self):
+        """Verify that saying 'এগুলোতো পেকেজ আমি সাম্পল চাচ্ছিলাম' delivers individual ID card samples."""
+        queries = [
+            "এগুলোতো পেকেজ আমি সাম্পল চাচ্ছিলাম",
+            "এগুলো তো প্যাকেজ আমি স্যাম্পল চাচ্ছিলাম",
+            "প্যাকেজ না শুধু স্যাম্পল দেখতে চাই",
+            "আমি স্যাম্পল চাচ্ছিলাম"
+        ]
+        for q in queries:
+            res = evaluate_id_card_workflow(
+                message_text=q,
+                conversation_history=[
+                    {"sender": "user", "content": "200"},
+                    {"sender": "bot", "content": "জি স্যার, নিচে আমাদের আকর্ষণীয় প্যাকেজগুলোর স্যাম্পল ছবি পাঠানো হলো। আপনার কোন প্যাকেজটি পছন্দ জানাবেন প্লিজ।"}
+                ],
+                customer_name="Rashed",
+                workspace_id=1
+            )
+            self.assertIsNotNone(res, f"Failed for query: {q}")
+            self.assertEqual(res["response_source"], "id_card_sample_dispatch", f"Failed for query: {q}")
+            self.assertGreater(len(res["matched_images"]), 0)
+            self.assertIn("পিভিসি আইডি কার্ডের স্যাম্পল ছবিগুলো", res["reply_text"])
 
 if __name__ == "__main__":
     unittest.main()

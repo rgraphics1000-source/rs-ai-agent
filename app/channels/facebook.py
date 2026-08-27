@@ -711,8 +711,8 @@ async def process_facebook_batch(batch: PendingBatch):
                 )
             await asyncio.sleep(0.2)
 
-        # Send concluding follow-up message after all photos are delivered
-        if fb_img_sent_count > 0 and sender_id:
+        # Send concluding follow-up message ONLY if no text reply was sent beforehand
+        if not reply_text and fb_img_sent_count > 0 and sender_id:
             honorific = detect_customer_gender_title(customer_name)
             is_package_images = any("package" in str(p).lower() or "pakage" in str(p).lower() or "pkg" in str(p).lower() or "wa000" in str(p).lower() or "wa00" in str(p).lower() for p in matched_images)
             
