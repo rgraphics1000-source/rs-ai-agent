@@ -714,10 +714,16 @@ async def process_facebook_batch(batch: PendingBatch):
         # Send concluding follow-up message after all photos are delivered
         if fb_img_sent_count > 0 and sender_id:
             honorific = detect_customer_gender_title(customer_name)
-            if any("pakage" in str(p).lower() or "pkg" in str(p).lower() for p in matched_images):
+            is_package_images = any("package" in str(p).lower() or "pakage" in str(p).lower() or "pkg" in str(p).lower() or "wa000" in str(p).lower() or "wa00" in str(p).lower() for p in matched_images)
+            
+            if is_package_images:
                 fb_followup = f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+            elif any("cover" in str(p).lower() for p in matched_images):
+                fb_followup = f"কভারের কোন ডিজাইনটি আপনার পছন্দ জানাবেন {honorific}।"
+            elif any("fita" in str(p).lower() or "ribbon" in str(p).lower() for p in matched_images):
+                fb_followup = f"ফিতার কোন ডিজাইনটি আপনার পছন্দ জানাবেন {honorific}।"
             else:
-                fb_followup = f"আপনার কত পিস প্রয়োজন জানাবেন {honorific}।"
+                fb_followup = f"স্যাম্পলগুলো কেমন লাগলো জানাবেন {honorific}।"
 
             await asyncio.sleep(0.4)
             send_fb_text_message(

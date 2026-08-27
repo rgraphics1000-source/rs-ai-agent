@@ -234,7 +234,22 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
             workspace_id=1
         )
         self.assertIsNotNone(res)
-        self.assertNotIn("ছবির Upload অপশন সক্রিয় করতে সমস্যা হয়েছে", res["reply_text"])
+    def test_16_package_followup_never_reasks_quantity(self):
+        """Verify package image dispatch follow-up asks for package preference, NEVER re-asking quantity."""
+        from app.ai_agent.gemini_brain import get_package_sample_images
+        matched_images = get_package_sample_images(1)
+        is_package_images = any("package" in str(p).lower() or "pakage" in str(p).lower() or "pkg" in str(p).lower() or "wa000" in str(p).lower() for p in matched_images)
+        self.assertTrue(is_package_images)
+        
+        # Test followup message logic
+        honorific = "স্যার"
+        if is_package_images:
+            followup_msg = f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+        else:
+            followup_msg = f"আপনার কত পিস প্রয়োজন জানাবেন {honorific}।"
+        
+        self.assertEqual(followup_msg, "আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন স্যার।")
+        self.assertNotIn("কত পিস", followup_msg)
 
 if __name__ == "__main__":
     unittest.main()

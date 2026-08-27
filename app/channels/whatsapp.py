@@ -990,10 +990,16 @@ async def process_whatsapp_batch(batch: PendingBatch):
             # Send concluding follow-up message after all photos are delivered
             if sent_count > 0 and sender_phone:
                 honorific = detect_customer_gender_title(customer_name)
-                if any("pakage" in str(p).lower() or "pkg" in str(p).lower() for p in matched_images):
+                is_package_images = any("package" in str(p).lower() or "pakage" in str(p).lower() or "pkg" in str(p).lower() or "wa000" in str(p).lower() or "wa00" in str(p).lower() for p in matched_images)
+                
+                if is_package_images:
                     followup_msg = f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+                elif any("cover" in str(p).lower() for p in matched_images):
+                    followup_msg = f"কভারের কোন ডিজাইনটি আপনার পছন্দ জানাবেন {honorific}।"
+                elif any("fita" in str(p).lower() or "ribbon" in str(p).lower() for p in matched_images):
+                    followup_msg = f"ফিতার কোন ডিজাইনটি আপনার পছন্দ জানাবেন {honorific}।"
                 else:
-                    followup_msg = f"আপনার কত পিস প্রয়োজন জানাবেন {honorific}।"
+                    followup_msg = f"স্যাম্পলগুলো কেমন লাগলো জানাবেন {honorific}।"
 
                 await asyncio.sleep(0.4)
                 send_whatsapp_message(
