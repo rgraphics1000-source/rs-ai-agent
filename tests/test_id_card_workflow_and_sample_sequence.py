@@ -187,6 +187,26 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIn("১২ টাকা", res_step4["reply_text"])
         self.assertIn("৭৫ টাকা", res_step4["reply_text"])
 
+    def test_08c_package_quoted_bargaining_inquiry_does_not_prematurely_ask_for_order_form(self):
+        """Customer replying to package 7 photo with 'এটা কত রাখা যাবে' receives price & negotiation reply, NOT premature order form request."""
+        # 1. Asking 'এটা কত রাখা যাবে' on Package 7 photo
+        quoted_msg = "[কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: /static/uploads/package/IMG-20260114-WA0057.jpg]\nএটা কত রাখা যাবে"
+        res = evaluate_id_card_workflow(quoted_msg, customer_name="Customer", workspace_id=1)
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "package_price_and_discount_inquiry")
+        self.assertIn("৯১ টাকা", res["reply_text"])
+        self.assertIn("কত পিস প্রয়োজন", res["reply_text"])
+        self.assertNotIn("প্রতিষ্ঠানের নাম", res["reply_text"])
+        self.assertNotIn("গুগল ফর্ম", res["reply_text"])
+
+        # 2. But if customer explicitly confirms selection: "এটা পছন্দ হয়েছে"
+        confirm_msg = "[কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: /static/uploads/package/IMG-20260114-WA0057.jpg]\nএটা পছন্দ হয়েছে"
+        res_confirm = evaluate_id_card_workflow(confirm_msg, customer_name="Customer", workspace_id=1)
+        self.assertIsNotNone(res_confirm)
+        self.assertEqual(res_confirm["response_source"], "id_card_package_selection_acknowledged")
+        self.assertIn("চমৎকার পছন্দ", res_confirm["reply_text"])
+        self.assertIn("প্রতিষ্ঠানের নাম", res_confirm["reply_text"])
+
     def test_10_specific_package_request_returns_single_image(self):
         """Customer asking for specific package (e.g. 'প্যাকেজ ৩') receives only Package 03 photo."""
         res = evaluate_id_card_workflow(
