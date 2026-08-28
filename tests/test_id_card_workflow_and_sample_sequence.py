@@ -115,7 +115,7 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIn("স্যাম্পল ছবিগুলো পাঠাবো", res["reply_text"])
 
     def test_08_direct_package_request(self):
-        """Customer asking 'প্যাকেজের ছবি দিন' receives 7 package images directly."""
+        """Customer asking 'প্যাকেজের ছবি দিন' receives 7 package images directly in strict serial order (1-7)."""
         res = evaluate_id_card_workflow(
             message_text="প্যাকেজের ছবি দিন",
             customer_name="Mamun",
@@ -124,8 +124,13 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(res)
         self.assertEqual(res["response_source"], "package_sample_dispatch")
         self.assertEqual(len(res["matched_images"]), 7)
-        for img in res["matched_images"]:
-            self.assertIn("package", img.lower())
+        self.assertEqual(res["matched_images"][0], "/static/uploads/package/IMG-20260113-WA0003.jpg") # Pkg 1
+        self.assertEqual(res["matched_images"][1], "/static/uploads/package/IMG-20260113-WA0002.jpg") # Pkg 2
+        self.assertEqual(res["matched_images"][2], "/static/uploads/package/IMG-20260117-WA0023.jpg") # Pkg 3
+        self.assertEqual(res["matched_images"][3], "/static/uploads/package/IMG-20260121-WA0081.jpg") # Pkg 4
+        self.assertEqual(res["matched_images"][4], "/static/uploads/package/IMG-20260118-WA0045.jpg") # Pkg 5
+        self.assertEqual(res["matched_images"][5], "/static/uploads/package/IMG-20260113-WA0006.jpg") # Pkg 6
+        self.assertEqual(res["matched_images"][6], "/static/uploads/package/IMG-20260114-WA0057.jpg") # Pkg 7
 
     def test_10_specific_package_request_returns_single_image(self):
         """Customer asking for specific package (e.g. 'প্যাকেজ ৩') receives only Package 03 photo."""
@@ -137,7 +142,7 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(res)
         self.assertEqual(res["response_source"], "specific_package_03_dispatch")
         self.assertEqual(len(res["matched_images"]), 1)
-        self.assertEqual(res["matched_images"][0], "/static/uploads/package/IMG-20260113-WA0006.jpg")
+        self.assertEqual(res["matched_images"][0], "/static/uploads/package/IMG-20260117-WA0023.jpg")
         self.assertIn("প্যাকেজ ০৩", res["reply_text"])
 
     def test_11_specific_category_requests(self):
@@ -172,8 +177,19 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(res)
         self.assertEqual(res["response_source"], "premium_package_07_dispatch")
         self.assertEqual(len(res["matched_images"]), 1)
-        self.assertEqual(res["matched_images"][0], "/static/uploads/package/IMG-20260121-WA0081.jpg")
+        self.assertEqual(res["matched_images"][0], "/static/uploads/package/IMG-20260114-WA0057.jpg")
         self.assertIn("প্যাকেজ ০৭", res["reply_text"])
+        self.assertIn("সবচেয়ে প্রিমিয়াম", res["reply_text"])
+
+    def test_12b_lowest_budget_package_request(self):
+        """Customer with low budget asking for cheapest package receives only Package 01 photo."""
+        res = evaluate_id_card_workflow("আমাদের বাজেট একবারেই কম, সবচেয়ে কম দামের প্যাকেজ কোনটা?", workspace_id=1)
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "budget_package_01_dispatch")
+        self.assertEqual(len(res["matched_images"]), 1)
+        self.assertEqual(res["matched_images"][0], "/static/uploads/package/IMG-20260113-WA0003.jpg")
+        self.assertIn("প্যাকেজ ০১", res["reply_text"])
+        self.assertIn("সর্বনিম্ন বাজেট", res["reply_text"])
 
     def test_09_master_prompt_persona_and_negotiation_rules(self):
         """Verify Nadim persona, Owner Sir addressing protocol, and Step-by-step negotiation."""
