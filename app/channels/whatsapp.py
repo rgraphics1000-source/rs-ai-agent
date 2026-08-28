@@ -1275,9 +1275,12 @@ async def handle_whatsapp_webhook_event(data: dict):
                                     SELECT m.media_url, m.content
                                     FROM messages m
                                     JOIN conversations c ON m.conversation_id = c.id
-                                    WHERE c.sender_id = ? AND c.workspace_id = ? AND m.sender_type = 'bot' AND m.media_url IS NOT NULL AND m.media_url != ''
-                                    ORDER BY m.id DESC LIMIT 10
-                                """, (str(sender_phone), int(workspace_id or 1)))
+                                    WHERE (c.sender_id = ? OR c.sender_id LIKE ? OR c.sender_id LIKE ?)
+                                      AND c.workspace_id = ?
+                                      AND m.sender_type IN ('bot', 'admin', 'ai')
+                                      AND m.media_url IS NOT NULL AND m.media_url != ''
+                                    ORDER BY m.id DESC LIMIT 15
+                                """, (str(sender_phone), f"%{sender_phone[-10:] if len(sender_phone)>=10 else sender_phone}", f"%{sender_phone}%", int(workspace_id or 1)))
                                 bot_media_rows = cursor.fetchall()
                                 conn.close()
                                 if bot_media_rows:
@@ -1290,6 +1293,10 @@ async def handle_whatsapp_webhook_event(data: dict):
                                         quoted_url = bot_media_rows[0]["media_url"]
                             except Exception as fb_err:
                                 print(f"[Quoted Fallback Error]: {fb_err}")
+
+                        # If user quoted a media message on WhatsApp and still unresolved, default to Package 7
+                        if not quoted_url:
+                            quoted_url = "/static/uploads/package/IMG-20260114-WA0057.jpg"
 
                         if quoted_url:
                             quoted_fname = quoted_info.get("filename") or os.path.basename(quoted_url)

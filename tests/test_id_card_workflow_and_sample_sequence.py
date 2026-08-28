@@ -207,6 +207,41 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIn("চমৎকার পছন্দ", res_confirm["reply_text"])
         self.assertIn("প্রতিষ্ঠানের নাম", res_confirm["reply_text"])
 
+    def test_08d_customer_says_i_replied_clarification(self):
+        """Customer saying 'আমি রিপ্লাই দিয়েছি তো' receives helpful clarification on Package 7 and quantity inquiry."""
+        res = evaluate_id_card_workflow("আমি রিপ্লাই দিয়েছি তো", customer_name="Customer", workspace_id=1)
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "customer_claimed_replied_clarification")
+        self.assertIn("৭ নম্বর প্রিমিয়াম প্যাকেজ", res["reply_text"])
+        self.assertIn("৯১ টাকা", res["reply_text"])
+        self.assertIn("কত পিস প্রয়োজন", res["reply_text"])
+
+    def test_08e_customer_quotes_package_and_says_eti(self):
+        """Customer replying 'এটি' after bot asks which package receives order form acknowledgment."""
+        res = evaluate_id_card_workflow(
+            "এটি",
+            customer_name="Customer",
+            workspace_id=1,
+            conversation_history=[{"sender": "bot", "content": "বলুন স্যার, আপনি ঠিক কোন প্রোডাক্ট বা প্যাকেজটি নিয়ে জানতে চাচ্ছিলেন?"}]
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "id_card_package_selection_acknowledged")
+        self.assertIn("চমৎকার পছন্দ", res["reply_text"])
+        self.assertIn("প্রতিষ্ঠানের নাম", res["reply_text"])
+
+    def test_08f_customer_quotes_package_and_asks_price_eti(self):
+        """Customer asking 'এটি কত রাখা যাবে?' after bot asks which package receives 91 Tk price details and quantity request."""
+        res = evaluate_id_card_workflow(
+            "এটি কত রাখা যাবে?",
+            customer_name="Customer",
+            workspace_id=1,
+            conversation_history=[{"sender": "bot", "content": "বলুন স্যার, আপনি ঠিক কোন প্রোডাক্ট বা প্যাকেজটি নিয়ে জানতে চাচ্ছিলেন?"}]
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "package_price_and_discount_inquiry")
+        self.assertIn("৯১ টাকা", res["reply_text"])
+        self.assertIn("কত পিস প্রয়োজন", res["reply_text"])
+
     def test_10_specific_package_request_returns_single_image(self):
         """Customer asking for specific package (e.g. 'প্যাকেজ ৩') receives only Package 03 photo."""
         res = evaluate_id_card_workflow(
