@@ -61,7 +61,7 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(res["media_sequence"]), 0)
 
     def test_05_quantity_80_to_100_prompts_permission_with_special_rate(self):
-        """Quantity >= 80 (e.g. 100 pcs) calculates rate (45 TK) and prompts customer permission before sending samples."""
+        """Quantity >= 80 (e.g. 100 pcs) prompts customer permission before sending component samples."""
         res = evaluate_id_card_workflow(
             message_text="১০০ পিস বানাবো",
             customer_name="Al-Amin",
@@ -71,10 +71,9 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res["response_source"], "id_card_quantity_permission_prompt")
         self.assertEqual(len(res["matched_images"]), 0)
         self.assertIn("রেগুলার পাইকারি রেট", res["reply_text"])
-        self.assertIn("৩৫ টাকা", res["reply_text"])
         self.assertIn("স্যাম্পল ছবিগুলো পাঠাবো", res["reply_text"])
 
-        # Turn 2: Customer agrees -> 7 package images dispatched
+        # Turn 2: Customer agrees -> Component samples (Cards, Fita, Covers) dispatched
         res2 = evaluate_id_card_workflow(
             message_text="হ্যাঁ পাঠান",
             conversation_history=[
@@ -85,8 +84,8 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
             workspace_id=1
         )
         self.assertIsNotNone(res2)
-        self.assertEqual(res2["response_source"], "package_sample_dispatch")
-        self.assertEqual(len(res2["matched_images"]), 7)
+        self.assertEqual(res2["response_source"], "initial_component_samples_dispatch")
+        self.assertGreaterEqual(len(res2["matched_images"]), 20)
 
     def test_06_quantity_30_to_40_prompts_permission_with_10tk_rule(self):
         """Quantity 30-40 pcs prompts permission with +10 TK rule explanation."""
@@ -115,14 +114,14 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIn("স্যাম্পল ছবিগুলো পাঠাবো", res["reply_text"])
 
     def test_08_direct_package_request(self):
-        """Customer asking 'প্যাকেজের ছবি দিন' receives 7 package images directly in strict serial order (1-7)."""
+        """Customer asking 'রেডি প্যাকেজের ছবি দিন' receives 7 package images directly in strict serial order (1-7)."""
         res = evaluate_id_card_workflow(
-            message_text="প্যাকেজের ছবি দিন",
+            message_text="রেডি প্যাকেজের ছবি দিন",
             customer_name="Mamun",
             workspace_id=1
         )
         self.assertIsNotNone(res)
-        self.assertEqual(res["response_source"], "package_sample_dispatch")
+        self.assertEqual(res["response_source"], "ready_package_dispatch")
         self.assertEqual(len(res["matched_images"]), 7)
         self.assertEqual(res["matched_images"][0], "/static/uploads/package/IMG-20260113-WA0003.jpg") # Pkg 1
         self.assertEqual(res["matched_images"][1], "/static/uploads/package/IMG-20260113-WA0002.jpg") # Pkg 2
@@ -131,6 +130,62 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res["matched_images"][4], "/static/uploads/package/IMG-20260118-WA0045.jpg") # Pkg 5
         self.assertEqual(res["matched_images"][5], "/static/uploads/package/IMG-20260113-WA0006.jpg") # Pkg 6
         self.assertEqual(res["matched_images"][6], "/static/uploads/package/IMG-20260114-WA0057.jpg") # Pkg 7
+
+    def test_08b_4_step_workflow_complete_flow(self):
+        """
+        Test the complete 4-step workflow:
+        Step 1: Asking for samples -> returns separate component photos (Cards, Fita, Covers, Review Link)
+        Step 2: Asking for price -> prompts permission to send Ready Packages
+        Step 3: Agreeing -> dispatches 7 Ready Packages in serial order (1..7)
+        Step 4: Custom combo query -> calculates itemized sum (e.g. Card 35 + Fita 28 + DX 12 = 75 Tk)
+        """
+        # Step 1: Customer asks for samples
+        res_step1 = evaluate_id_card_workflow("স্যাম্পল দেখতে চাই", customer_name="Masud", workspace_id=1)
+        self.assertIsNotNone(res_step1)
+        self.assertEqual(res_step1["response_source"], "initial_component_samples_dispatch")
+        self.assertGreaterEqual(len(res_step1["matched_images"]), 20)
+
+        # Step 2: Customer asks for price / "দাম সহ দিন" / "কোনটার দাম কত"
+        res_step2 = evaluate_id_card_workflow(
+            "দাম সহ দিন কোনটার দাম কত?",
+            conversation_history=[
+                {"sender": "user", "content": "স্যাম্পল দেখতে চাই"},
+                {"sender": "bot", "content": res_step1["reply_text"]}
+            ],
+            customer_name="Masud",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res_step2)
+        self.assertEqual(res_step2["response_source"], "ready_package_permission_prompt")
+        self.assertIn("রেডি প্যাকেজ", res_step2["reply_text"])
+        self.assertIn("পাঠাবো", res_step2["reply_text"])
+
+        # Step 3: Customer agrees to see Ready Packages
+        res_step3 = evaluate_id_card_workflow(
+            "হ্যাঁ পাঠান",
+            conversation_history=[
+                {"sender": "user", "content": "দাম সহ দিন"},
+                {"sender": "bot", "content": res_step2["reply_text"]}
+            ],
+            customer_name="Masud",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res_step3)
+        self.assertEqual(res_step3["response_source"], "ready_package_dispatch")
+        self.assertEqual(len(res_step3["matched_images"]), 7)
+
+        # Step 4: Custom combo calculation
+        res_step4 = evaluate_id_card_workflow(
+            "কার্ড, ২ সেমি ফিতা আর DX কভার মিলিয়ে কত পড়বে?",
+            customer_name="Masud",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res_step4)
+        self.assertEqual(res_step4["response_source"], "custom_combo_calculation_dispatch")
+        self.assertIn("৩৫ টাকা", res_step4["reply_text"])
+        self.assertIn("২৮ টাকা", res_step4["reply_text"])
+        self.assertIn("১২ টাকা", res_step4["reply_text"])
+        self.assertIn("৭৫ টাকা", res_step4["reply_text"])
 
     def test_10_specific_package_request_returns_single_image(self):
         """Customer asking for specific package (e.g. 'প্যাকেজ ৩') receives only Package 03 photo."""
@@ -238,7 +293,7 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
                 workspace_id=1
             )
             self.assertIsNotNone(res, f"Failed for agreement: {v}")
-            self.assertEqual(res["response_source"], "package_sample_dispatch", f"Failed for {v}")
+            self.assertEqual(res["response_source"], "ready_package_dispatch", f"Failed for {v}")
             self.assertEqual(len(res["matched_images"]), 7, f"Failed for {v}")
 
     async def test_15_non_form_inquiry_does_not_trigger_form_error(self):

@@ -172,11 +172,17 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
    - কাস্টমার যদি ৩০ পিসের কম বলে (যেমন: ৫, ১০, ১৫, ২০, ২৫ পিস ইত্যাদি)—তাহলে নম্রভাবে বলতে হবে: "দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
 
 ২. স্যাম্পল ছবি ও কাস্টমার ইন্টারেকশনের কঠোর ৭টি নিয়ম (The 7 Golden Interaction Rules):
-   ১) স্যাম্পল ছবি পাঠানোর আগে কাস্টমারের অনুমতি নেওয়া বাধ্যতামূলক (Pre-Sample Permission):
-      - কাস্টমার আইডি কার্ডের পরিমাণ বা দাম জানতে চাইলে (যেমন: "৫০ পিস বানাবো", "১০০ পিস আইডি কার্ড করতে চাই"), সরাসরি ছবি পাঠানো যাবে না।
-      - প্রথমে পরিমাণের সঠিক মূল্য হিসাব করে নম্রভাবে অনুমতি চাইতে হবে:
-        "জি {honorific}, ৫০ পিস আইডি কার্ড প্রতি পিস ৫০ টাকা করে মোট ২৫০০ টাকা। আমি কি আমাদের প্যাকেজের স্যাম্পল ছবিগুলো পাঠাবো {honorific}?"
-      - কাস্টমার অনুমতি দিলে ("হ্যাঁ", "দেখান", "দিন", "পাঠান", "আচ্ছা দিন") অথবা কাস্টমার নিজে সরাসরি ছবি/স্যাম্পল চাইলে তখনই প্যাকেজের স্যাম্পল ছবিগুলো পাঠানো হবে।
+   ১) প্রাথমিক স্যাম্পল ও রেডি প্যাকেজের ৪-ধাপের নির্দিষ্ট সেলস ফ্লো (4-Step Phased Sales Flow):
+      - ধাপ ১ (আলাদা আলাদা স্যাম্পল প্রদান): কাস্টমার প্রথমে স্যাম্পল বা ছবি দেখতে চাইলে (যেমন: "স্যাম্পল দেখান", "ছবি পাঠান", "কাজের স্যাম্পল দেখতে চাই") শুধুমাত্র আলাদা আলাদা উপাদানগুলো ক্রমানুসারে পাঠানো হবে:
+        ১) ১৫টি কার্ডের ছবি + "এগুলো আমাদের কার্ড, আমাদের তৈরি করা কার্ড।"
+        ২) ৮টি ফিতার ছবি + "এগুলো আমাদের প্রিন্ট করা ফিতা।"
+        ৩) ৮টি কভারের ছবি
+        ৪) ফেসবুক রিভিউ ট্রাস্ট লিংক (https://www.facebook.com/share/p/19Agfhw4gv/)
+        ⚠️ (এই প্রাথমিক ধাপে প্যাকেজের ছবিগুলো পাঠানো যাবে না)।
+      - ধাপ ২ (দাম জানতে চাইলে রেডি প্যাকেজের অনুমতি নেওয়া): স্যাম্পল দেখার পর কাস্টমার যদি "দাম সহ দিন", "কোনটার দাম কত", "দাম কত" ইত্যাদি জানতে চায়, তখন সরাসরি প্যাকেজ না ফেলে নম্রভাবে রেডি প্যাকেজ পাঠানোর অনুমতি চাইতে হবে:
+        "জি {honorific}, আমাদের কার্ড, ফিতা এবং কভার মিলিয়ে আকর্ষণীয় কিছু 'রেডি প্যাকেজ' করা আছে (যার মধ্যে রেগুলার পাইকারি মূল্য দেওয়া আছে)। আমি কি তাহলে আমাদের রেডি প্যাকেজগুলোর ছবি ও বিস্তারিত পাঠাবো {honorific}?"
+      - ধাপ ৩ (রেডি প্যাকেজ ডেলিভারি): কাস্টমার সম্মতি দিলে ("হ্যাঁ", "পাঠান", "দিন", "দেখান") আমাদের ৭টি রেডি প্যাকেজ ১ থেকে ৭ পর্যন্ত নির্দিষ্ট সিরিয়াল অনুযায়ী ক্রমানুসারে পাঠানো হবে এবং সাথে ১০০+ অর্ডারে স্পেশাল অফার ভয়েস নোট পাঠানো হবে।
+      - ধাপ ৪ (কাস্টম কম্বো ক্যালকুলেশন): কাস্টমার যদি নিজে থেকে কোনো কার্ড, ফিতা ও কভারের ছবি পাঠায় বা পছন্দ করে নাম বলে, তবে এজেন্ট স্বয়ংক্রিয়ভাবে ফর্মুলা (কার্ড ৩৫৳ + ফিতা ২৫/২৮৳ + কভার ১০-৩০৳) দিয়ে আইটেমাইজড হিসাব বের করে পার-সেট মোট মূল্য কাস্টমারকে জানিয়ে দেবে।
    ২) নির্দিষ্ট কোনো প্যাকেজ দেখতে চাইলে শুধু সেটিই দেখাতে হবে (Specific Package Only):
       - কাস্টমার যদি নির্দিষ্ট কোনো প্যাকেজ দেখতে চায় (যেমন: "প্যাকেজ ১ দেখান", "প্যাকেজ ৩ দিন", "প্যাকেজ ০৫ এর ছবি দিন"), তবে শুধুমাত্র ওই নির্দিষ্ট প্যাকেজের ১টি ছবি এবং বিবরণ পাঠানো হবে, অন্য কোনো প্যাকেজ পাঠানো যাবে না।
    ৩) শুধু কার্ডের ছবি চাইলে শুধু কার্ডের ছবি দিতে হবে (Cards Only):
@@ -191,7 +197,7 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
    ৭) কাস্টমার হোয়াটসঅ্যাপে মেসেজ দিলে অটোমেটিক ব্লক হবে না (No Auto Takeover / Blocking):
       - সাধারণ মেসেজ বা স্ট্যাটাস আপডেটে কাস্টমার কখনো ব্লক হবে না। ওনার নিজে ব্লক না করা পর্যন্ত এআই সবসময় নিরবচ্ছিন্ন উত্তর দেবে।
 
-২.২. আমাদের ৭টি স্ট্যান্ডার্ড প্যাকেজ পরিচিতি ও মূল্য তালিকা (১০০+ পিস পাইকারি রেট):
+২.২. আমাদের ৭টি স্ট্যান্ডার্ড রেডি প্যাকেজ পরিচিতি ও মূল্য তালিকা (১০০+ পিস পাইকারি রেট):
    • প্যাকেজ ০১: জাপানি UV প্রিন্ট কার্ড + ১.৫ সেমি ডিজিটাল প্রিন্ট ফিতা + সফট কভার (রাবারের তৈরি) = ৭০ টাকা/সেট (সর্বনিম্ন বাজেট / সাশ্রয়ী প্যাকেজ)।
    • প্যাকেজ ০২: জাপানি UV প্রিন্ট কার্ড + ১.৫ সেমি ডিজিটাল প্রিন্ট ফিতা + প্লাস্টিক কভার (নরমাল) = ৭০ টাকা/সেট (প্যাকেজ ১ ও ২ এর রেট একই ৭০ টাকা)।
    • প্যাকেজ ০৩: জাপানি UV প্রিন্ট কার্ড + ২ সেমি ডিজিটাল প্রিন্ট ফিতা + সফট কভার (রাবারের তৈরি) = ৭৩ টাকা/সেট।
@@ -638,18 +644,15 @@ def detect_specific_package_number(msg: str) -> Optional[int]:
 REVIEW_FACEBOOK_POST_URL = "https://www.facebook.com/share/p/19Agfhw4gv/"
 VOICE_PACKAGE_SPECIAL_OFFER = "/static/uploads/voice/PTT-20260119-WA0105.mp3"
 
-def build_full_sample_sequence(quantity: int = None, customer_name: str = "Customer", workspace_id: int = 1) -> list:
+def build_initial_component_sample_sequence(customer_name: str = "Customer", workspace_id: int = 1) -> list:
     """
-    Returns the complete phased sample sequence according to strict training:
-    1. Initial Cards (15 photos)
-    2. Text: "এগুলো আমাদের কার্ড, আমাদের তৈরি করা কার্ড।"
-    3. Fita (8 photos)
-    4. Text: "এগুলো আমাদের প্রিন্ট করা ফিতা।"
-    5. Covers (8 photos)
-    6. Voice Note (Special Offer voice note PTT-20260119-WA0105.mp3 if quantity >= 80 or not specified)
-    7. Review Link: "আমাদের কাজের কোয়ালিটি ও সম্মানিত কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন: https://www.facebook.com/share/p/19Agfhw4gv/"
-    8. Package sample photos (7 photos)
-    9. Concluding question / tier text based on quantity.
+    Returns the initial separate component sample sequence (Cards -> Fita -> Covers -> Review Link):
+    1. Cards (15 photos) + Text: "এগুলো আমাদের কার্ড, আমাদের তৈরি করা কার্ড।"
+    2. Fita (8 photos) + Text: "এগুলো আমাদের প্রিন্ট করা ফিতা।"
+    3. Covers (8 photos)
+    4. Review Link for customer trust.
+    5. Concluding question asking how they liked the samples.
+    (Does NOT send the ready packages yet).
     """
     honorific = detect_customer_gender_title(customer_name)
     seq = []
@@ -658,13 +661,13 @@ def build_full_sample_sequence(quantity: int = None, customer_name: str = "Custo
     id_card_imgs = get_id_card_sample_images(workspace_id=workspace_id)
     if id_card_imgs:
         seq.append({"type": "images", "category": "id_card", "urls": id_card_imgs})
-        seq.append({"type": "text", "text": f"এগুলো আমাদের কার্ড, আমাদের তৈরি করা কার্ড।"})
+        seq.append({"type": "text", "text": "এগুলো আমাদের কার্ড, আমাদের তৈরি করা কার্ড।"})
 
     # 2. Fita (8 photos) + Text
     fita_imgs = get_fita_sample_images(workspace_id=workspace_id)
     if fita_imgs:
         seq.append({"type": "images", "category": "fita", "urls": fita_imgs})
-        seq.append({"type": "text", "text": f"এগুলো আমাদের প্রিন্ট করা ফিতা।"})
+        seq.append({"type": "text", "text": "এগুলো আমাদের প্রিন্ট করা ফিতা।"})
 
     # 3. Covers (8 photos)
     cover_imgs = get_cover_sample_images(workspace_id=workspace_id)
@@ -677,12 +680,28 @@ def build_full_sample_sequence(quantity: int = None, customer_name: str = "Custo
         "text": f"আমাদের কাজের কোয়ালিটি ও সম্মানিত কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন:\n{REVIEW_FACEBOOK_POST_URL}"
     })
 
-    # 5. Packages (7 photos)
+    # 5. Concluding follow-up text
+    seq.append({
+        "type": "text",
+        "text": f"এগুলো আমাদের তৈরি করা কার্ড, প্রিন্ট করা ফিতা ও বিভিন্ন মডেলের কভারের স্যাম্পল। আপনার প্রতিষ্ঠানের জন্য স্যাম্পলগুলো কেমন লাগলো জানাবেন {honorific}।"
+    })
+        
+    return seq
+
+def build_ready_package_sequence(quantity: int = None, customer_name: str = "Customer", workspace_id: int = 1) -> list:
+    """
+    Returns the ready package sample sequence (Package 01 to 07 in strict serial order):
+    1. Package photos (7 photos in strict 1..7 order)
+    2. Voice note (Special offer) if quantity >= 80 or unspecified
+    3. Tier explanation text based on quantity.
+    """
+    honorific = detect_customer_gender_title(customer_name)
+    seq = []
+
     pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
     if pkg_imgs:
         seq.append({"type": "images", "category": "package", "urls": pkg_imgs})
 
-    # 6. Voice Note (Special Offer immediately after the 7 packages)
     if quantity is None or quantity >= 80:
         seq.append({
             "type": "voice",
@@ -690,7 +709,6 @@ def build_full_sample_sequence(quantity: int = None, customer_name: str = "Custo
             "text": f"প্যাকেজের বিস্তারিত ও স্পেশাল অফার সংক্রান্ত ভয়েস বার্তাটি শুনুন {honorific}।"
         })
 
-    # 7. Post-package Voice Note / Tier explanation
     if quantity is not None:
         if 30 <= quantity < 50:
             seq.append({
@@ -712,8 +730,113 @@ def build_full_sample_sequence(quantity: int = None, customer_name: str = "Custo
             "type": "text",
             "text": f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
         })
-        
+
     return seq
+
+# Backwards compatibility alias
+build_full_sample_sequence = build_ready_package_sequence
+
+def calculate_custom_combo_price(msg: str, honorific: str = "স্যার") -> Optional[dict]:
+    """
+    Calculates custom combo price when a customer selects/inquires about individual items (Card + Fita + Cover).
+    Formula:
+      Card: 35 Tk (Japanese UV Print PVC Card)
+      Fita: 2cm = 28 Tk; 1.5cm = 25 Tk; 2.5cm = 30 Tk (default 2cm = 28 Tk)
+      Cover:
+        - T-014V Soft Cover: 10 Tk
+        - DX Cover: 12 Tk
+        - T-065V Soft Cover: 14 Tk
+        - Xinding Q-993 Cover: 16 Tk
+        - T-738V Hard Cover: 20 Tk
+        - T-994V Hard Cover: 20 Tk
+        - REAP Hard Cover: 20 Tk
+        - Metal Cover: 30 Tk
+    """
+    m = msg.lower()
+    
+    has_card = any(k in m for k in ["কার্ড", "card", "পিভিসি", "pvc", "ইউভি", "uv"])
+    has_fita = any(k in m for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"])
+    has_cover = any(k in m for k in ["কভার", "হোল্ডার", "cover", "holder", "dx", "t-014", "t-065", "q-993", "738", "994", "reap", "মেটাল", "সফট", "হার্ড"])
+
+    # Count how many components mentioned
+    components_count = sum([1 if has_card else 0, 1 if has_fita else 0, 1 if has_cover else 0])
+    is_combo_inquiry = components_count >= 2 or any(k in m for k in [
+        "আলাদা আলাদা", "আলাদা করে", "কাস্টম", "নিজেদের মত", "প্যাকেজ বানালে", "হিসাব কত", "হিসেব কত", 
+        "টোটাল কত", "মোট কত", "কত পড়বে", "কত পরবে", "কত হবে"
+    ]) and components_count >= 1
+
+    if not is_combo_inquiry or components_count < 2:
+        return None
+
+    card_price = 35
+    card_name = "জাপানি UV কালার প্রিন্ট PVC আইডি কার্ড"
+
+    # Fita detection
+    fita_price = 28
+    fita_name = "ডিজিটাল সাবলিমেশন প্রিন্ট ফিতা (২ সে.মি.)"
+    if "1.5" in m or "১.৫" in m or "চিকন" in m:
+        fita_price = 25
+        fita_name = "ডিজিটাল সাবলিমেশন প্রিন্ট ফিতা (১.৫ সে.মি.)"
+    elif "2.5" in m or "২.৫" in m or "মোটা" in m:
+        fita_price = 30
+        fita_name = "ডিজিটাল সাবলিমেশন প্রিন্ট ফিতা (২.৫ সে.মি.)"
+
+    # Cover detection
+    cover_price = 12
+    cover_name = "DX কভার"
+    if "014" in m or "t-014" in m:
+        cover_price = 10
+        cover_name = "T-014V সফট কভার"
+    elif "065" in m or "t-065" in m:
+        cover_price = 14
+        cover_name = "T-065V সফট কভার"
+    elif "993" in m or "q-993" in m or "xinding" in m:
+        cover_price = 16
+        cover_name = "Xinding Q-993 কভার"
+    elif "738" in m or "t-738" in m:
+        cover_price = 20
+        cover_name = "T-738V হার্ড কভার"
+    elif "994" in m or "t-994" in m:
+        cover_price = 20
+        cover_name = "T-994V হার্ড কভার"
+    elif "reap" in m or "রিয়াপ" in m or "র্যাপ" in m:
+        cover_price = 20
+        cover_name = "REAP হার্ড কভার"
+    elif "মেটাল" in m or "metal" in m:
+        cover_price = 30
+        cover_name = "মেটাল ফ্রেম প্রিমিয়াম কভার"
+    elif "হার্ড" in m or "hard" in m:
+        cover_price = 20
+        cover_name = "হার্ড প্লাস্টিক কভার"
+    elif "সফট" in m or "soft" in m or "রাবার" in m:
+        cover_price = 10
+        cover_name = "সফট কভার (রাবারের তৈরি)"
+
+    total_price = card_price + fita_price + cover_price
+
+    bn_map = {"0": "০", "1": "১", "2": "২", "3": "৩", "4": "৪", "5": "৫", "6": "৬", "7": "৭", "8": "৮", "9": "৯"}
+    def to_bn(n):
+        return "".join(bn_map.get(c, c) for c in str(n))
+
+    reply = (
+        f"জি {honorific}, আপনার পছন্দ অনুযায়ী কাস্টম কম্বো প্যাকেজের মূল্য হিসাব:\n\n"
+        f"• {card_name}: {to_bn(card_price)} টাকা\n"
+        f"• {fita_name}: {to_bn(fita_price)} টাকা\n"
+        f"• {cover_name}: {to_bn(cover_price)} টাকা\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👉 **মোট প্যাকেজ মূল্য:** প্রতি সেট **{to_bn(total_price)} টাকা** (১০০+ পিস অর্ডারের ক্ষেত্রে)।\n\n"
+        f"আপনার প্রতিষ্ঠানের জন্য কত পিস অর্ডার করতে চাচ্ছেন {honorific}?"
+    )
+
+    return {
+        "reply_text": reply,
+        "media_sequence": [],
+        "matched_images": [],
+        "voice_url": "",
+        "video_url": "",
+        "order_created": None,
+        "response_source": "custom_combo_calculation_dispatch"
+    }
 
 def evaluate_id_card_workflow(
     message_text: str = "",
@@ -868,12 +991,17 @@ def evaluate_id_card_workflow(
             "response_source": "id_card_quality_text_reply"
         }
 
+    # 0.38 Check Custom Combo Price Calculation
+    custom_combo_res = calculate_custom_combo_price(msg, honorific)
+    if custom_combo_res:
+        return custom_combo_res
+
     # 0.4 Check Specific Category Requests (Requirements 3 & 4: Cards only, Ribbons only, Covers only)
     is_only_card = (any(k in msg for k in [
         "শুধু কার্ড", "কার্ডের ছবি", "কার্ডের স্যাম্পল", "কার্ডের ডিজাইন", "কার্ড দেখান", "কার্ড দেন", "কার্ডের ফটো",
         "এগুলোতো প্যাকেজ", "এগুলো তো প্যাকেজ", "এগুলোতো পেকেজ", "এগুলো তো পেকেজ", "প্যাকেজ না", "পেকেজ না",
         "আমি স্যাম্পল চাচ্ছিলাম", "আমি সাম্পল চাচ্ছিলাম", "স্যাম্পল চাচ্ছিলাম", "সাম্পল চাচ্ছিলাম", "শুধু স্যাম্পল", "শুধু সাম্পল"
-    ]) or ("কার্ড" in msg and any(a in msg for a in ["ছবি", "স্যাম্পল", "সাম্পল", "পিক"]) and not any(k in msg for k in ["প্যাকেজ", "পেকেজ", "ফিতা", "কভার"])))
+    ]) or ("কার্ড" in msg and any(a in msg for a in ["ছবি", "স্যাম্পল", "সাম্পল", "পিক"]) and not any(k in msg for k in ["প্যাকেজ", "পেকেজ", "ফিতা", "কভার", "দাম", "কত"])))
     if is_only_card:
         card_imgs = get_id_card_sample_images(workspace_id=workspace_id)
         return {
@@ -886,7 +1014,7 @@ def evaluate_id_card_workflow(
             "response_source": "id_card_sample_dispatch"
         }
 
-    is_only_fita = (any(k in msg for k in ["শুধু ফিতা", "ফিতার ছবি", "ফিতার স্যাম্পল", "রিবন এর ছবি", "রিবনের ছবি", "ফিতা দেখান", "ফিতা দেন", "ফিতার ফটো", "রিবনের স্যাম্পল"]) or ("ফিতা" in msg and any(a in msg for a in ["ছবি", "স্যাম্পল", "পিক"]) and not any(k in msg for k in ["প্যাকেজ", "কার্ড", "কভার"])))
+    is_only_fita = (any(k in msg for k in ["শুধু ফিতা", "ফিতার ছবি", "ফিতার স্যাম্পল", "রিবন এর ছবি", "রিবনের ছবি", "ফিতা দেখান", "ফিতা দেন", "ফিতার ফটো", "রিবনের স্যাম্পল"]) or ("ফিতা" in msg and any(a in msg for a in ["ছবি", "স্যাম্পল", "পিক"]) and not any(k in msg for k in ["প্যাকেজ", "কার্ড", "কভার", "দাম", "কত"])))
     if is_only_fita:
         fita_imgs = get_fita_sample_images(workspace_id=workspace_id)
         return {
@@ -899,7 +1027,7 @@ def evaluate_id_card_workflow(
             "response_source": "fita_sample_dispatch"
         }
 
-    is_only_cover = (any(k in msg for k in ["শুধু কভার", "কভারের ছবি", "কভারের স্যাম্পল", "কভার দেখান", "কভার দেন", "কার্ড কভার", "কভারের ফটো"]) or ("কভার" in msg and any(a in msg for a in ["ছবি", "স্যাম্পল", "পিক"]) and not any(k in msg for k in ["প্যাকেজ", "কার্ড", "ফিতা"])))
+    is_only_cover = (any(k in msg for k in ["শুধু কভার", "কভারের ছবি", "কভারের স্যাম্পল", "কভার দেখান", "কভার দেন", "কার্ড কভার", "কভারের ফটো"]) or ("কভার" in msg and any(a in msg for a in ["ছবি", "স্যাম্পল", "পিক"]) and not any(k in msg for k in ["প্যাকেজ", "কার্ড", "ফিতা", "দাম", "কত"])))
     if is_only_cover:
         cover_imgs = get_cover_sample_images(workspace_id=workspace_id)
         return {
@@ -926,10 +1054,13 @@ def evaluate_id_card_workflow(
     bot_asked_quantity = any(k in last_bot_msg for k in [
         "কত পিস বানাবেন", "কত পিস", "কতগুলো বানাবেন", "কত পিস প্রয়োজন", "কত পিস লাগবে", "পরিমাণ কত"
     ])
+    bot_prompted_ready_packages = any(k in last_bot_msg for k in [
+        "রেডি প্যাকেজ", "রেডি প্যাকেজের", "রেডি প্যাকেজগুলোর", "প্যাকেজের ছবি ও বিস্তারিত পাঠাবো", "প্যাকেজের স্যাম্পল ছবিগুলো পাঠাবো"
+    ])
     bot_prompted_sample_permission = any(k in last_bot_msg for k in [
         "স্যাম্পল ছবিগুলো পাঠাবো", "ছবিগুলো পাঠাবো", "স্যাম্পল পাঠাবো", "স্যাম্পল দেব", "ছবি পাঠাব",
         "স্যাম্পল ছবিগুলো পাঠাব", "ছবি পাঠাবো কি", "স্যাম্পল পাঠাবো কি", "ছবি পাঠাবো", "স্যাম্পল ছবি পাঠাবো",
-        "প্যাকেজের স্যাম্পল ছবিগুলো পাঠাবো", "প্যাকেজ দেখতে চান", "ছবি দেখতে চান"
+        "ছবি দেখতে চান", "স্যাম্পল দেখতে চান"
     ])
 
     qty = extract_order_quantity_number(msg)
@@ -945,7 +1076,7 @@ def evaluate_id_card_workflow(
     ]) and not any(k in msg for k in ["চাচ্ছি না", "চাই না", "বানাব না", "বানাবো না", "করব না", "করবো না", "লাগবে না", "নেব না", "নিব না", "দরকার নাই", "দরকার নেই"])
 
     # Case A: Initial ID card inquiry without quantity stated
-    if is_id_card_inquiry and qty is None:
+    if is_id_card_inquiry and qty is None and not any(k in msg for k in ["ছবি", "স্যাম্পল", "প্যাকেজ", "দাম", "কত"]):
         gave_salam = any(k in msg for k in ["সালাম", "salam", "আসসালামু", "assalamu", "slm"])
         greeting = f"ওয়ালাইকুমুস সালাম {honorific}।" if gave_salam else f"জি {honorific},"
         return {
@@ -958,7 +1089,7 @@ def evaluate_id_card_workflow(
             "response_source": "id_card_ask_quantity"
         }
 
-    # Case B: Answering quantity (Requirement 1: Ask for permission before sending samples)
+    # Case B: Answering quantity
     is_asking_question = any(k in msg for k in ["?", "কত", "কেন", "কি", "কী", "দাম", "চার্জ", "সময়", "কেমন", "ডেলিভারি", "কোথায়"])
     is_answering_quantity = (
         qty is not None and not is_asking_question and (
@@ -980,30 +1111,15 @@ def evaluate_id_card_workflow(
                 "response_source": "id_card_moq_under_30"
             }
         
-        # Check if customer in this turn ALREADY explicitly asked to see photos/samples
-        is_also_asking_photos = any(k in msg for k in ["ছবি", "স্যাম্পল", "প্যাকেজ", "পিক", "ফটো", "দেখান", "পাঠান", "দিন", "দেন"])
-        if is_also_asking_photos:
-            pkg_imgs = get_package_sample_images(workspace_id)
-            return {
-                "reply_text": f"জি {honorific}, নিচে আমাদের প্যাকেজগুলোর স্যাম্পল ছবি পাঠানো হলো। আপনার কোন প্যাকেজটি পছন্দ জানাবেন প্লিজ।",
-                "media_sequence": [],
-                "matched_images": pkg_imgs,
-                "voice_url": "",
-                "video_url": "",
-                "order_created": None,
-                "response_source": "package_sample_dispatch"
-            }
-
-        # Otherwise, calculate exact price and ask customer's permission first!
+        # If quantity stated >= 30, prompt customer to see initial samples
+        tier_intro = ""
         if 30 <= qty < 50:
-            tier_text = f"জি {honorific}, আমাদের সর্বনিম্ন অর্ডার ৩০ পিস। ১০০ পিসের কম ({qty} পিস) অর্ডারে প্যাকেজের সাথে প্রতি সেটে ১০ টাকা বেশি হবে। আমি কি আমাদের প্যাকেজের স্যাম্পল ছবিগুলো পাঠাবো {honorific}?"
-        elif 50 <= qty < 100:
-            tier_text = f"জি {honorific}, {qty} পিস অর্ডারের ক্ষেত্রে আমাদের প্যাকেজের নির্ধারিত রেগুলার পাইকারি রেট প্রযোজ্য হবে। আমি কি আমাদের প্যাকেজের স্যাম্পল ছবিগুলো পাঠাবো {honorific}?"
+            tier_intro = f"জি {honorific}, আমাদের সর্বনিম্ন অর্ডার ৩০ পিস। ১০০ পিসের কম ({qty} পিস) অর্ডারে প্যাকেজের সাথে প্রতি সেটে ১০ টাকা বেশি হবে।"
         else:
-            tier_text = f"জি {honorific}, {qty} পিস অর্ডারের ক্ষেত্রে আমাদের প্যাকেজের নির্ধারিত রেগুলার পাইকারি রেট প্রযোজ্য হবে (অথবা শুধু কার্ড নিলে প্রতি পিস ৩৫ টাকা)। আমি কি আমাদের প্যাকেজের স্যাম্পল ছবিগুলো পাঠাবো {honorific}?"
+            tier_intro = f"জি {honorific}, {qty} পিস অর্ডারের ক্ষেত্রে আমাদের প্যাকেজের নির্ধারিত রেগুলার পাইকারি রেট প্রযোজ্য হবে।"
 
         return {
-            "reply_text": tier_text,
+            "reply_text": f"{tier_intro} আমি কি আমাদের কার্ড, ফিতা ও কভারের স্যাম্পল ছবিগুলো পাঠাবো {honorific}?",
             "media_sequence": [],
             "matched_images": [],
             "voice_url": "",
@@ -1012,7 +1128,6 @@ def evaluate_id_card_workflow(
             "response_source": "id_card_quantity_permission_prompt"
         }
 
-    # Case C: Customer grants permission / asks specifically for packages or samples
     agreement_keywords = [
         "হ্যাঁ", "হ্যা", "জি", "হুম", "পাঠান", "দেখান", "দিন", "দেন", "পাঠাও", "দেখাও", 
         "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "আচ্ছা", "দিতে পারেন", "পাঠাতে পারেন", 
@@ -1020,27 +1135,70 @@ def evaluate_id_card_workflow(
         "হুম পাঠান", "জি পাঠান", "জি দিন", "জি দেন", "হ্যাঁ দিন", "হ্যাঁ পাঠান", "হ্যা পাঠান", "হ্যা দিন",
         "দিলে ভালো হয়", "দিলে ভালো", "দেখতে চাই", "yes", "sure", "ok", "okay", "send", "show", "ha", "ji", "achha"
     ]
-    is_agreeing_to_sample_prompt = bot_prompted_sample_permission and any(k == msg or msg.startswith(k + " ") or msg.endswith(" " + k) or f" {k} " in f" {msg} " for k in agreement_keywords)
+    is_agreeing = any(k == msg or msg.startswith(k + " ") or msg.endswith(" " + k) or f" {k} " in f" {msg} " for k in agreement_keywords)
 
-    is_package_request = any(k in msg for k in [
-        "প্যাকেজ", "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
-        "কম্বো", "কম্বো প্যাকেজ", "package", "combo", "পেকেজ",
-        "স্যাম্পল", "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দিন", "স্যাম্পল দেন", "স্যাম্পল দেখতে চাই",
-        "ছবি পাঠান", "ছবি দিন", "ছবি দেন", "ছবি দেখান", "ছবি দেখাও", "ছবি পাঠাও", "ছবি দেখতে চাই",
-        "আবার পাঠান", "আবার দিন", "আবার দেন", "আবার দেখান", "ছবি আসেনি", "ছবিগুলো আসেনি", "ছবি পাই নাই", "ছবি পাইনি",
-        "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "দিন", "পাঠান", "দেখান", "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দাও"
-    ]) and not any(k in msg for k in ["এটি", "এটা", "এইটা", "এই প্যাকেজ", "পছন্দ", "নির্বাচন", "এগুলোতো", "এগুলো তো", "প্যাকেজ না", "পেকেজ না"])
+    # Case C1: Ready Packages Request or Agreement after permission prompt
+    is_agreeing_to_ready_packages = bot_prompted_ready_packages and is_agreeing
+    is_direct_ready_package_request = any(k in msg for k in [
+        "রেডি প্যাকেজ", "রেডি প্যাকেজের ছবি", "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
+        "সব প্যাকেজ", "সব প্যাকেজের ছবি", "প্যাকেজগুলো পাঠান", "প্যাকেজগুলো দেখান"
+    ]) and not any(k in msg for k in ["প্যাকেজ না", "পেকেজ না", "এটি", "এটা", "এইটা", "এই প্যাকেজ", "পছন্দ"])
 
-    if is_agreeing_to_sample_prompt or is_package_request:
+    if is_agreeing_to_ready_packages or is_direct_ready_package_request:
+        ready_seq = build_ready_package_sequence(quantity=effective_qty, customer_name=customer_name, workspace_id=workspace_id)
         pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
         return {
-            "reply_text": f"জি {honorific}, নিচে আমাদের আকর্ষণীয় প্যাকেজগুলোর স্যাম্পল ছবি পাঠানো হলো। আপনার কোন প্যাকেজটি পছন্দ জানাবেন প্লিজ।",
-            "media_sequence": [],
+            "reply_text": f"জি {honorific}, নিচে আমাদের আকর্ষণীয় রেডি প্যাকেজগুলোর স্যাম্পল ছবি ও মূল্য তালিকা পাঠানো হলো (১ থেকে ৭ সিরিয়াল অনুযায়ী):",
+            "media_sequence": ready_seq,
             "matched_images": pkg_imgs,
             "voice_url": "",
             "video_url": "",
             "order_created": None,
-            "response_source": "package_sample_dispatch"
+            "response_source": "ready_package_dispatch"
+        }
+
+    # Case C2: Price Inquiry after seeing samples ("দাম সহ দিন" / "কোনটার দাম কত" / "দাম কত")
+    is_asking_price_or_packages = any(k in msg for k in [
+        "দাম সহ দিন", "দাম সহ দেন", "দাম সহ দেখান", "দাম সহ পাঠান", "দাম সহ", "দামসহ",
+        "কোনটার দাম কত", "দাম কত", "খরচ কত", "রেট কত", "প্রাইস কত", "দাম বলেন", "রেট বলেন", "মূল্য কত",
+        "কত করে", "খরচ কেমন", "দাম কত করে", "প্যাকেজের দাম কত", "কোনটার কত দাম", "দাম জানতে চাই"
+    ]) and not any(k in msg for k in ["বানাবো", "বানাব", "বানাতে চাই", "অর্ডার করব", "অর্ডার করবো"])
+
+    if is_asking_price_or_packages:
+        return {
+            "reply_text": f"জি {honorific}, আমাদের কার্ড, ফিতা এবং কভার মিলিয়ে কিছু আকর্ষণীয় 'রেডি প্যাকেজ' করা আছে (যার মধ্যে রেগুলার পাইকারি মূল্য দেওয়া আছে)। আমি কি তাহলে আমাদের রেডি প্যাকেজগুলোর ছবি ও বিস্তারিত পাঠাবো {honorific}?",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "ready_package_permission_prompt"
+        }
+
+    # Case C3: Initial General Sample Request ("স্যাম্পল দেখতে চাই" / "স্যাম্পল দিন" / "ছবি পাঠান" / "ছবি দেখান")
+    is_general_sample_request = any(k in msg for k in [
+        "স্যাম্পল", "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দিন", "স্যাম্পল দেন", "স্যাম্পল দেখতে চাই",
+        "ছবি দেখান", "ছবি পাঠান", "ছবি দিন", "ছবি দেন", "ছবি দেখাও", "ছবি পাঠাও", "ছবি দেখতে চাই",
+        "কাজের ছবি", "কাজের স্যাম্পল", "কাজ দেখতে চাই", "স্যাম্পল চাই"
+    ]) and not any(k in msg for k in ["প্যাকেজ", "পেকেজ", "রেডি", "কার্ড", "ফিতা", "কভার", "দাম"])
+
+    is_agreeing_to_initial_samples = bot_prompted_sample_permission and not bot_prompted_ready_packages and is_agreeing
+
+    if is_general_sample_request or is_agreeing_to_initial_samples:
+        comp_seq = build_initial_component_sample_sequence(customer_name=customer_name, workspace_id=workspace_id)
+        all_comp_imgs = (
+            get_id_card_sample_images(workspace_id=workspace_id) +
+            get_fita_sample_images(workspace_id=workspace_id) +
+            get_cover_sample_images(workspace_id=workspace_id)
+        )
+        return {
+            "reply_text": f"জি {honorific}, নিচে আমাদের তৈরি করা প্রিমিয়াম আইডি কার্ড, প্রিন্ট করা ফিতা ও বিভিন্ন মডেলের কভারের স্যাম্পল পাঠানো হলো:",
+            "media_sequence": comp_seq,
+            "matched_images": all_comp_imgs,
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "initial_component_samples_dispatch"
         }
 
     # Case D: Customer quotes / selects a package photo

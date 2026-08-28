@@ -99,7 +99,7 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
         self.assertEqual(len(res1.get("matched_images", [])), 0)
         self.assertIn("স্যাম্পল ছবিগুলো পাঠাবো", res1.get("reply_text"))
 
-        # Customer agrees
+        # Customer agrees to initial sample photos -> receives separate component samples (Cards, Fita, Covers)
         res2 = evaluate_id_card_workflow(
             "হ্যাঁ পাঠান",
             conversation_history=[
@@ -109,8 +109,34 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
             workspace_id=1
         )
         self.assertIsNotNone(res2)
-        self.assertEqual(len(res2.get("matched_images", [])), 7)
-        for img in res2.get("matched_images", []):
+        self.assertEqual(res2.get("response_source"), "initial_component_samples_dispatch")
+        self.assertGreaterEqual(len(res2.get("matched_images", [])), 20)
+
+        # Customer asks for price -> bot asks to send Ready Packages
+        res3 = evaluate_id_card_workflow(
+            "কোনটার দাম কত?",
+            conversation_history=[
+                {"sender": "user", "content": "হ্যাঁ পাঠান"},
+                {"sender": "bot", "content": res2.get("reply_text")}
+            ],
+            workspace_id=1
+        )
+        self.assertIsNotNone(res3)
+        self.assertEqual(res3.get("response_source"), "ready_package_permission_prompt")
+
+        # Customer agrees to Ready Packages -> receives 7 package images in serial order
+        res4 = evaluate_id_card_workflow(
+            "জি পাঠান",
+            conversation_history=[
+                {"sender": "user", "content": "কোনটার দাম কত?"},
+                {"sender": "bot", "content": res3.get("reply_text")}
+            ],
+            workspace_id=1
+        )
+        self.assertIsNotNone(res4)
+        self.assertEqual(res4.get("response_source"), "ready_package_dispatch")
+        self.assertEqual(len(res4.get("matched_images", [])), 7)
+        for img in res4.get("matched_images", []):
             self.assertIn("package", img.lower())
 
     def test_10_quality_spelling_variations_send_voice_note(self):
