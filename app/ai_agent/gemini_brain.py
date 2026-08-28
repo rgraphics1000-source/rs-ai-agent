@@ -861,21 +861,21 @@ def detect_quoted_or_mentioned_package(msg: str) -> dict:
             "pkg_num": 6,
             "name": "৬ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + হার্ড প্লাস্টিক কভার)",
             "price": 83,
-            "image": "/static/uploads/package/IMG-20260114-WA0006.jpg"
+            "image": "/static/uploads/package/IMG-20260113-WA0006.jpg"
         }
     if "wa0045" in m:
         return {
             "pkg_num": 5,
             "name": "৫ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + হার্ড প্লাস্টিক কভার)",
             "price": 83,
-            "image": "/static/uploads/package/IMG-20260114-WA0045.jpg"
+            "image": "/static/uploads/package/IMG-20260118-WA0045.jpg"
         }
     if "wa0081" in m:
         return {
             "pkg_num": 4,
             "name": "৪ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + নরমাল প্লাস্টিক কভার)",
             "price": 73,
-            "image": "/static/uploads/package/IMG-20260117-WA0081.jpg"
+            "image": "/static/uploads/package/IMG-20260121-WA0081.jpg"
         }
     if "wa0023" in m:
         return {
@@ -889,14 +889,14 @@ def detect_quoted_or_mentioned_package(msg: str) -> dict:
             "pkg_num": 2,
             "name": "২ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ১.৫ সেমি ডিজিটাল সাবলিমেশন ফিতা + নরমাল প্লাস্টিক কভার)",
             "price": 70,
-            "image": "/static/uploads/package/IMG-20260117-WA0002.jpg"
+            "image": "/static/uploads/package/IMG-20260113-WA0002.jpg"
         }
     if "wa0003" in m:
         return {
             "pkg_num": 1,
             "name": "১ নম্বর সাশ্রয়ী প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ১.৫ সেমি ডিজিটাল সাবলিমেশন ফিতা + সফট রাবার কভার)",
             "price": 70,
-            "image": "/static/uploads/package/IMG-20260117-WA0003.jpg"
+            "image": "/static/uploads/package/IMG-20260113-WA0003.jpg"
         }
 
     # 2. Explicit Bengali package text
@@ -912,21 +912,21 @@ def detect_quoted_or_mentioned_package(msg: str) -> dict:
             "pkg_num": 6,
             "name": "৬ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + হার্ড প্লাস্টিক কভার)",
             "price": 83,
-            "image": "/static/uploads/package/IMG-20260114-WA0006.jpg"
+            "image": "/static/uploads/package/IMG-20260113-WA0006.jpg"
         }
     if any(k in m for k in ["প্যাকেজ ৫", "প্যাকেজ ০৫", "৫ নম্বর", "৫ নং"]):
         return {
             "pkg_num": 5,
             "name": "৫ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + হার্ড প্লাস্টিক কভার)",
             "price": 83,
-            "image": "/static/uploads/package/IMG-20260114-WA0045.jpg"
+            "image": "/static/uploads/package/IMG-20260118-WA0045.jpg"
         }
     if any(k in m for k in ["প্যাকেজ ৪", "প্যাকেজ ০৪", "৪ নম্বর", "৪ নং"]):
         return {
             "pkg_num": 4,
             "name": "৪ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + নরমাল প্লাস্টিক কভার)",
             "price": 73,
-            "image": "/static/uploads/package/IMG-20260117-WA0081.jpg"
+            "image": "/static/uploads/package/IMG-20260121-WA0081.jpg"
         }
     if any(k in m for k in ["প্যাকেজ ৩", "প্যাকেজ ০৩", "৩ নম্বর", "৩ নং"]):
         return {
@@ -940,14 +940,14 @@ def detect_quoted_or_mentioned_package(msg: str) -> dict:
             "pkg_num": 2,
             "name": "২ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ১.৫ সেমি ডিজিটাল সাবলিমেশন ফিতা + নরমাল প্লাস্টিক কভার)",
             "price": 70,
-            "image": "/static/uploads/package/IMG-20260117-WA0002.jpg"
+            "image": "/static/uploads/package/IMG-20260113-WA0002.jpg"
         }
     if any(k in m for k in ["প্যাকেজ ১", "প্যাকেজ ০১", "১ নম্বর", "১ নং", "সাশ্রয়ী প্যাকেজ", "সাশ্রয়ী প্যাকেজ"]):
         return {
             "pkg_num": 1,
             "name": "১ নম্বর সাশ্রয়ী প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ১.৫ সেমি ডিজিটাল সাবলিমেশন ফিতা + সফট রাবার কভার)",
             "price": 70,
-            "image": "/static/uploads/package/IMG-20260117-WA0003.jpg"
+            "image": "/static/uploads/package/IMG-20260113-WA0003.jpg"
         }
 
     # 3. Default fallback if general reference
