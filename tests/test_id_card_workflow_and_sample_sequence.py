@@ -216,31 +216,44 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIn("৯১ টাকা", res["reply_text"])
         self.assertIn("কত পিস প্রয়োজন", res["reply_text"])
 
-    def test_08e_customer_quotes_package_and_says_eti(self):
-        """Customer replying 'এটি' after bot asks which package receives order form acknowledgment."""
+    def test_08e_customer_quotes_package_and_says_eti_inquiry(self):
+        """Customer replying 'এটি?' or 'এটি' to inquire price receives package price and quantity inquiry (NOT order form)."""
         res = evaluate_id_card_workflow(
-            "এটি",
+            "[কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: /static/uploads/package/IMG-20260114-WA0006.jpg] এটি?",
             customer_name="Customer",
             workspace_id=1,
-            conversation_history=[{"sender": "bot", "content": "বলুন স্যার, আপনি ঠিক কোন প্রোডাক্ট বা প্যাকেজটি নিয়ে জানতে চাচ্ছিলেন?"}]
-        )
-        self.assertIsNotNone(res)
-        self.assertEqual(res["response_source"], "id_card_package_selection_acknowledged")
-        self.assertIn("চমৎকার পছন্দ", res["reply_text"])
-        self.assertIn("প্রতিষ্ঠানের নাম", res["reply_text"])
-
-    def test_08f_customer_quotes_package_and_asks_price_eti(self):
-        """Customer asking 'এটি কত রাখা যাবে?' after bot asks which package receives 91 Tk price details and quantity request."""
-        res = evaluate_id_card_workflow(
-            "এটি কত রাখা যাবে?",
-            customer_name="Customer",
-            workspace_id=1,
-            conversation_history=[{"sender": "bot", "content": "বলুন স্যার, আপনি ঠিক কোন প্রোডাক্ট বা প্যাকেজটি নিয়ে জানতে চাচ্ছিলেন?"}]
+            conversation_history=[{"sender": "bot", "content": "আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন স্যার।"}]
         )
         self.assertIsNotNone(res)
         self.assertEqual(res["response_source"], "package_price_and_discount_inquiry")
-        self.assertIn("৯১ টাকা", res["reply_text"])
+        self.assertIn("৬ নম্বর প্যাকেজ", res["reply_text"])
+        self.assertIn("৮৩ টাকা", res["reply_text"])
         self.assertIn("কত পিস প্রয়োজন", res["reply_text"])
+
+    def test_08f_customer_quotes_package_and_asks_price_eti(self):
+        """Customer asking 'এটি কত রাখা যাবে?' on Package 06 receives 83 Tk price details and quantity request."""
+        res = evaluate_id_card_workflow(
+            "[কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: /static/uploads/package/IMG-20260114-WA0006.jpg] এটি কত রাখা যাবে?",
+            customer_name="Customer",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "package_price_and_discount_inquiry")
+        self.assertIn("৬ নম্বর প্যাকেজ", res["reply_text"])
+        self.assertIn("৮৩ টাকা", res["reply_text"])
+        self.assertIn("কত পিস প্রয়োজন", res["reply_text"])
+
+    def test_08g_customer_quotes_package_and_confirms_order(self):
+        """Customer explicitly confirming 'এটি নিব' or 'পছন্দ হয়েছে এটি দেন' receives order form request."""
+        res = evaluate_id_card_workflow(
+            "[কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: /static/uploads/package/IMG-20260114-WA0006.jpg] এটি নিব",
+            customer_name="Customer",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "id_card_package_selection_acknowledged")
+        self.assertIn("৬ নম্বর প্যাকেজ", res["reply_text"])
+        self.assertIn("প্রতিষ্ঠানের নাম", res["reply_text"])
 
     def test_10_specific_package_request_returns_single_image(self):
         """Customer asking for specific package (e.g. 'প্যাকেজ ৩') receives only Package 03 photo."""

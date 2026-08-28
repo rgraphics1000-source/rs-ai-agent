@@ -183,27 +183,29 @@ class TestSpecificProductPriceAndQuotedReply(unittest.TestCase):
             self.assertEqual(len(res.get("matched_images", [])), 0)
 
     def test_13_package_quoted_or_selected_asks_for_institution_details(self):
-        # 1. Quoted package photo reply
-        quoted_msg = "[কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: IMG-20260113-WA0006.jpg]"
+        # 1. Quoted package photo reply with confirmation
+        quoted_msg = "[কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: IMG-20260113-WA0006.jpg] এটি নিব"
         res1 = evaluate_id_card_workflow(quoted_msg, workspace_id=1)
         self.assertIsNotNone(res1)
         self.assertEqual(res1["response_source"], "id_card_package_selection_acknowledged")
-        self.assertIn("চমৎকার পছন্দ", res1["reply_text"])
+        self.assertIn("৬ নম্বর প্যাকেজ", res1["reply_text"])
         self.assertIn("প্রতিষ্ঠানের নাম", res1["reply_text"])
         self.assertIn("গুগল ফর্ম", res1["reply_text"])
 
-        # 2. Selecting package with "এটি" or "." after bot asked for package
+        # 2. Quoted package photo reply with price inquiry "এটি কত রাখা যাবে?"
+        quoted_inquiry = "[কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: IMG-20260113-WA0006.jpg] এটি কত রাখা যাবে?"
+        res2 = evaluate_id_card_workflow(quoted_inquiry, workspace_id=1)
+        self.assertIsNotNone(res2)
+        self.assertEqual(res2["response_source"], "package_price_and_discount_inquiry")
+        self.assertIn("৬ নম্বর প্যাকেজ", res2["reply_text"])
+        self.assertIn("৮৩ টাকা", res2["reply_text"])
+        self.assertIn("কত পিস প্রয়োজন", res2["reply_text"])
+
+        # 3. Explicit selection with "পছন্দ হয়েছে এটি দেন"
         history = [
             {"role": "assistant", "content": "আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন স্যার।"}
         ]
-        res2 = evaluate_id_card_workflow("এটি", conversation_history=history, workspace_id=1)
-        self.assertIsNotNone(res2)
-        self.assertEqual(res2["response_source"], "id_card_package_selection_acknowledged")
-        self.assertIn("চমৎকার পছন্দ", res2["reply_text"])
-        self.assertIn("প্রতিষ্ঠানের নাম", res2["reply_text"])
-
-        # 3. Selecting package with "." or ","
-        res3 = evaluate_id_card_workflow(".", conversation_history=history, workspace_id=1)
+        res3 = evaluate_id_card_workflow("পছন্দ হয়েছে এটি দেন", conversation_history=history, workspace_id=1)
         self.assertIsNotNone(res3)
         self.assertEqual(res3["response_source"], "id_card_package_selection_acknowledged")
         self.assertIn("প্রতিষ্ঠানের নাম", res3["reply_text"])

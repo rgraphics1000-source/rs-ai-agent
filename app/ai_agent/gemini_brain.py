@@ -840,6 +840,124 @@ def calculate_custom_combo_price(msg: str, honorific: str = "স্যার") -
         "response_source": "custom_combo_calculation_dispatch"
     }
 
+def detect_quoted_or_mentioned_package(msg: str) -> dict:
+    """
+    Accurately identifies exact package details from quoted image filenames or text.
+    Handles WA0006 (Pkg 6), WA0057 (Pkg 7), WA0045 (Pkg 5), WA0081 (Pkg 4),
+    WA0023 (Pkg 3), WA0002 (Pkg 2), WA0003 (Pkg 1) without single-digit collision.
+    """
+    m = (msg or "").lower()
+
+    # 1. Exact media image filename codes (Highest Priority)
+    if "wa0057" in m:
+        return {
+            "pkg_num": 7,
+            "name": "প্রিমিয়াম ৭ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + মেটাল ফ্রেম কভার)",
+            "price": 91,
+            "image": "/static/uploads/package/IMG-20260114-WA0057.jpg"
+        }
+    if "wa0006" in m:
+        return {
+            "pkg_num": 6,
+            "name": "৬ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + হার্ড প্লাস্টিক কভার)",
+            "price": 83,
+            "image": "/static/uploads/package/IMG-20260114-WA0006.jpg"
+        }
+    if "wa0045" in m:
+        return {
+            "pkg_num": 5,
+            "name": "৫ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + হার্ড প্লাস্টিক কভার)",
+            "price": 83,
+            "image": "/static/uploads/package/IMG-20260114-WA0045.jpg"
+        }
+    if "wa0081" in m:
+        return {
+            "pkg_num": 4,
+            "name": "৪ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + নরমাল প্লাস্টিক কভার)",
+            "price": 73,
+            "image": "/static/uploads/package/IMG-20260117-WA0081.jpg"
+        }
+    if "wa0023" in m:
+        return {
+            "pkg_num": 3,
+            "name": "৩ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + সফট রাবার কভার)",
+            "price": 73,
+            "image": "/static/uploads/package/IMG-20260117-WA0023.jpg"
+        }
+    if "wa0002" in m:
+        return {
+            "pkg_num": 2,
+            "name": "২ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ১.৫ সেমি ডিজিটাল সাবলিমেশন ফিতা + নরমাল প্লাস্টিক কভার)",
+            "price": 70,
+            "image": "/static/uploads/package/IMG-20260117-WA0002.jpg"
+        }
+    if "wa0003" in m:
+        return {
+            "pkg_num": 1,
+            "name": "১ নম্বর সাশ্রয়ী প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ১.৫ সেমি ডিজিটাল সাবলিমেশন ফিতা + সফট রাবার কভার)",
+            "price": 70,
+            "image": "/static/uploads/package/IMG-20260117-WA0003.jpg"
+        }
+
+    # 2. Explicit Bengali package text
+    if any(k in m for k in ["প্যাকেজ ৭", "প্যাকেজ ০৭", "৭ নম্বর", "৭ নং", "মেটাল কভার", "প্রিমিয়াম প্যাকেজ", "প্রিমিয়াম প্যাকেজ"]):
+        return {
+            "pkg_num": 7,
+            "name": "প্রিমিয়াম ৭ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + মেটাল ফ্রেম কভার)",
+            "price": 91,
+            "image": "/static/uploads/package/IMG-20260114-WA0057.jpg"
+        }
+    if any(k in m for k in ["প্যাকেজ ৬", "প্যাকেজ ০৬", "৬ নম্বর", "৬ নং"]):
+        return {
+            "pkg_num": 6,
+            "name": "৬ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + হার্ড প্লাস্টিক কভার)",
+            "price": 83,
+            "image": "/static/uploads/package/IMG-20260114-WA0006.jpg"
+        }
+    if any(k in m for k in ["প্যাকেজ ৫", "প্যাকেজ ০৫", "৫ নম্বর", "৫ নং"]):
+        return {
+            "pkg_num": 5,
+            "name": "৫ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + হার্ড প্লাস্টিক কভার)",
+            "price": 83,
+            "image": "/static/uploads/package/IMG-20260114-WA0045.jpg"
+        }
+    if any(k in m for k in ["প্যাকেজ ৪", "প্যাকেজ ০৪", "৪ নম্বর", "৪ নং"]):
+        return {
+            "pkg_num": 4,
+            "name": "৪ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + নরমাল প্লাস্টিক কভার)",
+            "price": 73,
+            "image": "/static/uploads/package/IMG-20260117-WA0081.jpg"
+        }
+    if any(k in m for k in ["প্যাকেজ ৩", "প্যাকেজ ০৩", "৩ নম্বর", "৩ নং"]):
+        return {
+            "pkg_num": 3,
+            "name": "৩ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + সফট রাবার কভার)",
+            "price": 73,
+            "image": "/static/uploads/package/IMG-20260117-WA0023.jpg"
+        }
+    if any(k in m for k in ["প্যাকেজ ২", "প্যাকেজ ০২", "২ নম্বর", "২ নং"]):
+        return {
+            "pkg_num": 2,
+            "name": "২ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ১.৫ সেমি ডিজিটাল সাবলিমেশন ফিতা + নরমাল প্লাস্টিক কভার)",
+            "price": 70,
+            "image": "/static/uploads/package/IMG-20260117-WA0002.jpg"
+        }
+    if any(k in m for k in ["প্যাকেজ ১", "প্যাকেজ ০১", "১ নম্বর", "১ নং", "সাশ্রয়ী প্যাকেজ", "সাশ্রয়ী প্যাকেজ"]):
+        return {
+            "pkg_num": 1,
+            "name": "১ নম্বর সাশ্রয়ী প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ১.৫ সেমি ডিজিটাল সাবলিমেশন ফিতা + সফট রাবার কভার)",
+            "price": 70,
+            "image": "/static/uploads/package/IMG-20260117-WA0003.jpg"
+        }
+
+    # 3. Default fallback if general reference
+    return {
+        "pkg_num": 7,
+        "name": "প্রিমিয়াম ৭ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + মেটাল ফ্রেম কভার)",
+        "price": 91,
+        "image": "/static/uploads/package/IMG-20260114-WA0057.jpg"
+    }
+
 def evaluate_id_card_workflow(
     message_text: str = "",
     conversation_history: list = None,
@@ -1219,7 +1337,9 @@ def evaluate_id_card_workflow(
             "response_source": "initial_component_samples_dispatch"
         }
 
-    # Case D1: Customer asks about price / discount / bargaining on a quoted or specific package (e.g., "এটা কত রাখা যাবে", "এটি কত রাখা যায়")
+    # Case D1: Customer asks about price / discount / bargaining on a quoted or specific package (e.g., "এটা কত রাখা যাবে", "এটি কত রাখা যায়", "এটি?")
+    msg_no_tags = re.sub(r'\[কাস্টমার পূর্ববর্তী.*?\]', '', msg).strip()
+
     is_asking_pkg_price_or_discount = any(k in msg for k in [
         "কত রাখা যাবে", "কত রাখবেন", "কত রাখবেন ভাই", "কত রাখা যায়", "কত রাখা যাই", "কত রাখা যায়", 
         "কত পরবে", "কত পড়বে", "কত পরবে ভাই", "কত পড়বে ভাই", "কত হবে", "কত হবে ভাই", "কত রাখা সম্ভভ", "কত রাখা সম্ভব",
@@ -1230,6 +1350,10 @@ def evaluate_id_card_workflow(
     ]) or (
         ("কত" in msg or "দাম" in msg or "রেট" in msg or "প্রাইস" in msg or "কম" in msg) and 
         ("রাখা" in msg or "রাখবেন" in msg or "যাবে" in msg or "যায়" in msg or "যায়" in msg or "হবে" in msg or "পড়বে" in msg or "পরবে" in msg or "দিবেন" in msg or "দেওয়া" in msg or "দেয়া" in msg or "সম্ভব" in msg)
+    ) or (
+        # Question mark or brief inquiry on a package (e.g. "এটি?", "এটা?", "এটি", "এটি কত", "দাম?")
+        ("?" in msg or "কত" in msg or "দাম" in msg or msg_no_tags in ["এটি", "এটি?", "এটা", "এটা?", "এইটা", "এইটা?", "এটি কত", "এটি কত?", "এটা কত", "এটা কত?"]) and
+        not any(k in msg for k in ["নিব", "নেব", "দেন", "দিন", "ফাইনাল", "কনফার্ম", "অর্ডার", "বানাব", "করব", "পছন্দ হয়েছে", "পছন্দ হইছে"])
     )
 
     is_package_quoted_or_mentioned = any(k in msg for k in [
@@ -1239,23 +1363,10 @@ def evaluate_id_card_workflow(
     ]) or any(k in last_bot_msg for k in ["কোন প্যাকেজ", "প্যাকেজটি পছন্দ", "প্যাকেজের ছবি", "প্যাকেজ পছন্দ", "প্যাকেজগুলো পাঠানো হলো", "পছন্দ হয় জানাবেন", "পছন্দ হয়েছে", "কোন প্রোডাক্ট বা প্যাকেজটি", "কোন প্রোডাক্ট বা প্যাকেজ", "প্যাকেজটি নিয়ে", "প্রোডাক্ট বা প্যাকেজ", "উপযুক্ত"])
 
     if is_asking_pkg_price_or_discount and is_package_quoted_or_mentioned and not is_refusing:
-        # Detect which package is quoted/referred
-        is_pkg_7 = any(k in msg for k in ["wa0057", "প্যাকেজ ৭", "প্যাকেজ ০৭", "৭ নম্বর", "৭ নং", "৭", "7", "মেটাল", "প্রিমিয়াম", "প্রিমিয়াম"])
-        is_pkg_5_6 = any(k in msg for k in ["wa0045", "wa0006", "প্যাকেজ ৫", "প্যাকেজ ৬", "প্যাকেজ ০৫", "প্যাকেজ ০৬", "৫", "৬", "5", "6", "হার্ড"])
-        is_pkg_3_4 = any(k in msg for k in ["wa0023", "wa0081", "প্যাকেজ ৩", "প্যাকেজ ৪", "প্যাকেজ ০৩", "প্যাকেজ ০৪", "৩", "৪", "3", "4"])
-        
-        if is_pkg_7 or (not is_pkg_5_6 and not is_pkg_3_4):
-            pkg_name = "প্রিমিয়াম ৭ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + মেটাল ফ্রেম কভার)"
-            reg_price = 91
-        elif is_pkg_5_6:
-            pkg_name = "হার্ড কভার প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + হার্ড প্লাস্টিক কভার)"
-            reg_price = 83
-        elif is_pkg_3_4:
-            pkg_name = "প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + সফট/প্লাস্টিক কভার)"
-            reg_price = 73
-        else:
-            pkg_name = "সাশ্রয়ী প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ১.৫ সেমি ডিজিটাল সাবলিমেশন ফিতা + সফট/প্লাস্টিক কভার)"
-            reg_price = 70
+        # Detect exact package using dedicated helper
+        pkg_info = detect_quoted_or_mentioned_package(msg)
+        pkg_name = pkg_info["name"]
+        reg_price = pkg_info["price"]
 
         bn_map = {"0": "০", "1": "১", "2": "২", "3": "৩", "4": "৪", "5": "৫", "6": "৬", "7": "৭", "8": "৮", "9": "৯"}
         def to_bn(n):
@@ -1282,37 +1393,25 @@ def evaluate_id_card_workflow(
             "response_source": "package_price_and_discount_inquiry"
         }
 
-    # Case D2: Customer explicitly selects / confirms a package photo
+    # Case D2: Customer explicitly selects / confirms a package photo (e.g. "এটি নিব", "পছন্দ হয়েছে", "এটা দেন")
     is_package_selection = not is_asking_pkg_price_or_discount and (
         any(k in msg for k in [
-            "পছন্দ", "পছন্দ হয়েছে", "পছন্দ হইছে", "পছন্দ হয়েছে", "এটি দেন", "এটা দেন", "এইটা দেন", 
+            "পছন্দ হয়েছে", "পছন্দ হইছে", "পছন্দ হয়েছে", "এটি দেন", "এটা দেন", "এইটা দেন", 
             "এটা দিন", "এটি দিন", "এইটা দিন", "এটা ফাইনাল", "এটি ফাইনাল", "এটা অর্ডার", "এটা কনফার্ম", 
-            "এটা নিব", "এটা নেব", "এটা বানাবো", "এটা বানাব", "এটা করবেন", "এটা করব",
-            "প্যাকেজ ১", "প্যাকেজ ২", "প্যাকেজ ৩", "প্যাকেজ ৪", "প্যাকেজ ৫", "প্যাকেজ ৬", "প্যাকেজ ৭",
-            "১ নম্বর", "২ নম্বর", "৩ নম্বর", "৪ নম্বর", "৫ নম্বর", "৬ নম্বর", "৭ নম্বর",
-            "১ নং", "২ নং", "৩ নং", "৪ নং", "৫ নং", "৬ নং", "৭ নং"
-        ]) or
-        (
-            any(k in msg for k in ["[কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন:", "প্যাকেজের রিপ্লাই", "package", "wa0002", "wa0003", "wa0006", "wa0057", "wa0023", "wa0045", "wa0081"]) and
-            any(k in msg for k in ["এটি", "এটা", "এইটা", "এই প্যাকেজ", "পছন্দ", "দেন", "দিন", "ফাইনাল", "কনফার্ম", "করব", "বানাবো", "নিব", "নেব", ".", ","])
-        ) or
-        (
-            any(k in last_bot_msg for k in ["কোন প্যাকেজ", "প্যাকেজটি পছন্দ", "প্যাকেজের ছবি", "প্যাকেজ পছন্দ", "প্যাকেজগুলো পাঠানো হলো", "পছন্দ হয় জানাবেন", "পছন্দ হয়েছে", "কোন প্রোডাক্ট বা প্যাকেজটি", "কোন প্রোডাক্ট বা প্যাকেজ", "প্যাকেজটি নিয়ে", "প্রোডাক্ট বা প্যাকেজ"]) and
-            any(k in msg for k in [
-                "এটি পছন্দ", "এটা পছন্দ", "এইটা পছন্দ", "এটি ভালো", "এটা দেন", "এটি দেন", "এইটা দেন", "পছন্দ হয়েছে", "পছন্দ হইছে",
-                "এটি", "এটা", "এইটা", "এই প্যাকেজ", "প্যাকেজ ১", "প্যাকেজ ২", "প্যাকেজ ৩", "প্যাকেজ ৪", "প্যাকেজ ৫", "প্যাকেজ ৬", "প্যাকেজ ৭",
-                "১", "২", "৩", "৪", "৫", "৬", "৭", "1", "2", "3", "4", "5", "6", "7", ".", ","
-            ])
-        )
+            "এটা নিব", "এটা নেব", "এটি নিব", "এটি নেব", "এইটা নিব", "এইটা নেব", "এটা বানাবো", "এটা বানাব", 
+            "এটি করব", "এটা করব", "অর্ডার করতে চাই", "অর্ডার করব", "অর্ডার কনফার্ম"
+        ])
     )
 
     if is_package_selection and not is_refusing:
+        pkg_info = detect_quoted_or_mentioned_package(msg)
+        pkg_name = pkg_info["name"]
         tier_note = ""
         if effective_qty is not None and 30 <= effective_qty < 50:
             tier_note = f"\n(যেহেতু আপনাদের পরিমাণ {effective_qty} পিস—১০০ এর কম, তাই প্যাকেজের রেগুলার মূল্যের সাথে প্রতি পিসে ১০ টাকা যোগ হবে।)\n"
             
         ack_text = (
-            f"জি {honorific}, চমৎকার পছন্দ! আপনি আমাদের এই আকর্ষণীয় প্যাকেজটি নির্বাচন করেছেন।{tier_note}\n\n"
+            f"জি {honorific}, চমৎকার পছন্দ! আপনি আমাদের এই আকর্ষণীয় {pkg_name}টি নির্বাচন করেছেন।{tier_note}\n\n"
             f"আপনার অর্ডারটি চূড়ান্ত করতে অনুগ্রহ করে নিচের তথ্যগুলো দিন:\n"
             f"১. প্রতিষ্ঠানের নাম:\n"
             f"২. পূর্ণাঙ্গ ঠিকানা:\n"

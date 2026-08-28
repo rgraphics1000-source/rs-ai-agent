@@ -1015,17 +1015,24 @@ def resolve_quoted_message_media(quoted_mid: str, workspace_id: int = 1) -> dict
             SELECT m.id, m.media_url, m.content, m.message_type, m.external_message_id
             FROM messages m
             JOIN conversations c ON m.conversation_id = c.id
-            WHERE (m.external_message_id = ? OR m.id = ?) AND c.workspace_id = ?
+            WHERE (m.external_message_id = ? OR m.id = ? OR m.external_message_id LIKE ? OR ? LIKE ('%' || m.external_message_id || '%'))
+              AND c.workspace_id = ?
             ORDER BY m.id DESC LIMIT 1
-        """, (str(quoted_mid), str(quoted_mid), ws_id))
+        """, (str(quoted_mid), str(quoted_mid), f"%{quoted_mid}%", str(quoted_mid), ws_id))
         row = cursor.fetchone()
         if not row:
             cursor.execute("""
                 SELECT id, media_url, content, message_type, external_message_id
                 FROM messages
-                WHERE external_message_id = ? OR id = ?
+                WHERE (external_message_id = ? OR id = ? OR external_message_id LIKE ? OR ? LIKE ('%' || external_message_id || '%'))
+                ORDER BY m.id DESC LIMIT 1
+            """ if "m." not in "" else "", ())
+            cursor.execute("""
+                SELECT id, media_url, content, message_type, external_message_id
+                FROM messages
+                WHERE (external_message_id = ? OR id = ? OR external_message_id LIKE ? OR ? LIKE ('%' || external_message_id || '%'))
                 ORDER BY id DESC LIMIT 1
-            """, (str(quoted_mid), str(quoted_mid)))
+            """, (str(quoted_mid), str(quoted_mid), f"%{quoted_mid}%", str(quoted_mid)))
             row = cursor.fetchone()
             
         media_url = ""

@@ -1284,11 +1284,29 @@ async def handle_whatsapp_webhook_event(data: dict):
                                 bot_media_rows = cursor.fetchall()
                                 conn.close()
                                 if bot_media_rows:
-                                    for bmr in bot_media_rows:
-                                        m_cand = bmr["media_url"]
-                                        if "wa0057" in m_cand.lower() or "package" in m_cand.lower():
-                                            quoted_url = m_cand
-                                            break
+                                    # If customer mentioned a specific package in text (e.g. ৬, 5, 4, 3, 2, 1), pick matching candidate
+                                    m_text_low = (msg_text or "").lower()
+                                    target_code = None
+                                    if "wa0006" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৬", "৬ নম্বর", "৬"]): target_code = "wa0006"
+                                    elif "wa0045" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৫", "৫ নম্বর", "৫"]): target_code = "wa0045"
+                                    elif "wa0081" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৪", "৪ নম্বর", "৪"]): target_code = "wa0081"
+                                    elif "wa0023" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৩", "৩ নম্বর", "৩"]): target_code = "wa0023"
+                                    elif "wa0002" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ২", "২ নম্বর", "২"]): target_code = "wa0002"
+                                    elif "wa0003" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ১", "১ নম্বর", "১"]): target_code = "wa0003"
+                                    elif "wa0057" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৭", "৭ নম্বর", "৭", "মেটাল"]): target_code = "wa0057"
+
+                                    if target_code:
+                                        for bmr in bot_media_rows:
+                                            if target_code in (bmr["media_url"] or "").lower():
+                                                quoted_url = bmr["media_url"]
+                                                break
+
+                                    if not quoted_url:
+                                        # Prefer the latest package media if any
+                                        for bmr in bot_media_rows:
+                                            if "package" in (bmr["media_url"] or "").lower():
+                                                quoted_url = bmr["media_url"]
+                                                break
                                     if not quoted_url:
                                         quoted_url = bot_media_rows[0]["media_url"]
                             except Exception as fb_err:
