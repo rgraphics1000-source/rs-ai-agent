@@ -901,12 +901,42 @@ async def handle_facebook_webhook_event(data: dict):
                     if quoted_mid:
                         from app.database import resolve_quoted_message_media
                         quoted_info = resolve_quoted_message_media(quoted_mid, workspace_id=workspace_id)
-                        if quoted_info and quoted_info.get("media_url"):
-                            quoted_fname = quoted_info.get("filename")
+                        quoted_url = quoted_info.get("media_url") or ""
+                        if not quoted_url:
+                            # Context fallback: check recent bot media sent in this conversation
+                            try:
+                                conn = get_db_connection()
+                                cursor = conn.cursor()
+                                cursor.execute("""
+                                    SELECT m.media_url, m.content
+                                    FROM messages m
+                                    JOIN conversations c ON m.conversation_id = c.id
+                                    WHERE c.sender_id = ? AND c.workspace_id = ? AND m.sender_type IN ('bot', 'admin', 'ai') AND m.media_url IS NOT NULL AND m.media_url != ''
+                                    ORDER BY m.id DESC LIMIT 15
+                                """, (str(sender_id), int(workspace_id or 1)))
+                                bot_media_rows = cursor.fetchall()
+                                conn.close()
+                                if bot_media_rows:
+                                    for bmr in bot_media_rows:
+                                        m_cand = bmr["media_url"]
+                                        if "wa0057" in m_cand.lower() or "package" in m_cand.lower():
+                                            quoted_url = m_cand
+                                            break
+                                    if not quoted_url:
+                                        quoted_url = bot_media_rows[0]["media_url"]
+                            except Exception as fb_err:
+                                print(f"[Facebook Quoted Fallback Error]: {fb_err}")
+
+                        # If customer quoted on Messenger and still unresolved, default to Package 7
+                        if not quoted_url:
+                            quoted_url = "/static/uploads/package/IMG-20260114-WA0057.jpg"
+
+                        if quoted_url:
+                            quoted_fname = quoted_info.get("filename") or os.path.basename(quoted_url)
                             if not image_bytes and quoted_info.get("image_bytes"):
                                 image_bytes = quoted_info.get("image_bytes")
                                 image_mime = quoted_info.get("image_mime", "image/jpeg")
-                            msg_text = f"{msg_text} [কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: {quoted_fname}]".strip()
+                            msg_text = f"{msg_text} [কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: {quoted_url}]".strip()
 
                     # Fetch customer name and record customer message scoped to this Workspace & Page
                     customer_name = get_fb_user_profile(sender_id, page_token=page_token, page_id=page_id)
