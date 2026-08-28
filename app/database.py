@@ -1039,13 +1039,14 @@ def resolve_quoted_message_media(quoted_mid: str, workspace_id: int = 1) -> dict
             # Check media_deliveries fallback
             try:
                 cursor.execute("""
-                    SELECT media_url, media_filename, delivery_key
+                    SELECT id, media_url, media_filename, delivery_key
                     FROM media_deliveries
                     WHERE meta_message_id = ? OR attachment_id = ?
                     ORDER BY id DESC LIMIT 1
                 """, (str(quoted_mid), str(quoted_mid)))
                 md_row = cursor.fetchone()
                 if md_row:
+                    row_id = md_row["id"]
                     media_url = md_row["media_url"] or md_row["delivery_key"] or ""
                     content = md_row["media_filename"] or ""
             except Exception:
@@ -1058,13 +1059,21 @@ def resolve_quoted_message_media(quoted_mid: str, workspace_id: int = 1) -> dict
         img_mime = "image/jpeg"
         
         if media_url:
-            clean_rel = str(media_url).lstrip("/")
-            if os.path.exists(clean_rel):
-                local_path = clean_rel
-            elif str(media_url).startswith("/static/") and os.path.exists(str(media_url)[1:]):
-                local_path = str(media_url)[1:]
-            elif os.path.exists(os.path.join("static", os.path.basename(str(media_url)))):
-                local_path = os.path.join("static", os.path.basename(str(media_url)))
+            clean_rel = str(media_url).lstrip("/").replace("\\", "/")
+            candidates = [
+                clean_rel,
+                str(media_url)[1:] if str(media_url).startswith("/") else str(media_url),
+                f"static/{clean_rel}" if not clean_rel.startswith("static/") else clean_rel,
+                os.path.join("static", "uploads", os.path.basename(clean_rel)),
+                os.path.join("static", "uploads", "package", os.path.basename(clean_rel)),
+                os.path.join("static", "uploads", "id_card", os.path.basename(clean_rel)),
+                os.path.join("static", "uploads", "fita", os.path.basename(clean_rel)),
+                os.path.join("static", "uploads", "cover", os.path.basename(clean_rel)),
+            ]
+            for cp in candidates:
+                if os.path.exists(cp) and os.path.isfile(cp):
+                    local_path = cp
+                    break
                 
             if local_path and os.path.isfile(local_path):
                 try:
@@ -1078,7 +1087,7 @@ def resolve_quoted_message_media(quoted_mid: str, workspace_id: int = 1) -> dict
                     print(f"[resolve_quoted_message_media read error]: {e}")
                     
         return {
-            "id": row["id"],
+            "id": row_id,
             "media_url": media_url,
             "filename": os.path.basename(media_url) if media_url else "",
             "content": content,
@@ -1088,6 +1097,7 @@ def resolve_quoted_message_media(quoted_mid: str, workspace_id: int = 1) -> dict
         }
     except Exception as e:
         print(f"[resolve_quoted_message_media error]: {e}")
+        return {}
         return {}
     finally:
         if conn:

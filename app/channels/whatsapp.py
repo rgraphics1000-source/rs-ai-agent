@@ -559,8 +559,8 @@ def send_whatsapp_message(to_number: str, message_text: str, phone_id: str = Non
     )
     return res.get("success", False)
 
-def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
-    """Sends an image via WhatsApp Cloud API using specified or default account."""
+def send_whatsapp_image_detailed(to_number: str, image_url: str, caption: str = "", phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> dict:
+    """Sends an image via WhatsApp Cloud API returning detailed delivery status and Meta message_id."""
     if not phone_id or not token:
         resolved_pid, resolved_tok = get_whatsapp_credentials(phone_number_id=phone_id, page_id=page_id, workspace_id=workspace_id)
         phone_id = phone_id or resolved_pid
@@ -577,7 +577,7 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone
     masked_rec = mask_phone_number(to_number)
     if not clean_token or not phone_id or not to_number or not image_url:
         print(f"[WhatsApp Send ERROR] Image: Missing required fields: workspace_id={workspace_id or 1} phone_number_id={'SET' if phone_id else 'MISSING'} recipient={masked_rec}")
-        return False
+        return {"success": False, "message_id": "", "error": "MISSING_REQUIRED_FIELDS"}
 
     norm_to = normalize_whatsapp_phone_number(to_number)
 
@@ -655,8 +655,15 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone
                             }
                             r_media = requests.post(msg_url, headers=headers, json=media_payload, timeout=20)
                             if r_media.status_code in [200, 201]:
-                                print(f"[WhatsApp Send] Image Direct Binary Upload SUCCESS: workspace_id={workspace_id or 1} phone_id={cur_phone_id} media_id={media_id} recipient={masked_rec}")
-                                return True
+                                try:
+                                    resp_data = r_media.json()
+                                    msg_id = resp_data.get("messages", [{}])[0].get("id", "")
+                                    if msg_id:
+                                        record_outbound_ai_message("whatsapp", msg_id, workspace_id=workspace_id or 1, page_id_or_phone_id=cur_phone_id)
+                                except Exception:
+                                    msg_id = ""
+                                print(f"[WhatsApp Send] Image Direct Binary Upload SUCCESS: workspace_id={workspace_id or 1} phone_id={cur_phone_id} media_id={media_id} message_id={msg_id} recipient={masked_rec}")
+                                return {"success": True, "message_id": msg_id, "media_id": media_id}
                             else:
                                 print(f"[WhatsApp Send Binary Payload Warning]: {r_media.status_code} {r_media.text}. Falling back to URL link.")
             except Exception as up_err:
@@ -667,21 +674,41 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone
             r = requests.post(msg_url, headers=headers, json=link_payload, timeout=20)
             status_ok = r.status_code in [200, 201]
             if status_ok:
-                print(f"[WhatsApp Send] Image URL Link: workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} status=success http_status={r.status_code}")
-                return True
+                try:
+                    resp_data = r.json()
+                    msg_id = resp_data.get("messages", [{}])[0].get("id", "")
+                    if msg_id:
+                        record_outbound_ai_message("whatsapp", msg_id, workspace_id=workspace_id or 1, page_id_or_phone_id=cur_phone_id)
+                except Exception:
+                    msg_id = ""
+                print(f"[WhatsApp Send] Image URL Link: workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} recipient={masked_rec} message_id={msg_id} graph_api_version={settings.META_GRAPH_VERSION} status=success http_status={r.status_code}")
+                return {"success": True, "message_id": msg_id}
             else:
                 err_text = r.text
                 print(f"[WhatsApp Send ERROR] Image URL send failed: phone_number_id={cur_phone_id} recipient={masked_rec} http_status={r.status_code} reason={err_text}")
                 if r.status_code == 400 and "does not exist" in err_text.lower() and cur_phone_id != target_phone_ids[-1]:
                     continue
-                return False
+                return {"success": False, "message_id": "", "error": err_text}
         except Exception as e:
             print(f"[WhatsApp Send ERROR] Image Exception: workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} error={str(e)}")
             if cur_phone_id != target_phone_ids[-1]:
                 continue
-            return False
+            return {"success": False, "message_id": "", "error": str(e)}
 
-    return False
+    return {"success": False, "message_id": "", "error": "ALL_TARGET_PHONES_FAILED"}
+
+def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
+    """Sends an image via WhatsApp Cloud API using specified or default account."""
+    res = send_whatsapp_image_detailed(
+        to_number=to_number,
+        image_url=image_url,
+        caption=caption,
+        phone_id=phone_id,
+        token=token,
+        page_id=page_id,
+        workspace_id=workspace_id
+    )
+    return bool(res.get("success", False))
 
 def send_whatsapp_audio(to_number: str, audio_url: str, phone_id: str = None, token: str = None, page_id: str = None, workspace_id: int = None) -> bool:
     """Sends a voice note / audio clip via WhatsApp Cloud API."""
@@ -946,14 +973,16 @@ async def process_whatsapp_batch(batch: PendingBatch):
                 for img_path in item.get("urls", []):
                     if not img_path:
                         continue
-                    img_ok = send_whatsapp_image(
+                    img_res = send_whatsapp_image_detailed(
                         sender_phone, img_path,
                         phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
                     )
-                    if img_ok:
+                    if img_res.get("success"):
+                        msg_id = img_res.get("message_id", "")
                         record_conversation_message(
                             "whatsapp", sender_phone, customer_name, "bot", "", img_path,
-                            page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
+                            page_id=page_id, workspace_id=workspace_id, external_message_id=msg_id,
+                            direction="OUTBOUND", sender_role="AI"
                         )
                     await asyncio.sleep(0.15)
             elif item_type == "text":
@@ -989,15 +1018,17 @@ async def process_whatsapp_batch(batch: PendingBatch):
             for img_path in matched_images:
                 if not img_path:
                     continue
-                img_ok = send_whatsapp_image(
+                img_res = send_whatsapp_image_detailed(
                     sender_phone, img_path,
                     phone_id=effective_phone_id, token=effective_token, page_id=page_id, workspace_id=workspace_id
                 )
-                if img_ok:
+                if img_res.get("success"):
                     sent_count += 1
+                    msg_id = img_res.get("message_id", "")
                     record_conversation_message(
                         "whatsapp", sender_phone, customer_name, "bot", "", img_path,
-                        page_id=page_id, workspace_id=workspace_id, direction="OUTBOUND", sender_role="AI"
+                        page_id=page_id, workspace_id=workspace_id, external_message_id=msg_id,
+                        direction="OUTBOUND", sender_role="AI"
                     )
                 await asyncio.sleep(0.2)
 
@@ -1234,12 +1265,38 @@ async def handle_whatsapp_webhook_event(data: dict):
                     if quoted_wa_id:
                         from app.database import resolve_quoted_message_media
                         quoted_info = resolve_quoted_message_media(quoted_wa_id, workspace_id=workspace_id)
-                        if quoted_info and quoted_info.get("media_url"):
-                            quoted_fname = quoted_info.get("filename")
+                        quoted_url = quoted_info.get("media_url") or ""
+                        if not quoted_url:
+                            # Context fallback: check recent bot media sent in this conversation
+                            try:
+                                conn = get_db_connection()
+                                cursor = conn.cursor()
+                                cursor.execute("""
+                                    SELECT m.media_url, m.content
+                                    FROM messages m
+                                    JOIN conversations c ON m.conversation_id = c.id
+                                    WHERE c.sender_id = ? AND c.workspace_id = ? AND m.sender_type = 'bot' AND m.media_url IS NOT NULL AND m.media_url != ''
+                                    ORDER BY m.id DESC LIMIT 10
+                                """, (str(sender_phone), int(workspace_id or 1)))
+                                bot_media_rows = cursor.fetchall()
+                                conn.close()
+                                if bot_media_rows:
+                                    for bmr in bot_media_rows:
+                                        m_cand = bmr["media_url"]
+                                        if "wa0057" in m_cand.lower() or "package" in m_cand.lower():
+                                            quoted_url = m_cand
+                                            break
+                                    if not quoted_url:
+                                        quoted_url = bot_media_rows[0]["media_url"]
+                            except Exception as fb_err:
+                                print(f"[Quoted Fallback Error]: {fb_err}")
+
+                        if quoted_url:
+                            quoted_fname = quoted_info.get("filename") or os.path.basename(quoted_url)
                             if not image_bytes and quoted_info.get("image_bytes"):
                                 image_bytes = quoted_info.get("image_bytes")
                                 image_mime = quoted_info.get("image_mime", "image/jpeg")
-                            msg_text = f"{msg_text} [কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: {quoted_fname}]".strip()
+                            msg_text = f"{msg_text} [কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: {quoted_url}]".strip()
 
                     # Record incoming customer message scoped strictly to Workspace
                     customer_name = raw_customer_name or f"WhatsApp User ({sender_phone})"
