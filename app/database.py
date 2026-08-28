@@ -2937,6 +2937,7 @@ def claim_media_delivery(
             status = ex_dict.get("status", "PENDING")
             
             # If already sent in the SAME batch or within 45s (webhook duplicate retry), skip duplicate.
+            # If already sent in the SAME batch or within 45s (webhook duplicate retry), skip duplicate.
             # But for a new user turn (>45s later or different batch_id), allow sending!
             if status == "SENT":
                 sent_at_str = ex_dict.get("updated_at") or ex_dict.get("created_at")

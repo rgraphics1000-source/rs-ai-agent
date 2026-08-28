@@ -593,21 +593,33 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone
     base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
     full_url = image_url if str(image_url).startswith("http") else f"{base_server_url}{image_url if str(image_url).startswith('/') else '/' + str(image_url)}"
 
-    # Check if local file exists on disk
+    # Check if local file exists on disk with comprehensive path candidates
     local_file_path = None
-    clean_rel = str(image_url).lstrip("/")
-    if os.path.exists(clean_rel):
-        local_file_path = clean_rel
-    elif str(image_url).startswith("/static/") and os.path.exists(str(image_url)[1:]):
-        local_file_path = str(image_url)[1:]
-    elif os.path.exists(os.path.join("static", os.path.basename(str(image_url)))):
-        local_file_path = os.path.join("static", os.path.basename(str(image_url)))
+    clean_rel = str(image_url).lstrip("/").replace("\\", "/")
+    candidate_paths = [
+        clean_rel,
+        f"static/{clean_rel}" if not clean_rel.startswith("static/") else clean_rel,
+        str(image_url)[1:] if str(image_url).startswith("/") else str(image_url),
+        os.path.join("static", "uploads", os.path.basename(clean_rel)),
+        os.path.join("static", "uploads", "package", os.path.basename(clean_rel)),
+        os.path.join("static", "uploads", "pakage", os.path.basename(clean_rel)),
+        os.path.join("static", "uploads", "id_card", os.path.basename(clean_rel)),
+        os.path.join("static", "uploads", "fita", os.path.basename(clean_rel)),
+        os.path.join("static", "uploads", "cover", os.path.basename(clean_rel)),
+    ]
+    for cp in candidate_paths:
+        if os.path.exists(cp) and os.path.isfile(cp):
+            local_file_path = cp
+            break
+
+    ext = os.path.splitext(local_file_path)[1].lower() if local_file_path else ".jpg"
+    mime_type = "image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else ("image/jpeg" if ext in [".jpg", ".jpeg"] else "image/jpeg"))
 
     image_obj = {"link": full_url}
     if caption and str(caption).strip():
         image_obj["caption"] = str(caption).strip()
 
-    payload = {
+    link_payload = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
         "to": norm_to,
@@ -616,48 +628,50 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str = "", phone
     }
 
     for cur_phone_id in target_phone_ids:
-        url = f"{GRAPH_API_URL}/{cur_phone_id}/messages"
+        msg_url = f"{GRAPH_API_URL}/{cur_phone_id}/messages"
         headers = {
             "Authorization": f"Bearer {clean_token}",
             "Content-Type": "application/json"
         }
 
+        # 1. Primary Method: Direct Binary Media Upload to Meta (100% reliable, zero dependency on Meta fetching Render URLs)
+        if local_file_path and os.path.exists(local_file_path):
+            try:
+                upload_url = f"{GRAPH_API_URL}/{cur_phone_id}/media"
+                upload_headers = {"Authorization": f"Bearer {clean_token}"}
+                with open(local_file_path, "rb") as f_img:
+                    files = {"file": (os.path.basename(local_file_path), f_img, mime_type)}
+                    data = {"messaging_product": "whatsapp", "type": mime_type}
+                    up_resp = requests.post(upload_url, headers=upload_headers, files=files, data=data, timeout=25)
+                    if up_resp.status_code in [200, 201]:
+                        media_id = up_resp.json().get("id")
+                        if media_id:
+                            media_payload = {
+                                "messaging_product": "whatsapp",
+                                "recipient_type": "individual",
+                                "to": norm_to,
+                                "type": "image",
+                                "image": {"id": media_id, "caption": str(caption).strip() if caption else ""}
+                            }
+                            r_media = requests.post(msg_url, headers=headers, json=media_payload, timeout=20)
+                            if r_media.status_code in [200, 201]:
+                                print(f"[WhatsApp Send] Image Direct Binary Upload SUCCESS: workspace_id={workspace_id or 1} phone_id={cur_phone_id} media_id={media_id} recipient={masked_rec}")
+                                return True
+                            else:
+                                print(f"[WhatsApp Send Binary Payload Warning]: {r_media.status_code} {r_media.text}. Falling back to URL link.")
+            except Exception as up_err:
+                print(f"[WhatsApp Send Image Upload Warning]: {up_err}. Falling back to URL link.")
+
+        # 2. Fallback Method: URL Link Attachment
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=20)
+            r = requests.post(msg_url, headers=headers, json=link_payload, timeout=20)
             status_ok = r.status_code in [200, 201]
             if status_ok:
-                print(f"[WhatsApp Send] Image: workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source=explicit token_valid=true status=success http_status={r.status_code}")
+                print(f"[WhatsApp Send] Image URL Link: workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} status=success http_status={r.status_code}")
                 return True
             else:
                 err_text = r.text
                 print(f"[WhatsApp Send ERROR] Image URL send failed: phone_number_id={cur_phone_id} recipient={masked_rec} http_status={r.status_code} reason={err_text}")
-
-                # If URL send failed and local file exists, try uploading binary media to Meta
-                if local_file_path and os.path.exists(local_file_path):
-                    try:
-                        upload_url = f"{GRAPH_API_URL}/{cur_phone_id}/media"
-                        upload_headers = {"Authorization": f"Bearer {clean_token}"}
-                        with open(local_file_path, "rb") as f_img:
-                            files = {"file": (os.path.basename(local_file_path), f_img, "image/jpeg")}
-                            data = {"messaging_product": "whatsapp", "type": "image/jpeg"}
-                            up_resp = requests.post(upload_url, headers=upload_headers, files=files, data=data, timeout=25)
-                            if up_resp.status_code in [200, 201]:
-                                media_id = up_resp.json().get("id")
-                                if media_id:
-                                    media_payload = {
-                                        "messaging_product": "whatsapp",
-                                        "recipient_type": "individual",
-                                        "to": norm_to,
-                                        "type": "image",
-                                        "image": {"id": media_id, "caption": str(caption).strip() if caption else ""}
-                                    }
-                                    r_media = requests.post(url, headers=headers, json=media_payload, timeout=20)
-                                    if r_media.status_code in [200, 201]:
-                                        print(f"[WhatsApp Send] Image Uploaded & Sent: phone_id={cur_phone_id} media_id={media_id} recipient={masked_rec}")
-                                        return True
-                    except Exception as up_err:
-                        print(f"[WhatsApp Send Image Upload Exception]: {up_err}")
-
                 if r.status_code == 400 and "does not exist" in err_text.lower() and cur_phone_id != target_phone_ids[-1]:
                     continue
                 return False
