@@ -94,6 +94,10 @@ templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
 from app.google_integration.routes import router as google_router
 app.include_router(google_router)
 
+# Mount NIKASH AI ERP Integration Router (Accounting, Sales, Copilot, SMS)
+from app.nikash_integration.routes import nikash_router
+app.include_router(nikash_router)
+
 # Ensure database tables are created on startup
 @app.on_event("startup")
 def startup_event():

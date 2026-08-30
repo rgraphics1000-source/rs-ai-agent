@@ -158,7 +158,24 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
   • ভদ্রভাবে বলবে: "জি {honorific}, ঠিক আছে, কোনো সমস্যা নেই। পরবর্তীতে আপনার অন্য কোনো সেবা বা তথ্যের প্রয়োজন হলে অবশ্যই জানাবেন।"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔴 অত্যন্ত গুরুত্বপূর্ণ সেলস, প্রাইসিং ও বিহেভিয়ার রুলস (Strict Business & Sales Rules):
+🔴 অত্যন্ত গুরুত্বপূর্ণ সেলস, প্রাইসিং ও বিহেভিয়ার রুলস (Strict Business & Sales Rules
+
+🚨🚨🚨 STRICT ZERO-REPETITION & ADVANCED MEMORY PROTOCOL (এক প্রশ্ন ও স্যাম্পল দ্বিতীয়বার নয়) 🚨🚨🚨
+১. পরিমাণ (QUANTITY) কখনো দ্বিতীয়বার জিজ্ঞাসা করবে না:
+   - কাস্টমার যদি চ্যাটের পূর্বে যেকোনো মেসেজে পরিমাণ বা পিস উল্লেখ করে থাকে (যেমন: "১০০ পিস", "৫০ টি", "১০০টা", "২০০ বানাবো"), তাহলে ভুলেও আর কখনোই "কত পিস বানাবেন?", "আপনার কোয়ান্টিটি কত?" ইত্যাদি জিজ্ঞাসা করবে না!
+   - সরাসরি সেই পরিমাণ অনুযায়ী মোট হিসাব, ডেলিভারি ও পরবর্তী ধাপ নিয়ে কথা বলবে।
+
+২. স্যাম্পল বা ছবি একবার পাঠালে আর কখনোই অফার করবে না:
+   - যদি চ্যাটে কাস্টমারকে ইতোমধ্যে স্যাম্পল ছবি, কম্বোর ছবি বা ডেমো ভিডিও পাঠানো হয়ে থাকে, তবে পরবর্তীতে "আমাদের স্যাম্পলগুলো কি পাঠাবো?", "স্যাম্পল দেখতে চান?" ইত্যাদি প্রশ্ন করা সম্পূর্ণ নিষিদ্ধ!
+   - স্যাম্পল পাঠানোর পর কাস্টমারের প্রতিক্রিয়া শুনবে এবং সরাসরি অর্ডার কনফার্মেশনের দিকে এগিয়ে যাবে।
+
+৩. একমুখী প্রোগ্রেসিভ সেলস ফানেল (ALWAYS MOVE FORWARD, NEVER BACKWARD):
+   - ধাপ ১: পণ্যের পছন্দ ও পরিমাণ জানা (একবার)
+   - ধাপ ২: স্যাম্পল ও বিস্তারিত দাম দেওয়া (একবার)
+   - ধাপ ৩: অর্ডার কনফার্মেশন ও ঠিকানা নেওয়া
+   - ধাপ ৪: ক্যাশ মেমো ও ধন্যবাদ বার্তা।
+   - কাস্টমার যে ধাপে উত্তর দিয়েছে, এআই কখনোই পূর্ববর্তী ধাপে ব্যাক করে রিপিটেড প্রশ্ন করবে না।
+):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ০. আইডি কার্ড তৈরির প্রাথমিক প্রশ্ন ও অর্ডার পরিমাণ (Primary Question):
@@ -1918,12 +1935,33 @@ async def process_customer_message(
         # Prioritize high-quota, ultra-fast sub-second working models (gemini-3.5-flash-lite responds in <1s)
         candidate_models = [
             "gemini-3.5-flash-lite",
-            "gemini-3.5-flash",
-            "gemini-3.1-flash-lite"
+            "gemini-3.6-flash",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite"
         ]
 
+        # --- REAL-TIME ANTI-REPETITION MEMORY GUARD ---
+        known_qty_in_history = None
+        samples_already_sent_in_history = False
+
+        for h in (conversation_history or []):
+            h_text = (h.get('text') or '').lower()
+            if h.get('sender') == 'user' or h.get('role') == 'user':
+                qty_match = re.search(r'(\d+)\s*(পিস|টা|টি|টা বানাব|পিস বানাব|pcs|pc)', h_text)
+                if qty_match:
+                    known_qty_in_history = qty_match.group(1)
+            if h.get('sender') == 'ai' or h.get('role') == 'model' or h.get('role') == 'assistant':
+                if 'স্যাম্পল' in h_text or 'ছবি' in h_text or h.get('has_images') or h.get('has_media'):
+                    samples_already_sent_in_history = True
+
+        realtime_memory_guard = ''
+        if known_qty_in_history:
+            realtime_memory_guard += f"\n[🚨 সেশন মেমোরি সতর্কতা: কাস্টমার ইতোমধ্যে পরিমাণ '{known_qty_in_history} পিস' জানিয়েছেন। ভুলেও তাকে আর 'কত পিস বানাবেন' জিজ্ঞাসা করবেন না! সরাসরি {known_qty_in_history} পিসের মোট দাম ও অর্ডারের কথা বলুন।]\n"
+        if samples_already_sent_in_history:
+            realtime_memory_guard += f"\n[🚨 সেশন মেমোরি সতর্কতা: কাস্টমারকে ইতোমধ্যে স্যাম্পল/ছবি পাঠানো হয়েছে। ভুলেও আর 'স্যাম্পল পাঠাব কি না' অফার করবেন না!]\n"
+
         response = None
-        system_instruction = build_system_instruction(customer_name=customer_name, workspace_id=ws_id, page_id=page_id)
+        system_instruction = realtime_memory_guard + '\n' + build_system_instruction(customer_name=customer_name, workspace_id=ws_id, page_id=page_id)
 
         for m_name in candidate_models:
             try:

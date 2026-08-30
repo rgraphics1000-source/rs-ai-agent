@@ -17,10 +17,17 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="/static/css/style.css?v=20260820v7">
+    <style>
+        /* When embedded inside NIKASH ERP, hide duplicate Products menu and Add Product button */
+        body.embedded-nikash .nav-item[data-tab="products"],
+        body.embedded-nikash button[onclick*="modal-add-product"],
+        body.embedded-nikash a[href*="RS_AI.apk"] {
+            display: none !important;
+        }
+    </style>
 </head>
-<body>
+<body onload="if(window.location.search.includes('embed=nikash') || window.self !== window.top) { document.body.classList.add('embedded-nikash'); }">
 
     <!-- Sidebar Backdrop for Mobile -->
     <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="toggleMobileSidebar()"></div>
@@ -28,10 +35,10 @@
     <!-- Sidebar Navigation (RS_AI Style) -->
     <aside class="sidebar" id="app-sidebar">
         <div class="brand">
-            <img src="/static/img/logo.png" class="brand-logo-img" alt="RS AI Logo">
+            <img src="/static/img/ai-agent-logo.png" class="brand-logo-img" alt="Nikash AI Logo">
             <div class="brand-text-wrapper">
-                <div class="brand-title">RS_AI</div>
-                <div class="brand-tagline">Autonomous Sales Platform</div>
+                <div class="brand-title">Nikash AI™</div>
+                <div class="brand-tagline">Sales & Business Copilot</div>
             </div>
             <button class="mobile-sidebar-close" onclick="toggleMobileSidebar()">&times;</button>
         </div>
