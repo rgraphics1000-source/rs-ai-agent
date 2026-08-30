@@ -830,6 +830,91 @@ async def api_enable_chat_ai(request: Request):
 # ==========================================
 # WORKSPACE / BUSINESS MANAGEMENT APIS
 # ==========================================
+@app.get("/api/workspaces/resolve")
+async def api_resolve_tenant_workspace(
+    license_key: Optional[str] = Query(None),
+    shop_name: Optional[str] = Query(None),
+    email: Optional[str] = Query(None),
+    tenant_id: Optional[str] = Query(None)
+):
+    """
+    Strict Multi-Tenant Workspace Resolver:
+    Resolves or registers a business workspace dynamically by license key / shop identity.
+    Guarantees RS Graphics (Workspace 1) is never mixed with client accounts.
+    """
+    clean_lic = (license_key or "").strip().upper()
+    clean_shop = (shop_name or "").strip()
+    clean_email = (email or "").strip().lower()
+    
+    # RS Graphics Master Account check
+    is_master = (
+        clean_lic == "RSC-NIKASH-TSXB-2894-6302-920Q" or
+        "rs graphics" in clean_shop.lower() or
+        "আর এস গ্রাফিক্স" in clean_shop or
+        "rsgraphics" in clean_email or
+        "admin@rsgraphics" in clean_email
+    )
+    
+    if is_master:
+        return {
+            "success": True,
+            "workspace_id": 1,
+            "is_master": True,
+            "workspace_name": "RS Graphics (আরএস গ্রাফিক্স)"
+        }
+    
+    # For any other client account, resolve or create an isolated workspace
+    slug = None
+    if clean_lic and clean_lic != "NKSH-UNREGISTERED":
+        slug = f"lic_{clean_lic.lower().replace(' ', '_')}"
+    elif tenant_id:
+        slug = f"tenant_{tenant_id.lower().replace(' ', '_')}"
+    elif clean_email:
+        slug = f"user_{clean_email.replace('@', '_at_').replace('.', '_')}"
+    elif clean_shop:
+        slug = f"shop_{clean_shop.lower().replace(' ', '_')}"
+        
+    if not slug:
+        return {
+            "success": True,
+            "workspace_id": None,
+            "is_master": False,
+            "workspace_name": clean_shop or "Unregistered Shop",
+            "message": "No workspace identity provided"
+        }
+        
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM workspaces WHERE slug = ? OR (shop_name = ? AND id != 1) LIMIT 1", (slug, clean_shop if clean_shop else "___NONE___"))
+    row = cursor.fetchone()
+    
+    if row:
+        ws_id = row["id"]
+        ws_name = row["name"]
+        conn.close()
+        return {
+            "success": True,
+            "workspace_id": ws_id,
+            "is_master": False,
+            "workspace_name": ws_name
+        }
+    else:
+        # Create isolated workspace for this client
+        ws_title = clean_shop or f"Shop ({clean_lic or 'Client'})"
+        cursor.execute("""
+            INSERT INTO workspaces (name, slug, shop_name, status, created_at, updated_at)
+            VALUES (?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """, (ws_title, slug, clean_shop or ws_title))
+        new_ws_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return {
+            "success": True,
+            "workspace_id": new_ws_id,
+            "is_master": False,
+            "workspace_name": ws_title
+        }
+
 @app.get("/api/workspaces")
 async def api_get_workspaces():
     """Lists all registered business workspaces."""

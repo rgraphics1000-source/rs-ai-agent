@@ -2,7 +2,12 @@ from typing import Optional
 from app.database import get_db_connection
 
 def get_all_conversations(workspace_id: Optional[int] = None, page_id: str = None, channel: str = None) -> list:
-    """Returns all active conversations sorted by updated_at with linked Page & Workspace info."""
+    """Returns all active conversations sorted by updated_at with linked Page & Workspace info strictly isolated per workspace."""
+    # STRICT MULTI-TENANT ISOLATION:
+    # If no workspace_id and no page_id is provided, never return all conversations across tenants!
+    if not workspace_id and not page_id:
+        return []
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
