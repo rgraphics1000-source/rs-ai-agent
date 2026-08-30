@@ -26,7 +26,7 @@ def get_all_conversations(workspace_id: Optional[int] = None, page_id: str = Non
             query += " AND c.channel = ?"
             params.append(str(channel))
             
-        query += " ORDER BY c.updated_at DESC"
+        query += " ORDER BY c.updated_at DESC LIMIT 150"
         cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
         conn.close()
