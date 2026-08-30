@@ -28,7 +28,7 @@ class PendingBatch:
         page_id: str = "",
         effective_phone_id: str = "",
         effective_token: str = "",
-        debounce_seconds: float = 3.0
+        debounce_seconds: float = 1.2
     ):
         self.channel = channel
         self.workspace_id = workspace_id
@@ -67,7 +67,7 @@ class MessageDebouncer:
     - Priority 0 immediate cancellation upon Admin Takeover.
     - Idempotency against duplicate webhook messages.
     """
-    def __init__(self, debounce_seconds: float = 3.0):
+    def __init__(self, debounce_seconds: float = 1.2):
         self.debounce_seconds = debounce_seconds
         self._batches: Dict[str, PendingBatch] = {}
         self._processed_batches: Set[str] = set()
@@ -322,4 +322,4 @@ class MessageDebouncer:
 
 
 # Global debouncer instance
-message_debouncer = MessageDebouncer(debounce_seconds=3.0)
+message_debouncer = MessageDebouncer(debounce_seconds=1.2)
