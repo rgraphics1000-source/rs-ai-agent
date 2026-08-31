@@ -25,10 +25,8 @@ COPY . .
 # Ensure upload directory exists and has full permissions
 RUN mkdir -p static/uploads && chmod -R 777 static/uploads
 
-# Expose ports (10000 for Render, 7860 for Hugging Face, 8000 for VPS/local)
+# Expose port 10000 for Render
 EXPOSE 10000
-EXPOSE 8000
-EXPOSE 7860
 
-# Launch FastAPI app with Uvicorn on dynamic PORT (default 10000 for Render)
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]
+# Launch FastAPI app via run.py with dynamic PORT binding
+CMD ["python", "run.py"]
