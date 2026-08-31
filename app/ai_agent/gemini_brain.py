@@ -95,6 +95,8 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
     catalog = get_product_catalog_context(workspace_id=workspace_id)
     honorific = detect_customer_gender_title(customer_name)
 
+
+
     # Load in-app custom training rules from database for THIS workspace (Real-time dynamic training)
     training_rules = get_active_training_rules(workspace_id=workspace_id)
     training_text = ""
@@ -1439,14 +1441,13 @@ def evaluate_id_card_workflow(
             "response_source": "ready_package_dispatch"
         }
 
-    # Case C2: Price Inquiry after seeing samples ("দাম সহ দিন" / "কোনটার দাম কত" / "দাম কত")
-    is_asking_price_or_packages = any(k in msg for k in [
-        "দাম সহ দিন", "দাম সহ দেন", "দাম সহ দেখান", "দাম সহ পাঠান", "দাম সহ", "দামসহ",
-        "কোনটার দাম কত", "দাম কত", "খরচ কত", "রেট কত", "প্রাইস কত", "দাম বলেন", "রেট বলেন", "মূল্য কত",
-        "কত করে", "খরচ কেমন", "দাম কত করে", "প্যাকেজের দাম কত", "কোনটার কত দাম", "দাম জানতে চাই"
+    # Case C2: Price Inquiry for ID Card Packages ONLY when specifically asking for package prices
+    is_asking_id_card_packages = any(k in msg for k in [
+        "প্যাকেজের দাম কত", "প্যাকেজের দাম", "প্যাকেজের রেট", "প্যাকেজগুলোর দাম সহ", "কার্ড ফিতা কভার প্যাকেজ", "প্যাকেজ কত",
+        "দাম সহ প্যাকেজ", "প্যাকেজ রেট"
     ]) and not any(k in msg for k in ["বানাবো", "বানাব", "বানাতে চাই", "অর্ডার করব", "অর্ডার করবো"])
 
-    if is_asking_price_or_packages:
+    if is_asking_id_card_packages:
         return {
             "reply_text": f"জি {honorific}, আমাদের কার্ড, ফিতা এবং কভার মিলিয়ে কিছু আকর্ষণীয় 'রেডি প্যাকেজ' করা আছে (যার মধ্যে রেগুলার পাইকারি মূল্য দেওয়া আছে)। আমি কি তাহলে আমাদের রেডি প্যাকেজগুলোর ছবি ও বিস্তারিত পাঠাবো {honorific}?",
             "media_sequence": [],
@@ -2282,7 +2283,7 @@ async def process_customer_message(
         }
 
     except Exception as e:
-        print(f"[GeminiBrain Error]: {e}")
+        import traceback; traceback.print_exc(); print(f"[GeminiBrain Error]: {e}")
         try:
             workflow_res = resolve_google_form_workflow(
                 user_message=message_text,
