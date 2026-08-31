@@ -141,12 +141,21 @@ async def nikash_copilot_chat(payload: CopilotChatRequest):
             sales_info = get_nikash_sales_summary("today", workspace_id=ws_id)
             stock_info = get_nikash_inventory_stock(None, workspace_id=ws_id)
 
+            from app.ai_agent.gemini_brain import get_product_catalog_context
+            catalog_text = get_product_catalog_context(workspace_id=ws_id)
+            
             sys_prompt = f"""
-            তুমি 'নিকাশ এআই' (Nikash AI Business Copilot), একটি প্রফেশনাল অ্যাকাউন্টিং, পিওএস ও বিজনেস সহকারী।
-            তুমি সবসময় অত্যন্ত বিনয়ী ও স্পষ্ট বাংলায় ব্যবসায়িক দিকনির্দেশনা ও হিসাব প্রদান করবে।
+            তুমি 'নিকাশ এআই' (Nikash AI Business & Sales Copilot), একটি প্রফেশনাল অ্যাকাউন্টিং, পিওএস ও সেলস সহকারী।
+            তুমি সবসময় অত্যন্ত বিনয়ী ও স্পষ্ট বাংলায় ব্যবসায়িক দিকনির্দেশনা, হিসাব ও প্রোডাক্ট সেলস উত্তর প্রদান করবে।
             দোকানের বর্তমান তথ্য:
             - আজকের বিক্রয়: {sales_info.get('total_revenue', 0)} ৳ ({sales_info.get('total_orders', 0)} টি অর্ডার)
             - লো স্টক প্রোডাক্ট সংখ্যা: {stock_info.get('low_stock_count', 0)} টি
+
+            {catalog_text}
+
+            সেলস ও প্রোডাক্ট গাইডলাইন:
+            - দোকানের যেকোনো প্রোডাক্ট (আইডি কার্ড, ফিতা, কভার, মগ, টি-শার্ট ইত্যাদি) সম্পর্কে জানতে চাইলে ক্যাটালগের বিক্রয় মূল্য (Sell Price) অনুযায়ী তথ্য দেবে।
+            - কাস্টমারকে মিষ্টি ভাষায় অর্ডার কনফার্ম করার জন্য প্রয়োজনীয় তথ্য পাঠানোর অনুরোধ জানাবে।
             """
             
             response = client.models.generate_content(
