@@ -25,14 +25,23 @@ class CopilotChatRequest(BaseModel):
     context: Optional[Dict[str, Any]] = None
 
 class ProductSyncItem(BaseModel):
+    id: Optional[Any] = None
     name: str
     code: Optional[str] = None
-    price: float
+    sku: Optional[str] = None
+    barcode: Optional[str] = None
+    price: Optional[float] = None
+    sellPrice: Optional[float] = None
+    buyPrice: Optional[float] = None
     discount_price: Optional[float] = None
-    stock: int = 10
+    stock: Optional[int] = 10
     category: Optional[str] = "General"
+    brand: Optional[str] = ""
+    size: Optional[str] = ""
+    color: Optional[str] = ""
     description: Optional[str] = ""
     image_url: Optional[str] = None
+    imageUrl: Optional[str] = None
 
 class ProductSyncRequest(BaseModel):
     products: List[ProductSyncItem]
@@ -175,14 +184,32 @@ async def nikash_copilot_chat(payload: CopilotChatRequest):
 # ==========================================
 @nikash_router.post("/sync/products")
 async def sync_nikash_products(payload: ProductSyncRequest):
-    """Syncs product items from NIKASH POS into AI Agent catalog."""
+    """Syncs product items from NIKASH ERP / POS into AI Agent catalog."""
     conn = get_db_connection()
     cursor = conn.cursor()
     synced_count = 0
     ws_id = payload.workspace_id or 1
 
     for p in payload.products:
-        p_code = p.code or f"PROD-{abs(hash(p.name)) % 100000}"
+        p_name = (p.name or "").strip()
+        if not p_name:
+            continue
+        
+        p_code = str(p.sku or p.code or p.barcode or p.id or f"PROD-{abs(hash(p_name)) % 100000}").strip()
+        sell_price = p.sellPrice if p.sellPrice is not None else (p.price if p.price is not None else 0.0)
+        disc_price = p.discount_price if p.discount_price is not None else sell_price
+        img_url = p.imageUrl or p.image_url
+        
+        # Build rich description including size, color, brand
+        desc_parts = []
+        if p.brand: desc_parts.append(f"ব্র্যান্ড: {p.brand}")
+        if p.size: desc_parts.append(f"সাইজ: {p.size}")
+        if p.color: desc_parts.append(f"কালার: {p.color}")
+        if p.description: desc_parts.append(p.description)
+        full_desc = " | ".join(desc_parts) if desc_parts else "নিকাশ ইআরপি প্রোডাক্ট"
+
+        stock_qty = p.stock if p.stock is not None else 100
+
         cursor.execute("""
             INSERT INTO products (
                 name, code, price, discount_price, stock, category, description, image_url, workspace_id, is_active
@@ -195,9 +222,11 @@ async def sync_nikash_products(payload: ProductSyncRequest):
                 category = excluded.category,
                 description = excluded.description,
                 image_url = COALESCE(excluded.image_url, products.image_url),
-                updated_at = CURRENT_TIMESTAMP
+                workspace_id = excluded.workspace_id,
+                is_active = 1,
+                is_active = 1
         """, (
-            p.name, p_code, p.price, p.discount_price, p.stock, p.category, p.description, p.image_url, ws_id
+            p_name, p_code, float(sell_price), float(disc_price), int(stock_qty), p.category or "General", full_desc, img_url, ws_id
         ))
         synced_count += 1
 
@@ -207,7 +236,7 @@ async def sync_nikash_products(payload: ProductSyncRequest):
     return {
         "success": True,
         "synced_count": synced_count,
-        "message": f"{synced_count} টি প্রডাক্ট সফলভাবে নিকাশ এআই ক্যাটালগে সিঙ্ক হয়েছে।"
+        "message": f"{synced_count} টি প্রোডাক্ট সফলভাবে নিকাশ এআই ব্রেইনে সিঙ্ক হয়েছে।"
     }
 
 # ==========================================
