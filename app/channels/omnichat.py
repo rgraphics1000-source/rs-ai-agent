@@ -12,7 +12,10 @@ def get_all_conversations(workspace_id: Optional[int] = None, page_id: str = Non
         conn = get_db_connection()
         cursor = conn.cursor()
         query = """
-            SELECT c.id, c.channel, c.sender_id, c.customer_name, c.last_message, c.human_takeover, c.updated_at, c.page_id, c.workspace_id,
+            SELECT c.id, c.channel, c.sender_id, c.customer_name, c.last_message, 
+                   COALESCE(c.admin_takeover, c.human_takeover, 0) as human_takeover,
+                   COALESCE(c.ai_enabled, 1) as ai_enabled,
+                   c.updated_at, c.page_id, c.workspace_id,
                    COALESCE(cp.page_name, cp.shop_name, w.name, 'RS Graphics') as page_name,
                    w.name as workspace_name
             FROM conversations c

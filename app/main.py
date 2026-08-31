@@ -802,9 +802,10 @@ async def api_admin_send_reply(request: Request):
 async def api_toggle_chat_ai(request: Request):
     data = await request.json()
     cid = data.get("conversation_id")
+    status = data.get("status") # 1 for block (takeover), 0 for unblock (ai active)
     human_takeover = 0
     if cid:
-        toggle_conversation_ai(cid)
+        toggle_conversation_ai(cid, status=status)
         try:
             conn = get_db_connection()
             c = conn.cursor()
