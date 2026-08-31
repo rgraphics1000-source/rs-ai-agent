@@ -9,9 +9,9 @@ services:
       - key: PORT
         value: "10000"
       - key: WHATSAPP_WABA_ID
-        value: "271335301757320"
+        value: "27905447135785944"
       - key: WHATSAPP_PHONE_NUMBER_ID
-        value: "418451426636680"
+        value: "4184514263660680"
       - key: WHATSAPP_DISPLAY_PHONE_NUMBER
         value: "+8801816504097"
       - key: WHATSAPP_VERIFY_TOKEN
