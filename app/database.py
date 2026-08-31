@@ -1634,26 +1634,42 @@ def get_conversation_state(sender_id: str = None, conversation_id: int = None, w
             row = cursor.fetchone()
         elif sender_id:
             ws_id = int(workspace_id or 1)
-            cursor.execute("""
-                SELECT id, sender_id, workspace_id, human_takeover,
-                       COALESCE(admin_takeover, human_takeover, 0) as admin_takeover,
-                       COALESCE(ai_enabled, CASE WHEN human_takeover = 1 THEN 0 ELSE 1 END) as ai_enabled,
-                       COALESCE(conversation_version, 1) as conversation_version,
-                       takeover_at, takeover_by, takeover_reason
-                FROM conversations WHERE sender_id = ? AND workspace_id = ?
-                ORDER BY id DESC LIMIT 1
-            """, (str(sender_id), ws_id))
-            row = cursor.fetchone()
-            if not row:
+            clean_s = "".join(c for c in str(sender_id or "") if c.isdigit())
+            last10 = clean_s[-10:] if len(clean_s) >= 10 else clean_s
+            if last10:
                 cursor.execute("""
                     SELECT id, sender_id, workspace_id, human_takeover,
                            COALESCE(admin_takeover, human_takeover, 0) as admin_takeover,
                            COALESCE(ai_enabled, CASE WHEN human_takeover = 1 THEN 0 ELSE 1 END) as ai_enabled,
                            COALESCE(conversation_version, 1) as conversation_version,
                            takeover_at, takeover_by, takeover_reason
-                    FROM conversations WHERE sender_id = ?
+                    FROM conversations 
+                    WHERE (sender_id = ? OR sender_id LIKE ? OR sender_id LIKE ?)
+                      AND (workspace_id = ? OR workspace_id IS NULL)
                     ORDER BY id DESC LIMIT 1
-                """, (str(sender_id),))
+                """, (str(sender_id), f"%{last10}%", f"%{clean_s}%", ws_id))
+            else:
+                cursor.execute("""
+                    SELECT id, sender_id, workspace_id, human_takeover,
+                           COALESCE(admin_takeover, human_takeover, 0) as admin_takeover,
+                           COALESCE(ai_enabled, CASE WHEN human_takeover = 1 THEN 0 ELSE 1 END) as ai_enabled,
+                           COALESCE(conversation_version, 1) as conversation_version,
+                           takeover_at, takeover_by, takeover_reason
+                    FROM conversations WHERE sender_id = ? AND workspace_id = ?
+                    ORDER BY id DESC LIMIT 1
+                """, (str(sender_id), ws_id))
+            row = cursor.fetchone()
+            if not row and last10:
+                cursor.execute("""
+                    SELECT id, sender_id, workspace_id, human_takeover,
+                           COALESCE(admin_takeover, human_takeover, 0) as admin_takeover,
+                           COALESCE(ai_enabled, CASE WHEN human_takeover = 1 THEN 0 ELSE 1 END) as ai_enabled,
+                           COALESCE(conversation_version, 1) as conversation_version,
+                           takeover_at, takeover_by, takeover_reason
+                    FROM conversations 
+                    WHERE sender_id = ? OR sender_id LIKE ? OR sender_id LIKE ?
+                    ORDER BY id DESC LIMIT 1
+                """, (str(sender_id), f"%{last10}%", f"%{clean_s}%"))
                 row = cursor.fetchone()
         else:
             conn.close()
@@ -1705,7 +1721,16 @@ def set_admin_takeover(
         if conversation_id:
             target_conv_ids = [conversation_id]
         elif sender_id:
-            cursor.execute("SELECT id FROM conversations WHERE sender_id = ? AND (workspace_id = ? OR workspace_id IS NULL)", (str(sender_id), ws_id))
+            clean_s = "".join(c for c in str(sender_id or "") if c.isdigit())
+            last10 = clean_s[-10:] if len(clean_s) >= 10 else clean_s
+            if last10:
+                cursor.execute("""
+                    SELECT id FROM conversations 
+                    WHERE (sender_id = ? OR sender_id LIKE ? OR sender_id LIKE ?) 
+                      AND (workspace_id = ? OR workspace_id IS NULL)
+                """, (str(sender_id), f"%{last10}%", f"%{clean_s}%", ws_id))
+            else:
+                cursor.execute("SELECT id FROM conversations WHERE sender_id = ? AND (workspace_id = ? OR workspace_id IS NULL)", (str(sender_id), ws_id))
             rows = cursor.fetchall()
             target_conv_ids = [r["id"] for r in rows]
             
@@ -1836,12 +1861,62 @@ def is_conversation_ai_active(sender_id: str = None, conversation_id: int = None
     - Master Switch is OFF
     - Phone number is in blacklist/muted
     - admin_takeover == 1 or human_takeover == 1 or ai_enabled == 0 in conversations table
+    - Owner/Admin has sent the most recent message in the conversation (human conversation in progress)
     """
+    # 1. Master Switch Check
+    if get_setting("ai_enabled", "true").lower() == "false":
+        return False
+
+    # 2. Blacklisted / Muted Number Check
     if sender_id and is_muted_number(str(sender_id)):
         return False
+
+    # 3. Deterministic DB State Check
     state = get_conversation_state(sender_id=sender_id, conversation_id=conversation_id, workspace_id=workspace_id)
     if state.get("admin_takeover") is True or state.get("ai_enabled") is False or state.get("human_takeover", 0) == 1:
         return False
+
+    # 4. Check if the most recent message was sent by human admin / shop owner
+    if sender_id or conversation_id:
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            clean_s = "".join(c for c in str(sender_id or "") if c.isdigit())
+            last10 = clean_s[-10:] if len(clean_s) >= 10 else clean_s
+
+            if conversation_id:
+                cursor.execute("""
+                    SELECT sender_type, sender_role, direction FROM messages
+                    WHERE conversation_id = ?
+                    ORDER BY id DESC LIMIT 1
+                """, (conversation_id,))
+            elif last10:
+                cursor.execute("""
+                    SELECT m.sender_type, m.sender_role, m.direction 
+                    FROM messages m
+                    JOIN conversations c ON m.conversation_id = c.id
+                    WHERE (c.sender_id = ? OR c.sender_id LIKE ? OR c.sender_id LIKE ?)
+                    ORDER BY m.id DESC LIMIT 1
+                """, (str(sender_id), f"%{last10}%", f"%{clean_s}%"))
+            else:
+                cursor.execute("""
+                    SELECT m.sender_type, m.sender_role, m.direction 
+                    FROM messages m
+                    JOIN conversations c ON m.conversation_id = c.id
+                    WHERE c.sender_id = ?
+                    ORDER BY m.id DESC LIMIT 1
+                """, (str(sender_id),))
+            last_msg = cursor.fetchone()
+            conn.close()
+
+            if last_msg:
+                s_type = str(last_msg["sender_type"] or "").lower()
+                s_role = str(last_msg["sender_role"] or "").upper()
+                if s_type == "admin" or s_role == "ADMIN":
+                    return False
+        except Exception:
+            pass
+
     return True
 
 # ============================================================
