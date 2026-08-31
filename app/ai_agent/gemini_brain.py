@@ -501,6 +501,96 @@ def extract_order_quantity_number(text: str) -> Optional[int]:
 
     return None
 
+def analyze_conversation_history_context(conversation_history: list = None, current_message: str = "") -> dict:
+    """
+    Comprehensive Context & Memory Extractor for conversational continuity:
+    - Extracts known order quantity (e.g. 100 pcs) from customer, bot, or admin turns across entire history
+    - Detects what samples or package photos were ALREADY sent
+    - Captures Human Admin / Shop Owner instructions and previous agreements
+    - Prevents repeating questions, duplicate photo floods, and redundant sample prompts
+    """
+    context = {
+        "known_quantity": None,
+        "samples_already_sent": False,
+        "packages_already_sent": False,
+        "card_samples_sent": False,
+        "fita_samples_sent": False,
+        "cover_samples_sent": False,
+        "owner_messages": [],
+        "last_owner_instruction": "",
+        "last_speaker": "none",
+        "already_asked_quantity": False,
+        "already_asked_sample_permission": False,
+        "chosen_package": None,
+        "institution_name": None,
+        "history_summary_text": ""
+    }
+
+    if not conversation_history:
+        curr_qty = extract_order_quantity_number(current_message)
+        if curr_qty and curr_qty >= 1:
+            context["known_quantity"] = curr_qty
+        return context
+
+    summary_lines = []
+
+    for msg in conversation_history:
+        sender_role = str(msg.get("sender_role") or msg.get("sender") or msg.get("sender_type") or msg.get("role") or "").lower()
+        content = str(msg.get("content") or msg.get("text") or "").strip()
+        media_url = str(msg.get("media_url") or msg.get("image_url") or "")
+        
+        c_low = content.lower()
+        
+        # Check media / images sent in history
+        if media_url or any(ext in c_low for ext in [".jpg", ".png", ".jpeg", "/uploads/"]) or msg.get("has_images") or msg.get("has_media"):
+            context["samples_already_sent"] = True
+            m_low = (media_url or c_low).lower()
+            if "package" in m_low or "wa000" in m_low or "প্যাকেজ" in c_low or "রেডি প্যাকেজ" in c_low:
+                context["packages_already_sent"] = True
+            if "card" in m_low or "কার্ড" in c_low:
+                context["card_samples_sent"] = True
+            if "fita" in m_low or "ribbon" in m_low or "ফিতা" in c_low:
+                context["fita_samples_sent"] = True
+            if "cover" in m_low or "holder" in m_low or "কভার" in c_low:
+                context["cover_samples_sent"] = True
+
+        # Check speaker turns
+        if sender_role in ("admin", "owner", "main_admin", "seller"):
+            if content:
+                context["owner_messages"].append(content)
+                context["last_owner_instruction"] = content
+                context["last_speaker"] = "owner"
+                summary_lines.append(f"• শপ ওনার / মূল অ্যাডমিন বলেছেন: \"{content}\"")
+                owner_qty = extract_order_quantity_number(c_low)
+                if owner_qty and owner_qty >= 1:
+                    context["known_quantity"] = owner_qty
+        elif sender_role in ("bot", "ai", "assistant"):
+            context["last_speaker"] = "ai"
+            if any(k in c_low for k in ["কত পিস বানাবেন", "কত পিস", "কতগুলো", "পরিমাণ কত", "কত পিস প্রয়োজন", "কত পিস লাগবে"]):
+                context["already_asked_quantity"] = True
+            if any(k in c_low for k in ["স্যাম্পল ছবিগুলো পাঠাবো", "ছবিগুলো পাঠাবো", "স্যাম্পল পাঠাব", "স্যাম্পল দেব"]):
+                context["already_asked_sample_permission"] = True
+            if any(k in c_low for k in ["প্যাকেজ ০১", "প্যাকেজ ০২", "প্যাকেজ ০৭", "রেডি প্যাকেজ", "১ থেকে ৭ সিরিয়াল"]):
+                context["packages_already_sent"] = True
+        else:
+            context["last_speaker"] = "customer"
+            q_val = extract_order_quantity_number(c_low)
+            if q_val and q_val >= 1:
+                context["known_quantity"] = q_val
+                summary_lines.append(f"• কাস্টমার পরিমাণ জানিয়েছেন: {q_val} পিস")
+
+            pkg_num = detect_specific_package_number(c_low)
+            if pkg_num is not None:
+                context["chosen_package"] = pkg_num
+                summary_lines.append(f"• কাস্টমার প্যাকেজ পছন্দ করেছেন: প্যাকেজ ০{pkg_num}")
+
+    curr_qty = extract_order_quantity_number(current_message)
+    if curr_qty and curr_qty >= 1:
+        context["known_quantity"] = curr_qty
+
+    context["history_summary_text"] = "\n".join(summary_lines)
+    return context
+
 def get_id_card_sample_images(workspace_id: int = 1) -> list:
     """Returns all 15 ID card sample images."""
     images = []
@@ -1193,16 +1283,25 @@ def evaluate_id_card_workflow(
             "response_source": "cover_sample_dispatch"
         }
 
-    # Check history context for bot questions and prior quantity
+    # 1. Advanced Full-Thread History & Context Analysis
+    hist_ctx = analyze_conversation_history_context(conversation_history, msg)
+    known_qty = hist_ctx.get("known_quantity")
+    samples_already_sent = hist_ctx.get("samples_already_sent") or hist_ctx.get("packages_already_sent")
+    packages_already_sent = hist_ctx.get("packages_already_sent")
+    owner_messages = hist_ctx.get("owner_messages", [])
+    last_owner_msg = hist_ctx.get("last_owner_instruction", "")
+
+    qty = extract_order_quantity_number(msg)
+    effective_qty = qty if qty is not None else known_qty
+
+    # Check bot prompts in last turn
     last_bot_msg = ""
-    history_qty = None
     if conversation_history:
         for m in reversed(conversation_history):
             sender_val = str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower()
-            if sender_val in ("bot", "assistant", "seller") and not last_bot_msg:
+            if sender_val in ("bot", "assistant", "ai", "seller"):
                 last_bot_msg = (m.get("content") or m.get("text") or "").lower()
-            elif sender_val in ("user", "customer") and history_qty is None:
-                history_qty = extract_order_quantity_number((m.get("content") or m.get("text") or "").lower())
+                break
 
     bot_asked_quantity = any(k in last_bot_msg for k in [
         "কত পিস বানাবেন", "কত পিস", "কতগুলো বানাবেন", "কত পিস প্রয়োজন", "কত পিস লাগবে", "পরিমাণ কত"
@@ -1216,31 +1315,49 @@ def evaluate_id_card_workflow(
         "ছবি দেখতে চান", "স্যাম্পল দেখতে চান"
     ])
 
-    qty = extract_order_quantity_number(msg)
-    if qty is None and history_qty is not None:
-        effective_qty = history_qty
-    else:
-        effective_qty = qty
-    
     # Check if message is ID card related (and not negative)
     is_id_card_inquiry = any(k in msg for k in [
         "আইডি কার্ড", "আইডি কাড", "id card", "আইডিকার্ড", "আইডি", "কার্ড বানাতে", "কার্ড করতে", 
         "কার্ড বানাবো", "কার্ড লাগবে", "কার্ডের দাম", "কার্ডের খরচ", "কার্ডের স্যাম্পল"
     ]) and not any(k in msg for k in ["চাচ্ছি না", "চাই না", "বানাব না", "বানাবো না", "করব না", "করবো না", "লাগবে না", "নেব না", "নিব না", "দরকার নাই", "দরকার নেই"])
 
-    # Case A: Initial ID card inquiry without quantity stated
-    if is_id_card_inquiry and qty is None and not any(k in msg for k in ["ছবি", "স্যাম্পল", "প্যাকেজ", "দাম", "কত"]):
+    # Case A: Initial ID card inquiry without quantity stated in CURRENT message
+    if is_id_card_inquiry and not any(k in msg for k in ["ছবি", "স্যাম্পল", "প্যাকেজ", "দাম", "কত"]):
         gave_salam = any(k in msg for k in ["সালাম", "salam", "আসসালামু", "assalamu", "slm"])
         greeting = f"ওয়ালাইকুমুস সালাম {honorific}।" if gave_salam else f"জি {honorific},"
-        return {
-            "reply_text": f"{greeting} অবশ্যই। আপনি আমাদের কাছ থেকে আইডি কার্ড, ফিতা এবং কভারের ফুল প্যাকেজ নিতে পারবেন। আপনার কত পিস প্রয়োজন জানাবেন প্লিজ?",
-            "media_sequence": [],
-            "matched_images": [],
-            "voice_url": "",
-            "video_url": "",
-            "order_created": None,
-            "response_source": "id_card_ask_quantity"
-        }
+        
+        # If quantity is ALREADY KNOWN from previous chat turns, DO NOT ASK AGAIN!
+        if effective_qty:
+            if not samples_already_sent:
+                return {
+                    "reply_text": f"{greeting} অবশ্যই। আপনার {effective_qty} পিস অর্ডারের জন্য আমাদের প্রিমিয়াম প্যাকেজগুলোর রেগুলার পাইকারি রেট প্রযোজ্য হবে। আপনি কি আমাদের রেডি প্যাকেজের ছবি ও রেট দেখতে চাচ্ছেন?",
+                    "media_sequence": [],
+                    "matched_images": [],
+                    "voice_url": "",
+                    "video_url": "",
+                    "order_created": None,
+                    "response_source": "id_card_known_qty_offer_packages"
+                }
+            else:
+                return {
+                    "reply_text": f"{greeting} পূর্বে পাঠানো প্যাকেজ বা স্যাম্পলগুলোর মধ্যে কোনটি আপনার প্রতিষ্ঠানের জন্য পছন্দ হয়েছে জানাবেন {honorific}। আমরা সাথে সাথে ডিজাইন ও অর্ডার প্রসেস শুরু করে দেব।",
+                    "media_sequence": [],
+                    "matched_images": [],
+                    "voice_url": "",
+                    "video_url": "",
+                    "order_created": None,
+                    "response_source": "id_card_known_qty_followup"
+                }
+        else:
+            return {
+                "reply_text": f"{greeting} অবশ্যই। আপনি আমাদের কাছ থেকে আইডি কার্ড, ফিতা এবং কভারের ফুল প্যাকেজ নিতে পারবেন। আপনার কত পিস প্রয়োজন জানাবেন প্লিজ?",
+                "media_sequence": [],
+                "matched_images": [],
+                "voice_url": "",
+                "video_url": "",
+                "order_created": None,
+                "response_source": "id_card_ask_quantity"
+            }
 
     # Case B: Answering quantity
     is_asking_question = any(k in msg for k in ["?", "কত", "কেন", "কি", "কী", "দাম", "চার্জ", "সময়", "কেমন", "ডেলিভারি", "কোথায়"])
@@ -1264,12 +1381,24 @@ def evaluate_id_card_workflow(
                 "response_source": "id_card_moq_under_30"
             }
         
-        # If quantity stated >= 30, prompt customer to see initial samples
+        # If quantity stated >= 30:
         tier_intro = ""
         if 30 <= qty < 50:
             tier_intro = f"জি {honorific}, আমাদের সর্বনিম্ন অর্ডার ৩০ পিস। ১০০ পিসের কম ({qty} পিস) অর্ডারে প্যাকেজের সাথে প্রতি সেটে ১০ টাকা বেশি হবে।"
         else:
             tier_intro = f"জি {honorific}, {qty} পিস অর্ডারের ক্ষেত্রে আমাদের প্যাকেজের নির্ধারিত রেগুলার পাইকারি রেট প্রযোজ্য হবে।"
+
+        # If samples/packages were ALREADY sent earlier, DO NOT ask to send samples again!
+        if samples_already_sent or packages_already_sent:
+            return {
+                "reply_text": f"{tier_intro} পূর্বে পাঠানো স্যাম্পল ও প্যাকেজগুলোর মধ্য থেকে কোন প্যাকেজটি আপনার পছন্দ হয়েছে জানাবেন {honorific}।",
+                "media_sequence": [],
+                "matched_images": [],
+                "voice_url": "",
+                "video_url": "",
+                "order_created": None,
+                "response_source": "id_card_qty_already_sampled_followup"
+            }
 
         return {
             "reply_text": f"{tier_intro} আমি কি আমাদের কার্ড, ফিতা ও কভারের স্যাম্পল ছবিগুলো পাঠাবো {honorific}?",
@@ -1940,25 +2069,42 @@ async def process_customer_message(
             "gemini-2.5-flash-lite"
         ]
 
-        # --- REAL-TIME ANTI-REPETITION MEMORY GUARD ---
-        known_qty_in_history = None
-        samples_already_sent_in_history = False
+        # --- ADVANCED REAL-TIME CONTEXT & MEMORY TRACKING ---
+        hist_ctx = analyze_conversation_history_context(conversation_history, message_text)
+        known_qty_in_history = hist_ctx.get("known_quantity")
+        samples_already_sent_in_history = hist_ctx.get("samples_already_sent") or hist_ctx.get("packages_already_sent")
+        owner_msgs = hist_ctx.get("owner_messages", [])
+        last_owner_msg = hist_ctx.get("last_owner_instruction", "")
+        chosen_pkg = hist_ctx.get("chosen_package")
 
-        for h in (conversation_history or []):
-            h_text = (h.get('text') or '').lower()
-            if h.get('sender') == 'user' or h.get('role') == 'user':
-                qty_match = re.search(r'(\d+)\s*(পিস|টা|টি|টা বানাব|পিস বানাব|pcs|pc)', h_text)
-                if qty_match:
-                    known_qty_in_history = qty_match.group(1)
-            if h.get('sender') == 'ai' or h.get('role') == 'model' or h.get('role') == 'assistant':
-                if 'স্যাম্পল' in h_text or 'ছবি' in h_text or h.get('has_images') or h.get('has_media'):
-                    samples_already_sent_in_history = True
-
-        realtime_memory_guard = ''
+        realtime_memory_guard = "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🚨 সক্রিয় কনভারসেশন মেমোরি ও হিস্ট্রি ট্র্যাকিং (LIVE CONTEXT MEMORY):\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        
         if known_qty_in_history:
-            realtime_memory_guard += f"\n[🚨 সেশন মেমোরি সতর্কতা: কাস্টমার ইতোমধ্যে পরিমাণ '{known_qty_in_history} পিস' জানিয়েছেন। ভুলেও তাকে আর 'কত পিস বানাবেন' জিজ্ঞাসা করবেন না! সরাসরি {known_qty_in_history} পিসের মোট দাম ও অর্ডারের কথা বলুন।]\n"
+            realtime_memory_guard += (
+                f"• কাস্টমারের পরিমাণ (KNOWN QUANTITY): {known_qty_in_history} পিস।\n"
+                f"  ⚠️ কঠোর নিষেধ: কাস্টমারকে ভুলেও আর 'কত পিস বানাবেন?', 'কোয়ান্টিটি কত?' ইত্যাদি প্রশ্ন করবে না! সরাসরি {known_qty_in_history} পিসের মোট হিসাব, প্যাকেজ, ডিজাইন বা পরবর্তী ধাপ নিয়ে কথা বলো।\n"
+            )
+        
         if samples_already_sent_in_history:
-            realtime_memory_guard += f"\n[🚨 সেশন মেমোরি সতর্কতা: কাস্টমারকে ইতোমধ্যে স্যাম্পল/ছবি পাঠানো হয়েছে। ভুলেও আর 'স্যাম্পল পাঠাব কি না' অফার করবেন না!]\n"
+            realtime_memory_guard += (
+                "• স্যাম্পল/প্যাকেজ স্ট্যাটাস (MEDIA SENT): কাস্টমারকে ইতোমধ্যে স্যাম্পল বা প্যাকেজের ছবি পাঠানো হয়েছে।\n"
+                "  ⚠️ কঠোর নিষেধ: ভুলেও আর 'আমি কি স্যাম্পল পাঠাবো?' বা একই স্যাম্পল পাঠানোর অনুমতি চাইবে না! পূর্বের পাঠানো স্যাম্পলের মতামত জানতে চাও বা ডিজাইন/অর্ডারে এগিয়ে যাও।\n"
+            )
+
+        if chosen_pkg:
+            realtime_memory_guard += (
+                f"• পছন্দের প্যাকেজ (CHOSEN PACKAGE): প্যাকেজ ০{chosen_pkg}।\n"
+                f"  ⚠️ প্যাকেজ ০{chosen_pkg} অনুযায়ী কথা বলো এবং লোগো/তথ্য ও ডেলিভারি ঠিকানার দিকে এগিয়ে যাও।\n"
+            )
+
+        if owner_msgs:
+            owner_summary = " | ".join(owner_msgs[-3:])
+            realtime_memory_guard += (
+                f"• শপ ওনার / অ্যাডমিনের পূর্বের বার্তা (OWNER CONTEXT): \"{owner_summary}\"\n"
+                f"  ⚠️ নির্দেশ: আমাদের ওনার স্যার কাস্টমারকে যা বলেছেন তার সাথে সম্পূর্ণ সামঞ্জস্য রেখে পরবর্তী ধাপে সাহায্য করো। ওনারের কথার বিপরীত কোনো কথা বলবে না।\n"
+            )
+
+        realtime_memory_guard += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
 
         response = None
         system_instruction = realtime_memory_guard + '\n' + build_system_instruction(customer_name=customer_name, workspace_id=ws_id, page_id=page_id)
