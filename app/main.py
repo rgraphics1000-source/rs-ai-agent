@@ -802,21 +802,70 @@ async def api_admin_send_reply(request: Request):
 async def api_toggle_chat_ai(request: Request):
     data = await request.json()
     cid = data.get("conversation_id")
+    phone = data.get("phone") or data.get("sender_id") or ""
     status = data.get("status") # 1 for block (takeover), 0 for unblock (ai active)
-    human_takeover = 0
-    if cid:
-        toggle_conversation_ai(cid, status=status)
-        try:
-            conn = get_db_connection()
-            c = conn.cursor()
-            c.execute("SELECT human_takeover, admin_takeover, ai_enabled FROM conversations WHERE id = ?", (cid,))
-            row = c.fetchone()
-            if row:
-                human_takeover = row["human_takeover"]
-            conn.close()
-        except Exception:
-            pass
-    return {"success": True, "human_takeover": human_takeover}
+    workspace_id = data.get("workspace_id", 1)
+    human_takeover = 1 if status == 1 else 0
+
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        # 1. Update by conversation_id if available
+        if cid:
+            if status == 1:
+                c.execute("""
+                    UPDATE conversations 
+                    SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
+                        takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_ui', takeover_reason = 'manual_block',
+                        conversation_version = COALESCE(conversation_version, 1) + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (cid,))
+            elif status == 0:
+                c.execute("""
+                    UPDATE conversations 
+                    SET human_takeover = 0, admin_takeover = 0, ai_enabled = 1,
+                        takeover_at = NULL, takeover_by = NULL, takeover_reason = NULL,
+                        conversation_version = COALESCE(conversation_version, 1) + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (cid,))
+
+        # 2. Update by phone / sender_id if available
+        if phone:
+            clean_digits = "".join([ch for ch in str(phone) if ch.isdigit()])
+            last10 = clean_digits[-10:] if len(clean_digits) >= 10 else clean_digits
+            
+            if status == 1:
+                add_muted_number(phone)
+                if last10:
+                    c.execute("""
+                        UPDATE conversations 
+                        SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
+                            takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_ui', takeover_reason = 'manual_block',
+                            conversation_version = COALESCE(conversation_version, 1) + 1,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE sender_id LIKE ? OR sender_id = ?
+                    """, (f"%{last10}%", str(phone)))
+            elif status == 0:
+                remove_muted_number(phone)
+                if last10:
+                    c.execute("""
+                        UPDATE conversations 
+                        SET human_takeover = 0, admin_takeover = 0, ai_enabled = 1,
+                            takeover_at = NULL, takeover_by = NULL, takeover_reason = NULL,
+                            conversation_version = COALESCE(conversation_version, 1) + 1,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE sender_id LIKE ? OR sender_id = ?
+                    """, (f"%{last10}%", str(phone)))
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[api_toggle_chat_ai Error]: {e}")
+
+    return {"success": True, "human_takeover": human_takeover, "blocked": bool(status == 1)}
 
 @app.post("/api/omnichat/enable-ai")
 @app.post("/api/conversations/enable-ai")
