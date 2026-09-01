@@ -39,7 +39,7 @@ class Settings:
     WHATSAPP_ACCESS_TOKEN: str = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
     WHATSAPP_VERIFY_TOKEN: str = os.getenv("WHATSAPP_VERIFY_TOKEN", "rs_whatsapp_token_2026")
     WHATSAPP_DISPLAY_PHONE_NUMBER: str = os.getenv("WHATSAPP_DISPLAY_PHONE_NUMBER", "+8801816504097")
-    META_GRAPH_VERSION: str = os.getenv("META_GRAPH_VERSION", "v23.0")
+    META_GRAPH_VERSION: str = os.getenv("META_GRAPH_VERSION", "v19.0")
     
     # Google Workspace & Forms Automation
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
