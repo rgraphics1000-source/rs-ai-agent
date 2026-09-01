@@ -1074,46 +1074,23 @@ async def handle_facebook_webhook_event(data: dict):
                     public_reply_text = ""
                     if auto_comment and comment_id:
                         if comment_intent == "gratitude":
-                            # Case A: Gratitude / Compliment / Prayer (e.g. শুক্রিয়া, ধন্যবাদ, মাশাল্লাহ, অনেক সুন্দর)
-                            # Reply with warm, respectful appreciation without asking to check inbox
-                            if comment_ai_mode == "ai_smart":
-                                gratitude_prompt = (
-                                    f"কাস্টমার '{user_name}' ফেসবুক পেজ '{page_name}'-এর পোস্টে সুন্দর প্রশংসা, কৃতজ্ঞতা বা শুভেচ্ছা জানিয়ে কমেন্ট করেছেন: '{comment_text}'। "
-                                    f"আপনি {page_name}-এর পক্ষ থেকে অত্যন্ত আন্তরিক ও অমায়িক ভাষায় কাস্টমারকে একটি সুন্দর কৃতজ্ঞতাসূচক ও আন্তরিক ধন্যবাদ জানিয়ে পাবলিক রিপ্লাই দিন (সম্বোধন {honorific})। "
-                                    f"১-২ লাইনের মধ্যে সংক্ষিপ্ত ও মিষ্টি উত্তর দিন। এখানে ইনবক্স চেক করতে বলার কোনো প্রয়োজন নেই।"
-                                )
-                                ai_comment_res = await process_customer_message(
-                                    message_text=gratitude_prompt,
-                                    channel="facebook",
-                                    sender_id=f"comment_{comment_id}",
-                                    customer_name=user_name,
-                                    workspace_id=workspace_id,
-                                    page_id=page_id
-                                )
-                                public_reply_text = (ai_comment_res.get("reply_text") or "").strip()
-                            if not public_reply_text:
-                                public_reply_text = f"অসংখ্য ধন্যবাদ {user_name} {honorific}! আপনার সুন্দর মন্তব্যের জন্য আন্তরিক কৃতজ্ঞতা ও ভালোবাসা রইল 🥰"
+                            # Case A: Gratitude / Compliment / Prayer (e.g. শুকরিয়া, ধন্যবাদ, মাশাল্লাহ, অনেক সুন্দর)
+                            # Reply with warm, respectful appreciation without asking to check inbox, and NEVER quote MOQ or order constraints!
+                            clean_cmt = comment_text.lower()
+                            if "মাশাআল্লাহ" in clean_cmt or "মাশাল্লাহ" in clean_cmt or "masha" in clean_cmt:
+                                public_reply_text = f"আলহামদুলিল্লাহ, অসংখ্য ধন্যবাদ {user_name} {honorific}! আপনার সুন্দর দোয়ার জন্য জাযাকাল্লাহু খাইরান। 🤲🥰"
+                            elif "জাযাকাল্লাহ" in clean_cmt or "জাজাকাল্লাহ" in clean_cmt or "jazak" in clean_cmt:
+                                public_reply_text = f"ওয়া ইয়্যাকুম {user_name} {honorific}! অসংখ্য ধন্যবাদ ও শুভকামনা আপনার জন্য। ❤️"
+                            elif "ধন্যবাদ" in clean_cmt or "thanks" in clean_cmt or "thank you" in clean_cmt or "শুক্রিয়া" in clean_cmt or "শুকরিয়া" in clean_cmt:
+                                public_reply_text = f"আপনাকেও অসংখ্য ধন্যবাদ {user_name} {honorific}! আপনার সুন্দর মতামতের জন্য আমরা আন্তরিকভাবে কৃতজ্ঞ। 🥰"
+                            else:
+                                template = get_setting("gratitude_comment_template", f"আলহামদুলিল্লাহ, অসংখ্য ধন্যবাদ {user_name} {honorific}! আপনার সুন্দর মন্তব্যের জন্য আন্তরিক কৃতজ্ঞতা ও ভালোবাসা রইল। 🥰")
+                                public_reply_text = template.replace("{name}", user_name).replace("{honorific}", honorific)
                         else:
                             # Case B: Inquiry / Product / Price / Order Question (e.g. দাম কত?, আইডি কার্ড রেট কত?)
                             # Explicit rule: State clearly that we appreciate their interest and details have been sent to their inbox
-                            if comment_ai_mode == "ai_smart":
-                                inquiry_prompt = (
-                                    f"কাস্টমার '{user_name}' ফেসবুক পেজ '{page_name}'-এর পোস্টে কমেন্ট করে জানতে চেয়েছেন: '{comment_text or '[পণ্য/দাম অনুসন্ধান]'}'। "
-                                    f"পাবলিক কমেন্টে কাস্টমারকে সংক্ষেপে বলুন যে: আগ্রহের জন্য ধন্যবাদ এবং তার প্রশ্নের উত্তর ও বিস্তারিত তথ্য ইনবক্সে পাঠিয়ে দেওয়া হয়েছে (সম্বোধন {honorific})। "
-                                    f"উত্তরটি ১-২ লাইনে খুব সুন্দর ও পেশাদার রাখুন।"
-                                )
-                                ai_comment_res = await process_customer_message(
-                                    message_text=inquiry_prompt,
-                                    channel="facebook",
-                                    sender_id=f"comment_{comment_id}",
-                                    customer_name=user_name,
-                                    workspace_id=workspace_id,
-                                    page_id=page_id
-                                )
-                                public_reply_text = (ai_comment_res.get("reply_text") or "").strip()
-                            if not public_reply_text:
-                                template = get_setting("comment_reply_template", f"আপনার আগ্রহের জন্য ধন্যবাদ {user_name} {honorific}! আপনার ইনবক্সে বিস্তারিত তথ্য পাঠানো হয়েছে 🥰")
-                                public_reply_text = template.replace("{name}", user_name)
+                            template = get_setting("comment_reply_template", f"ধন্যবাদ আপনার আগ্রহের জন্য {user_name} {honorific}! আপনার ইনবক্সে বিস্তারিত তথ্য ও বিবরণ পাঠানো হয়েছে, অনুগ্রহ করে ইনবক্স চেক করুন। 📩")
+                            public_reply_text = template.replace("{name}", user_name).replace("{honorific}", honorific)
 
                         if public_reply_text:
                             print(f"[Facebook Comment AI Reply on Workspace {workspace_id} ('{page_name}') ({comment_intent})]: '{public_reply_text[:60]}...' to comment {comment_id}")
@@ -1121,16 +1098,11 @@ async def handle_facebook_webhook_event(data: dict):
 
                     # 2. PRIVATE INBOX REPLY
                     # STRICT RULE: ONLY send inbox message for 'inquiry' comments. NEVER send private inbox message for gratitude/compliment comments!
-                    # ALSO: Keep inbox message concise, direct, and specifically answering what was asked in 2-3 lines without long walls of text.
                     private_reply_text = ""
                     if send_private and comment_id and comment_intent == "inquiry":
-                        inbox_prompt = (
-                            f"কাস্টমার '{user_name}' পেজ '{page_name}'-এর পোস্টে কমেন্ট করে জানতে চেয়েছেন: '{comment_text or '[পণ্য অনুসন্ধান]'}'। "
-                            f"কাস্টমারকে ইনবক্সে তার প্রশ্নের উত্তর দিন (সম্বোধন {honorific})। "
-                            f"⚠️ অত্যন্ত গুরুত্বপূর্ণ নিয়ম: ইনবক্সে অতিরিক্ত লম্বা কথা বা বড় বড় প্যারাগ্রাফ লিখবেন না। কাস্টমার ঠিক যতটুকু জানতে চেয়েছেন (যেমন শুধু দাম বা আইডি কার্ড/ফিতার সুনির্দিষ্ট তথ্য), শুধুমাত্র ততটুকু প্রাসঙ্গিক ও সংক্ষিপ্ত তথ্য দিয়ে সর্বোচ্চ ২-৩ লাইনের মধ্যে উত্তর শেষ করুন।"
-                        )
+                        # Send directly what the customer asked
                         inbox_res = await process_customer_message(
-                            message_text=inbox_prompt,
+                            message_text=comment_text or "আইডি কার্ড ও সার্ভিসের বিস্তারিত দাম ও বিবরণ দিন",
                             channel="facebook",
                             sender_id=f"comment_{comment_id}",
                             customer_name=user_name,
@@ -1138,6 +1110,12 @@ async def handle_facebook_webhook_event(data: dict):
                             page_id=page_id
                         )
                         private_reply_text = (inbox_res.get("reply_text") or "").strip()
+                        if not private_reply_text:
+                            private_reply_text = (
+                                f"আসসালামু আলাইকুম {user_name} {honorific}! আমাদের পেজের পোস্টে কমেন্ট করার জন্য ধন্যবাদ। 😊\n\n"
+                                f"আমাদের আইডি কার্ড, ফিতা ও প্রিন্টিং সার্ভিসের বিস্তারিত তথ্য ও প্রাইজ লিস্টের জন্য আমরা প্রস্তুত। "
+                                f"আপনার মোট কত পিস প্রয়োজন এবং কী কী ডিজাইন করতে চান দয়া করে লিখে জানান, আমরা দ্রুত সেরা অফারে অর্ডার কনফার্ম করে দেব!"
+                            )
                         if private_reply_text:
                             send_fb_private_reply_to_comment(comment_id, private_reply_text, page_token=page_token, page_id=page_id)
 
