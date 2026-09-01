@@ -469,6 +469,65 @@ def reply_to_fb_comment_detailed(comment_id: str, message: str, page_token: str 
 
     return False, last_error
 
+def react_to_fb_comment(comment_id: str, reaction_type: str = "LOVE", page_token: str = None, page_id: str = None) -> bool:
+    """
+    Reacts to a Facebook post comment with LIKE, LOVE, or CARE.
+    Meta Graph API: POST /{comment-id}/reactions?type=LIKE|LOVE|CARE
+    """
+    token = page_token or get_fb_token(page_id)
+    if not token or str(token).startswith("EAA_TEST"):
+        token = get_setting("fb_page_access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN") or settings.FB_PAGE_ACCESS_TOKEN or get_fb_token(page_id)
+
+    clean_token = str(token or "").strip().strip('"').strip("'")
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
+    if not clean_token or not comment_id:
+        print(f"[Facebook Comment Reaction Error]: Missing token or comment_id (comment_id={comment_id})")
+        return False
+
+    graph_version = getattr(settings, "META_GRAPH_VERSION", "v19.0") or "v19.0"
+    
+    # Valid reactions: LIKE, LOVE, CARE
+    rx_type = (reaction_type or "LOVE").upper().strip()
+    if rx_type not in ["LIKE", "LOVE", "CARE"]:
+        rx_type = "LOVE"
+
+    candidate_ids = [comment_id]
+    if "_" in comment_id:
+        parts = comment_id.split("_")
+        candidate_ids.append(parts[-1])
+        if len(parts) > 2:
+            candidate_ids.append(f"{parts[-2]}_{parts[-1]}")
+
+    for cid in candidate_ids:
+        # 1. Try reactions endpoint with type parameter
+        url = f"https://graph.facebook.com/{graph_version}/{cid}/reactions"
+        try:
+            r = requests.post(url, params={"type": rx_type, "access_token": clean_token}, timeout=10)
+            if r.status_code == 200:
+                resp = r.json()
+                if resp.get("success") is True or resp.get("id"):
+                    print(f"[Facebook Comment Reaction SUCCESS]: Reacted '{rx_type}' to comment {cid}")
+                    return True
+        except Exception as e:
+            print(f"[Facebook Comment Reaction Exception for cid={cid}]: {e}")
+
+        # 2. Fallback: If LIKE, try likes endpoint
+        if rx_type == "LIKE":
+            try:
+                like_url = f"https://graph.facebook.com/{graph_version}/{cid}/likes"
+                r_like = requests.post(like_url, params={"access_token": clean_token}, timeout=10)
+                if r_like.status_code == 200:
+                    resp_l = r_like.json()
+                    if resp_l.get("success") is True or resp_l.get("id"):
+                        print(f"[Facebook Comment Like SUCCESS]: Liked comment {cid}")
+                        return True
+            except Exception:
+                pass
+
+    return False
+
 def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, page_id: str = None) -> bool:
     """Replies publicly to a Facebook post comment."""
     ok, _ = reply_to_fb_comment_detailed(comment_id, message, page_token=page_token, page_id=page_id)
@@ -1069,6 +1128,23 @@ async def handle_facebook_webhook_event(data: dict):
                     # Classify comment intent: 'gratitude' vs 'inquiry'
                     comment_intent = classify_facebook_comment_intent(comment_text)
                     print(f"[Facebook Comment Classification]: comment_id={comment_id} intent='{comment_intent}' user='{user_name}' text='{comment_text[:40]}'")
+
+                    # 0. AUTO REACTION TO COMMENT (LIKE, LOVE, CARE)
+                    # Automatically react to the customer's comment with Like, Love, or Care
+                    auto_react = get_setting("comment_auto_react", "true").lower() == "true"
+                    if auto_react and comment_id:
+                        import random
+                        if comment_intent == "gratitude":
+                            # For praise/gratitude: React with LOVE (❤️) or CARE (🥰)
+                            selected_rx = random.choice(["LOVE", "CARE", "LOVE"])
+                        else:
+                            # For inquiry/questions: React with LIKE (👍), LOVE (❤️), or CARE (🥰)
+                            selected_rx = random.choice(["LIKE", "LOVE", "CARE"])
+                        
+                        try:
+                            react_to_fb_comment(comment_id, reaction_type=selected_rx, page_token=page_token, page_id=page_id)
+                        except Exception as rx_err:
+                            print(f"[Facebook Comment Reaction Error]: {rx_err}")
 
                     # 1. PUBLIC COMMENT REPLY
                     public_reply_text = ""
