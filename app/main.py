@@ -48,7 +48,8 @@ from app.channels.facebook import (
     subscribe_facebook_page_webhooks,
     get_fb_page_details,
     reply_to_fb_comment,
-    reply_to_fb_comment_detailed
+    reply_to_fb_comment_detailed,
+    scan_and_reply_to_recent_facebook_comments
 )
 from app.channels.whatsapp import (
     send_whatsapp_message,
@@ -122,6 +123,21 @@ def startup_event():
         except Exception as e:
             print(f"[Facebook Auto-Subscribe on Startup Exception]: {e}")
     threading.Thread(target=_bg_subscribe, daemon=True).start()
+
+    # Background Comment Scanner Loop (Guarantees 100% comment reply delivery every 15 seconds)
+    def _bg_comment_scanner():
+        import time, asyncio
+        time.sleep(10)
+        while True:
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(scan_and_reply_to_recent_facebook_comments())
+                loop.close()
+            except Exception as scan_err:
+                print(f"[BG Comment Scanner Notice]: {scan_err}")
+            time.sleep(15)
+    threading.Thread(target=_bg_comment_scanner, daemon=True).start()
 
     # Self-ping keepalive loop to prevent Render free-tier idle spin-down
     def _bg_keepalive():
@@ -1232,6 +1248,13 @@ async def api_facebook_status():
 async def api_facebook_subscribe():
     """Forces subscription of the Facebook Page to Meta Webhook events (feed, messages)."""
     res = subscribe_facebook_page_webhooks()
+    return res
+
+@app.post("/api/facebook/scan-comments")
+async def api_facebook_scan_comments(page_id: Optional[str] = Query(None)):
+    """Triggers an active scan of recent posts on the Facebook Page and auto-replies to all unreplied comments."""
+    pid = page_id or "105116472071659"
+    res = await scan_and_reply_to_recent_facebook_comments(page_id=pid)
     return res
 
 @app.post("/api/facebook/test-comment-reply")

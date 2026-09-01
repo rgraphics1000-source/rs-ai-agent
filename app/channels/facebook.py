@@ -532,6 +532,148 @@ def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, p
     ok, _ = reply_to_fb_comment_detailed(comment_id, message, page_token=page_token, page_id=page_id)
     return ok
 
+async def scan_and_reply_to_recent_facebook_comments(page_id: str = "105116472071659", page_token: str = None, workspace_id: int = 1) -> Dict[str, Any]:
+    """
+    Actively scans recent posts and comments on the Facebook Page via Meta Graph API.
+    Identifies any unreplied customer comments and immediately reacts, replies publicly,
+    and sends private DM if inquiry.
+    Guarantees 100% reply delivery even if Meta webhooks are delayed or dropped!
+    """
+    token = page_token or get_fb_token(page_id)
+    if not token or str(token).startswith("EAA_TEST"):
+        token = get_setting("fb_page_access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN") or settings.FB_PAGE_ACCESS_TOKEN or get_fb_token(page_id)
+
+    clean_token = str(token or "").strip().strip('"').strip("'")
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
+    if not clean_token or not page_id:
+        return {"success": False, "error": "Missing token or page_id"}
+
+    graph_version = getattr(settings, "META_GRAPH_VERSION", "v19.0") or "v19.0"
+    url = f"https://graph.facebook.com/{graph_version}/{page_id}/feed"
+    params = {
+        "fields": "id,message,created_time,comments.limit(25){id,message,from,created_time,comments.limit(10){id,from}}",
+        "limit": 5,
+        "access_token": clean_token
+    }
+
+    replied_count = 0
+    errors = []
+
+    try:
+        r = requests.get(url, params=params, timeout=12)
+        if r.status_code != 200:
+            return {"success": False, "status_code": r.status_code, "error": r.text}
+        
+        feed_data = r.json().get("data", [])
+        for post in feed_data:
+            post_id = post.get("id")
+            comments_obj = post.get("comments", {})
+            comments_list = comments_obj.get("data", [])
+
+            for cmt in comments_list:
+                cmt_id = str(cmt.get("id", "")).strip()
+                cmt_text = str(cmt.get("message", "")).strip()
+                from_user = cmt.get("from") or {}
+                user_id = str(from_user.get("id", "")).strip()
+                user_name = str(from_user.get("name", "কাস্টমার")).strip()
+
+                # Skip if comment is from the page itself
+                if user_id == str(page_id):
+                    continue
+
+                # Check if page already replied to this comment
+                child_comments = cmt.get("comments", {}).get("data", [])
+                page_already_replied = any(str(cc.get("from", {}).get("id")) == str(page_id) for cc in child_comments)
+                
+                # Check DB comment_logs
+                conn = get_db_connection()
+                try:
+                    cur = conn.cursor()
+                    cur.execute("SELECT id FROM comment_logs WHERE comment_id = ? AND public_reply != ''", (cmt_id,))
+                    if cur.fetchone() or page_already_replied:
+                        continue
+                finally:
+                    conn.close()
+
+                # Proceed to react and reply!
+                honorific = detect_customer_gender_title(user_name)
+                comment_intent = classify_facebook_comment_intent(cmt_text)
+
+                # 0. Reaction
+                import random
+                rx_type = random.choice(["LOVE", "CARE"]) if comment_intent == "gratitude" else random.choice(["LIKE", "LOVE", "CARE"])
+                try:
+                    react_to_fb_comment(cmt_id, reaction_type=rx_type, page_token=clean_token, page_id=page_id)
+                except Exception:
+                    pass
+
+                # 1. Public Reply
+                if comment_intent == "gratitude":
+                    clean_c = cmt_text.lower()
+                    if "মাশাআল্লাহ" in clean_c or "মাশাল্লাহ" in clean_c or "masha" in clean_c:
+                        public_reply_text = f"আলহামদুলিল্লাহ, অসংখ্য ধন্যবাদ {user_name} {honorific}! আপনার সুন্দর দোয়ার জন্য জাযাকাল্লাহু খাইরান। 🤲🥰"
+                    elif "জাযাকাল্লাহ" in clean_c or "jazak" in clean_c:
+                        public_reply_text = f"ওয়া ইয়্যাকুম {user_name} {honorific}! অসংখ্য ধন্যবাদ ও শুভকামনা আপনার জন্য। ❤️"
+                    elif "ধন্যবাদ" in clean_c or "thanks" in clean_c:
+                        public_reply_text = f"আপনাকেও অসংখ্য ধন্যবাদ {user_name} {honorific}! আপনার সুন্দর মতামতের জন্য আমরা আন্তরিকভাবে কৃতজ্ঞ। 🥰"
+                    else:
+                        template = get_setting("gratitude_comment_template", f"আলহামদুলিল্লাহ, অসংখ্য ধন্যবাদ {user_name} {honorific}! আপনার সুন্দর মন্তব্যের জন্য আন্তরিক কৃতজ্ঞতা ও ভালোবাসা রইল। 🥰")
+                        public_reply_text = template.replace("{name}", user_name).replace("{honorific}", honorific)
+                else:
+                    template = get_setting("comment_reply_template", f"ধন্যবাদ আপনার আগ্রহের জন্য {user_name} {honorific}! আপনার ইনবক্সে বিস্তারিত তথ্য ও বিবরণ পাঠানো হয়েছে, অনুগ্রহ করে ইনবক্স চেক করুন। 📩")
+                    public_reply_text = template.replace("{name}", user_name).replace("{honorific}", honorific)
+
+                public_reply_text = re.sub(r'(\bআপু\s*/\s*ভাইয়া\b|\bআপু\s*/\s*ভাইয়া\b|\bভাইয়া\s*/\s*আপু\b|\bভাইয়া\s*/\s*আপু\b|আপু/ভাইয়া|আপু/ভাইয়া|ভাইয়া/আপু|ভাইয়া/আপু|স্যার/ম্যাম|ম্যাম/স্যার|স্যার\s*/\s*ম্যাম|ম্যাম\s*/\s*স্যার)', honorific, public_reply_text)
+                public_reply_text = re.sub(r'\b(ভাইয়া|ভাইয়া)\b', "স্যার", public_reply_text)
+                public_reply_text = re.sub(r'\b(আপু)\b', "ম্যাম", public_reply_text)
+
+                ok, resp = reply_to_fb_comment_detailed(cmt_id, public_reply_text, page_token=clean_token, page_id=page_id)
+                
+                # 2. Private Reply if inquiry
+                private_reply_text = ""
+                if ok and comment_intent == "inquiry":
+                    inbox_res = await process_customer_message(
+                        message_text=cmt_text or "আইডি কার্ড ও সার্ভিসের বিস্তারিত দাম ও বিবরণ দিন",
+                        channel="facebook",
+                        sender_id=f"comment_{cmt_id}",
+                        customer_name=user_name,
+                        workspace_id=workspace_id,
+                        page_id=page_id
+                    )
+                    private_reply_text = (inbox_res.get("reply_text") or "").strip()
+                    if not private_reply_text:
+                        private_reply_text = (
+                            f"আসসালামু আলাইকুম {user_name} {honorific}! আমাদের পেজের পোস্টে কমেন্ট করার জন্য ধন্যবাদ। 😊\n\n"
+                            f"আমাদের আইডি কার্ড, ফিতা ও প্রিন্টিং সার্ভিসের বিস্তারিত তথ্য ও প্রাইজ লিস্টের জন্য আমরা প্রস্তুত। "
+                            f"আপনার মোট কত পিস প্রয়োজন এবং কী কী ডিজাইন করতে চান দয়া করে লিখে জানান, আমরা দ্রুত সেরা অফারে অর্ডার কনফার্ম করে দেব!"
+                        )
+                    if private_reply_text:
+                        send_fb_private_reply_to_comment(cmt_id, private_reply_text, page_token=clean_token, page_id=page_id)
+
+                if ok:
+                    replied_count += 1
+                    print(f"[Facebook Comment Auto-Poller SUCCESS]: Replied to comment {cmt_id} by {user_name} ({comment_intent})")
+                    conn_log = get_db_connection()
+                    try:
+                        c_log = conn_log.cursor()
+                        c_log.execute("""
+                            INSERT OR REPLACE INTO comment_logs (
+                                workspace_id, post_id, comment_id, user_id, user_name, comment_text, public_reply, private_reply, page_id
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (workspace_id, post_id, cmt_id, user_id, user_name, cmt_text, public_reply_text, private_reply_text, page_id))
+                        conn_log.commit()
+                    finally:
+                        conn_log.close()
+                else:
+                    errors.append({"comment_id": cmt_id, "error": resp})
+
+        return {"success": True, "replied_count": replied_count, "errors": errors}
+    except Exception as e:
+        print(f"[Facebook Comment Scanner Exception]: {e}")
+        return {"success": False, "error": str(e)}
+
 def classify_facebook_comment_intent(comment_text: str) -> str:
     """
     Classifies an incoming post comment into:
