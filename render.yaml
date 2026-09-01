@@ -21,4 +21,4 @@ services:
       - key: FB_PAGE_ID
         value: "105116472071659"
       - key: META_GRAPH_VERSION
-        value: "v23.0"
+        value: "v19.0"

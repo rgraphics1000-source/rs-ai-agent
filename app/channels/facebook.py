@@ -80,7 +80,7 @@ def subscribe_facebook_page_webhooks(page_id: str = None, page_token: str = None
             "message": "Valid Facebook Page Access Token is required to subscribe webhooks."
         }
 
-    graph_version = getattr(settings, "META_GRAPH_VERSION", "v23.0") or "v23.0"
+    graph_version = getattr(settings, "META_GRAPH_VERSION", "v19.0") or "v19.0"
     url = f"https://graph.facebook.com/{graph_version}/{pid}/subscribed_apps"
     params = {
         "subscribed_fields": "feed,messages,messaging_postbacks,message_deliveries,message_reads,conversations",
@@ -134,7 +134,7 @@ def get_fb_page_details(page_id: str = None, page_token: str = None) -> Dict[str
             "error": "No valid Page Access Token configured."
         }
 
-    graph_version = getattr(settings, "META_GRAPH_VERSION", "v23.0") or "v23.0"
+    graph_version = getattr(settings, "META_GRAPH_VERSION", "v19.0") or "v19.0"
     url = f"https://graph.facebook.com/{graph_version}/{pid}"
     try:
         r = requests.get(url, params={"fields": "id,name,link,category,verification_status", "access_token": clean_token}, timeout=8)
@@ -426,7 +426,7 @@ def reply_to_fb_comment_detailed(comment_id: str, message: str, page_token: str 
         print(f"[Facebook Comment Reply Error]: Missing token or comment_id (comment_id={comment_id})")
         return False, {"error": "Missing token or comment_id"}
 
-    graph_version = getattr(settings, "META_GRAPH_VERSION", "v23.0") or "v23.0"
+    graph_version = getattr(settings, "META_GRAPH_VERSION", "v19.0") or "v19.0"
     
     candidate_ids = [comment_id]
     if "_" in comment_id:
@@ -540,7 +540,7 @@ def send_fb_private_reply_to_comment(comment_id: str, message: str, page_token: 
         print(f"[Facebook Private Reply Error]: Missing token or comment_id (comment_id={comment_id})")
         return False
 
-    graph_version = getattr(settings, "META_GRAPH_VERSION", "v23.0") or "v23.0"
+    graph_version = getattr(settings, "META_GRAPH_VERSION", "v19.0") or "v19.0"
     url = f"https://graph.facebook.com/{graph_version}/me/messages"
     params = {"access_token": clean_token}
     payload = {
