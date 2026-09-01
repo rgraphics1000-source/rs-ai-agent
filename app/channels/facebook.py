@@ -470,10 +470,10 @@ def reply_to_fb_comment_detailed(comment_id: str, message: str, page_token: str 
 
     return False, last_error
 
-def react_to_fb_comment(comment_id: str, reaction_type: str = "LOVE", page_token: str = None, page_id: str = None) -> bool:
+def react_to_fb_comment_detailed(comment_id: str, reaction_type: str = "LOVE", page_token: str = None, page_id: str = None) -> Tuple[bool, Dict[str, Any]]:
     """
     Reacts to a Facebook post comment with LIKE, LOVE, or CARE.
-    Meta Graph API: POST /{comment-id}/reactions?type=LIKE|LOVE|CARE
+    Meta Graph API: POST /{comment-id}/reactions?type=LIKE|LOVE|CARE or POST /{comment-id}/likes
     """
     token = page_token or get_fb_token(page_id)
     if not token or str(token).startswith("EAA_TEST"):
@@ -484,13 +484,12 @@ def react_to_fb_comment(comment_id: str, reaction_type: str = "LOVE", page_token
         clean_token = clean_token[7:].strip()
 
     if not clean_token or not comment_id:
-        return False
+        return False, {"error": "Missing token or comment_id"}
 
     graph_version = getattr(settings, "META_GRAPH_VERSION", "v19.0") or "v19.0"
     
-    # Valid reactions: LIKE, LOVE, CARE
     rx_type = (reaction_type or "LOVE").upper().strip()
-    if rx_type not in ["LIKE", "LOVE", "CARE"]:
+    if rx_type not in ["LIKE", "LOVE", "CARE", "HAHA", "WOW", "SAD", "ANGRY"]:
         rx_type = "LOVE"
 
     candidate_ids = [comment_id]
@@ -500,33 +499,61 @@ def react_to_fb_comment(comment_id: str, reaction_type: str = "LOVE", page_token
         if len(parts) > 2:
             candidate_ids.append(f"{parts[-2]}_{parts[-1]}")
 
+    results = []
     for cid in candidate_ids:
-        # 1. Try reactions endpoint with type parameter (fast timeout)
-        url = f"https://graph.facebook.com/{graph_version}/{cid}/reactions"
+        # Method 1: Try reactions endpoint with form data
+        url_rx = f"https://graph.facebook.com/{graph_version}/{cid}/reactions"
         try:
-            r = requests.post(url, params={"type": rx_type, "access_token": clean_token}, timeout=3.5)
-            if r.status_code == 200:
-                resp = r.json()
-                if resp.get("success") is True or resp.get("id"):
-                    print(f"[Facebook Comment Reaction SUCCESS]: Reacted '{rx_type}' to comment {cid}")
-                    return True
-        except Exception as e:
-            print(f"[Facebook Comment Reaction Exception for cid={cid}]: {e}")
-
-        # 2. Fallback: If LIKE, try likes endpoint
-        if rx_type == "LIKE":
+            r = requests.post(url_rx, data={"type": rx_type, "access_token": clean_token}, timeout=4)
+            r_json = {}
             try:
-                like_url = f"https://graph.facebook.com/{graph_version}/{cid}/likes"
-                r_like = requests.post(like_url, params={"access_token": clean_token}, timeout=3.5)
-                if r_like.status_code == 200:
-                    resp_l = r_like.json()
-                    if resp_l.get("success") is True or resp_l.get("id"):
-                        print(f"[Facebook Comment Like SUCCESS]: Liked comment {cid}")
-                        return True
+                r_json = r.json()
             except Exception:
-                pass
+                r_json = {"text": r.text}
+            results.append({"method": "reactions_form", "cid": cid, "status": r.status_code, "response": r_json})
+            if r.status_code == 200 and (r_json.get("success") is True or r_json.get("id")):
+                print(f"[Facebook Comment Reaction SUCCESS]: Reacted '{rx_type}' to comment {cid}")
+                return True, {"method": "reactions_form", "cid": cid, "response": r_json}
+        except Exception as e:
+            results.append({"method": "reactions_form", "cid": cid, "exception": str(e)})
 
-    return False
+        # Method 2: Try reactions endpoint with params
+        try:
+            r = requests.post(url_rx, params={"type": rx_type, "access_token": clean_token}, timeout=4)
+            r_json = {}
+            try:
+                r_json = r.json()
+            except Exception:
+                r_json = {"text": r.text}
+            results.append({"method": "reactions_params", "cid": cid, "status": r.status_code, "response": r_json})
+            if r.status_code == 200 and (r_json.get("success") is True or r_json.get("id")):
+                print(f"[Facebook Comment Reaction SUCCESS]: Reacted '{rx_type}' to comment {cid}")
+                return True, {"method": "reactions_params", "cid": cid, "response": r_json}
+        except Exception as e:
+            results.append({"method": "reactions_params", "cid": cid, "exception": str(e)})
+
+        # Method 3: Universal Fallback -> POST /{cid}/likes (standard Meta Page engagement)
+        url_like = f"https://graph.facebook.com/{graph_version}/{cid}/likes"
+        try:
+            r_l = requests.post(url_like, data={"access_token": clean_token}, timeout=4)
+            rl_json = {}
+            try:
+                rl_json = r_l.json()
+            except Exception:
+                rl_json = {"text": r_l.text}
+            results.append({"method": "likes_endpoint", "cid": cid, "status": r_l.status_code, "response": rl_json})
+            if r_l.status_code == 200 and (rl_json.get("success") is True or rl_json.get("id")):
+                print(f"[Facebook Comment Reaction SUCCESS (likes endpoint)]: Liked comment {cid}")
+                return True, {"method": "likes_endpoint", "cid": cid, "response": rl_json}
+        except Exception as e:
+            results.append({"method": "likes_endpoint", "cid": cid, "exception": str(e)})
+
+    return False, {"results": results}
+
+def react_to_fb_comment(comment_id: str, reaction_type: str = "LOVE", page_token: str = None, page_id: str = None) -> bool:
+    """Reacts to a Facebook post comment with LIKE, LOVE, or CARE."""
+    ok, _ = react_to_fb_comment_detailed(comment_id, reaction_type=reaction_type, page_token=page_token, page_id=page_id)
+    return ok
 
 def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, page_id: str = None) -> bool:
     """Replies publicly to a Facebook post comment."""

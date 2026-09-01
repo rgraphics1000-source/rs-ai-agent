@@ -49,6 +49,7 @@ from app.channels.facebook import (
     get_fb_page_details,
     reply_to_fb_comment,
     reply_to_fb_comment_detailed,
+    react_to_fb_comment_detailed,
     scan_and_reply_to_recent_facebook_comments
 )
 from app.channels.whatsapp import (
@@ -1274,6 +1275,27 @@ async def api_test_comment_reply(request: Request):
         "success": success,
         "comment_id": comment_id,
         "message": "Comment reply successfully sent to Facebook Graph API!" if success else "Failed to send comment reply to Facebook Graph API.",
+        "details": response_data
+    }
+
+@app.post("/api/facebook/test-react")
+async def api_test_react(request: Request):
+    """Reacts to a comment with LIKE, LOVE, or CARE and returns detailed Meta Graph API result."""
+    data = await request.json()
+    comment_id = data.get("comment_id", "").strip()
+    reaction_type = data.get("reaction_type", "LOVE").strip()
+    page_id = data.get("page_id", "").strip() or None
+    page_token = data.get("page_access_token", "").strip() or None
+
+    if not comment_id:
+        raise HTTPException(status_code=400, detail="comment_id is required")
+
+    success, response_data = react_to_fb_comment_detailed(comment_id, reaction_type=reaction_type, page_token=page_token, page_id=page_id)
+    return {
+        "success": success,
+        "comment_id": comment_id,
+        "reaction_type": reaction_type,
+        "message": "Reaction successfully sent to Facebook Graph API!" if success else "Failed to react on Facebook Graph API.",
         "details": response_data
     }
 
