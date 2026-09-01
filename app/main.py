@@ -125,21 +125,6 @@ def startup_event():
             print(f"[Facebook Auto-Subscribe on Startup Exception]: {e}")
     threading.Thread(target=_bg_subscribe, daemon=True).start()
 
-    # Background Comment Scanner Loop (Guarantees 100% comment reply delivery every 15 seconds)
-    def _bg_comment_scanner():
-        import time, asyncio
-        time.sleep(10)
-        while True:
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(scan_and_reply_to_recent_facebook_comments())
-                loop.close()
-            except Exception as scan_err:
-                print(f"[BG Comment Scanner Notice]: {scan_err}")
-            time.sleep(15)
-    threading.Thread(target=_bg_comment_scanner, daemon=True).start()
-
     # Self-ping keepalive loop to prevent Render free-tier idle spin-down
     def _bg_keepalive():
         import time, urllib.request

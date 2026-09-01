@@ -28,6 +28,7 @@ from app.channels.debouncer import message_debouncer, PendingBatch
 from app.ai_agent.gemini_brain import process_customer_message, detect_customer_gender_title
 
 GRAPH_API_URL = "https://graph.facebook.com/v19.0"
+PROCESSED_OR_ACTIVE_COMMENTS = set()
 
 def get_fb_token(page_id: str = None) -> str:
     """Retrieves the access token for a specific Page ID, or falls back to global settings / primary connected page."""
@@ -1244,6 +1245,12 @@ async def handle_facebook_webhook_event(data: dict):
                     comment_id = str(value.get("comment_id") or value.get("id") or "").strip()
                     if not comment_id:
                         continue
+
+                    # Strict in-memory deduplication gate to prevent any double replies
+                    if comment_id in PROCESSED_OR_ACTIVE_COMMENTS:
+                        print(f"[Facebook Comment Skipped Duplicate]: Comment {comment_id} already processed in memory.")
+                        continue
+                    PROCESSED_OR_ACTIVE_COMMENTS.add(comment_id)
 
                     # Check deduplication idempotency
                     if is_webhook_event_processed("facebook", f"comment_{comment_id}"):
