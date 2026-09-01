@@ -1092,6 +1092,11 @@ async def handle_facebook_webhook_event(data: dict):
                             template = get_setting("comment_reply_template", f"ধন্যবাদ আপনার আগ্রহের জন্য {user_name} {honorific}! আপনার ইনবক্সে বিস্তারিত তথ্য ও বিবরণ পাঠানো হয়েছে, অনুগ্রহ করে ইনবক্স চেক করুন। 📩")
                             public_reply_text = template.replace("{name}", user_name).replace("{honorific}", honorific)
 
+                        # STRICT GLOBAL SANITIZATION: Never allow "আপু/ভাইয়া", "ভাইয়া", "আপু", "স্যার/ম্যাম"
+                        public_reply_text = re.sub(r'(\bআপু\s*/\s*ভাইয়া\b|\bআপু\s*/\s*ভাইয়া\b|\bভাইয়া\s*/\s*আপু\b|\bভাইয়া\s*/\s*আপু\b|আপু/ভাইয়া|আপু/ভাইয়া|ভাইয়া/আপু|ভাইয়া/আপু|স্যার/ম্যাম|ম্যাম/স্যার|স্যার\s*/\s*ম্যাম|ম্যাম\s*/\s*স্যার)', honorific, public_reply_text)
+                        public_reply_text = re.sub(r'\b(ভাইয়া|ভাইয়া)\b', "স্যার", public_reply_text)
+                        public_reply_text = re.sub(r'\b(আপু)\b', "ম্যাম", public_reply_text)
+
                         if public_reply_text:
                             print(f"[Facebook Comment AI Reply on Workspace {workspace_id} ('{page_name}') ({comment_intent})]: '{public_reply_text[:60]}...' to comment {comment_id}")
                             reply_to_fb_comment(comment_id, public_reply_text, page_token=page_token, page_id=page_id)
