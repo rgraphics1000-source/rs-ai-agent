@@ -483,7 +483,6 @@ def react_to_fb_comment(comment_id: str, reaction_type: str = "LOVE", page_token
         clean_token = clean_token[7:].strip()
 
     if not clean_token or not comment_id:
-        print(f"[Facebook Comment Reaction Error]: Missing token or comment_id (comment_id={comment_id})")
         return False
 
     graph_version = getattr(settings, "META_GRAPH_VERSION", "v19.0") or "v19.0"
@@ -501,10 +500,10 @@ def react_to_fb_comment(comment_id: str, reaction_type: str = "LOVE", page_token
             candidate_ids.append(f"{parts[-2]}_{parts[-1]}")
 
     for cid in candidate_ids:
-        # 1. Try reactions endpoint with type parameter
+        # 1. Try reactions endpoint with type parameter (fast timeout)
         url = f"https://graph.facebook.com/{graph_version}/{cid}/reactions"
         try:
-            r = requests.post(url, params={"type": rx_type, "access_token": clean_token}, timeout=10)
+            r = requests.post(url, params={"type": rx_type, "access_token": clean_token}, timeout=3.5)
             if r.status_code == 200:
                 resp = r.json()
                 if resp.get("success") is True or resp.get("id"):
@@ -517,7 +516,7 @@ def react_to_fb_comment(comment_id: str, reaction_type: str = "LOVE", page_token
         if rx_type == "LIKE":
             try:
                 like_url = f"https://graph.facebook.com/{graph_version}/{cid}/likes"
-                r_like = requests.post(like_url, params={"access_token": clean_token}, timeout=10)
+                r_like = requests.post(like_url, params={"access_token": clean_token}, timeout=3.5)
                 if r_like.status_code == 200:
                     resp_l = r_like.json()
                     if resp_l.get("success") is True or resp_l.get("id"):
