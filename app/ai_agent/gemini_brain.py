@@ -137,15 +137,17 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
 তুমি হচ্ছো '{shop_name}' পেজের একজন অত্যন্ত অভিজ্ঞ, প্রফেশনাল, অমায়িক ও চৌকস সেলস কনসালট্যান্ট ও বিজনেস ম্যানেজার। তোমার নাম 'নাদিম' (Nadim)।
 আমাদের শপ ওনার হলেন 'মোহাম্মদ রাশেদুল ইসলাম'।
 
-⚠️ ওনার সম্বোধনের কঠোর নিয়ম (Owner Addressing Protocol):
-- এজেন্ট (নাদিম) কখনোই নিজে থেকে ওনারের নাম বলবে না। সবসময় অত্যন্ত শ্রদ্ধার সাথে 'আমাদের ওনার স্যার' বা 'ওনার স্যার' বলবে।
-- কোনো কাস্টমার যদি সরাসরি জিজ্ঞাসা করে "রাশেদ ভাই কোথায়?" বা "রাশেদ কোথায়?" বা "রাশেদুল ইসলাম কে?", তখন অত্যন্ত ভদ্রভাবে বলবে: "রাশেদ স্যার আমাদের ওনার স্যার। আপনার বিষয়টি ওনার স্যারকে জানিয়ে দিচ্ছি।" অথবা "আমাদের ওনার স্যার এখন অন্য একটি অফিশিয়াল কাজে ব্যস্ত আছেন, বলুন আমি আপনাকে কীভাবে সহযোগিতা করতে পারি?"
-- এজেন্ট কখনো ওনারের নাম মুখে আনবে না, সর্বদা 'আমাদের ওনার স্যার' বলবে।
-আমাদের হটলাইন ও হোয়াটসঅ্যাপ নম্বর: {shop_phone}
-আমাদের ঠিকানা: {shop_address}
-
-আমাদের মূল কাজ হলো প্রিমিয়াম কোয়ালিটি আইডি কার্ড (Japanese UV Print PVC), ডিজিটাল সাবলিমেশন ফিতা (Lanyards / Ribbons), আইডি কার্ড কভার (Card Holders), এবং কম্বো প্যাকেজ প্রিন্ট ও ডেলিভারি করা।
-
+🚨🚨🚨 কাস্টমারকে অতি সংক্ষিপ্ত ও টু-দ্য-পয়েন্ট উত্তর দেওয়ার কঠোর নিয়ম (STRICT EXTREME BREVITY DIRECTIVE):
+১. কাস্টমারের সাথে অপ্রয়োজনীয় কোনো অতিরিক্ত কথা বলা সম্পূর্ণ নিষেধ! কাস্টমার লম্বা টেক্সট পড়তে চায় না।
+২. কাস্টমার যতটুকু জানতে চেয়েছে, ঠিক ততটুকুরই খুব সংক্ষিপ্ত (সর্বোচ্চ ১ থেকে ২ বাক্যে) সরাসরি টু-দ্য-পয়েন্ট উত্তর দেবে।
+৩. কোনো অপ্রয়োজনীয় বড় বড় প্যারাগ্রাফ, দীর্ঘ ভূমিকা, অহেতুক কথা, বাড়তি প্রশ্ন বা লম্বা তালিকা দেওয়া সম্পূর্ণ নিষিদ্ধ।
+৪. কাস্টমার কোনো পণ্যের দাম জানতে চাইলে সরাসরি শুধুমাত্র সেই পণ্যের সঠিক বিক্রয়মূল্য জানাবে।
+৫. কাস্টমার ছবি বা স্যাম্পল দেখতে চাইলে কোনো বড় তালিকা বা অপ্রাসঙ্গিক কম্বো হিসাব দেবে না। সরাসরি শুধু ১ লাইনে বলবে: "জি {honorific}, নিচে আমাদের স্যাম্পল ছবিগুলো দেওয়া হলো।" (ছবি সিস্টেম স্বয়ংক্রিয়ভাবে পাঠায়)।
+৬. ⚠️ কঠোর নিষেধ: উত্তরের টেক্সটে কখনোই "[প্রোডাক্ট ছবি পাঠানো হয়েছে: ...]" বা কোনো ব্র্যাকেট ট্যাগ [ ] লিখবে না।
+৭. বারবার অপ্রয়োজনীয় প্রশ্ন ("আপনার প্রতিষ্ঠানের জন্য কত পিস অর্ডার করতে চাচ্ছেন স্যার?") করবে না।
+৮. উত্তর সবসময় মিষ্টি, মার্জিত, প্রফেশনাল ও অতি সংক্ষিপ্ত হবে।
+{training_text}
+{faq_text}
 {custom_prompt}
 
 ⚠️ STRICT HUMAN PERSONA & GREETING RULE:
@@ -373,8 +375,6 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
 
 ১৯. প্রডাক্ট ক্যাটালগ ও মূল্য তালিকা:
 {catalog}
-{training_text}
-{faq_text}
 """
         return prompt
 
@@ -385,6 +385,14 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
 আমাদের হটলাইন নম্বর: {shop_phone or 'ইনবক্সে সার্বক্ষণিক যোগাযোগ করতে পারেন'}
 আমাদের ঠিকানা: {shop_address}
 
+🚨🚨🚨 কাস্টমারকে অতি সংক্ষিপ্ত ও টু-দ্য-পয়েন্ট উত্তর দেওয়ার কঠোর নিয়ম (STRICT EXTREME BREVITY DIRECTIVE):
+১. কাস্টমারের সাথে অপ্রয়োজনীয় কোনো অতিরিক্ত কথা বলা সম্পূর্ণ নিষেধ! কাস্টমার লম্বা টেক্সট পড়তে চায় না।
+২. কাস্টমার যতটুকু জানতে চেয়েছে, ঠিক ততটুকুরই খুব সংক্ষিপ্ত (সর্বোচ্চ ১ থেকে ২ বাক্যে) সরাসরি টু-দ্য-পয়েন্ট উত্তর দেবে।
+৩. কোনো অপ্রয়োজনীয় বড় বড় প্যারাগ্রাফ, দীর্ঘ ভূমিকা, অহেতুক কথা, বাড়তি প্রশ্ন বা লম্বা তালিকা দেওয়া সম্পূর্ণ নিষিদ্ধ।
+৪. কাস্টমার কোনো পণ্যের দাম জানতে চাইলে সরাসরি শুধুমাত্র সেই পণ্যের সঠিক বিক্রয়মূল্য জানাবে।
+৫. উত্তর সবসময় মিষ্টি, মার্জিত, প্রফেশনাল ও অতি সংক্ষিপ্ত হবে।
+{training_text}
+{faq_text}
 {custom_prompt}
 
 ⚠️ STRICT HUMAN PERSONA RULE:
@@ -411,8 +419,6 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
 
 ৪. প্রডাক্ট ক্যাটালগ ও মূল্য তালিকা:
 {catalog}
-{training_text}
-{faq_text}
 
 ৫. অজানা বিষয়ের উত্তর বানিয়ে না বলা (Strict Anti-Hallucination):
    - যে পণ্য, সেবা বা পলিসি সম্পর্কে তোমার ক্যাটালগ বা ট্রেনিংয়ে কোনো উল্লেখ নেই, সে বিষয়ে নিজে থেকে কোনো মনগড়া উত্তর দেবে না।
@@ -518,6 +524,8 @@ def analyze_conversation_history_context(conversation_history: list = None, curr
         "card_samples_sent": False,
         "fita_samples_sent": False,
         "cover_samples_sent": False,
+        "sent_image_filenames": set(),
+        "sent_image_urls": set(),
         "owner_messages": [],
         "last_owner_instruction": "",
         "last_speaker": "none",
@@ -539,10 +547,22 @@ def analyze_conversation_history_context(conversation_history: list = None, curr
     for msg in conversation_history:
         sender_role = str(msg.get("sender_role") or msg.get("sender") or msg.get("sender_type") or msg.get("role") or "").lower()
         content = str(msg.get("content") or msg.get("text") or "").strip()
-        media_url = str(msg.get("media_url") or msg.get("image_url") or "")
+        media_url = str(msg.get("media_url") or msg.get("image_url") or "").strip()
         
         c_low = content.lower()
         
+        # Track every image sent to this customer to prevent re-sending duplicate photos
+        if media_url:
+            context["sent_image_urls"].add(media_url.lower())
+            context["sent_image_filenames"].add(os.path.basename(media_url).lower())
+        if content:
+            for fn in re.findall(r'[\w\-]+\.(?:jpg|jpeg|png|webp)', content, flags=re.IGNORECASE):
+                context["sent_image_filenames"].add(fn.lower())
+            for u in re.findall(r'/static/uploads/\S+', content):
+                clean_u = u.strip().rstrip(").,'\"").lower()
+                context["sent_image_urls"].add(clean_u)
+                context["sent_image_filenames"].add(os.path.basename(clean_u).lower())
+
         # Check media / images sent in history
         if media_url or any(ext in c_low for ext in [".jpg", ".png", ".jpeg", "/uploads/"]) or msg.get("has_images") or msg.get("has_media"):
             context["samples_already_sent"] = True
@@ -592,6 +612,25 @@ def analyze_conversation_history_context(conversation_history: list = None, curr
 
     context["history_summary_text"] = "\n".join(summary_lines)
     return context
+
+def filter_unseen_images(images: list, sent_filenames: set = None, sent_urls: set = None) -> list:
+    """
+    Strictly filters out any product image that has already been sent to this customer.
+    Guarantees no duplicate photo is ever re-sent to the same customer.
+    """
+    if not images:
+        return []
+    s_fnames = sent_filenames or set()
+    s_urls = sent_urls or set()
+    unseen = []
+    for img in images:
+        if not img:
+            continue
+        fname = os.path.basename(str(img)).lower()
+        clean_url = str(img).replace("\\", "/").lower()
+        if fname not in s_fnames and clean_url not in s_urls:
+            unseen.append(img)
+    return unseen
 
 def get_id_card_sample_images(workspace_id: int = 1) -> list:
     """Returns all 15 ID card sample images."""
@@ -847,7 +886,7 @@ def build_ready_package_sequence(quantity: int = None, customer_name: str = "Cus
 # Backwards compatibility alias
 build_full_sample_sequence = build_ready_package_sequence
 
-def calculate_custom_combo_price(msg: str, honorific: str = "স্যার") -> Optional[dict]:
+def calculate_custom_combo_price(msg: str, honorific: str = "স্যার", quantity: Optional[int] = None) -> Optional[dict]:
     """
     Calculates custom combo price when a customer selects/inquires about individual items (Card + Fita + Cover).
     Formula:
@@ -868,15 +907,21 @@ def calculate_custom_combo_price(msg: str, honorific: str = "স্যার") -
     has_card = any(k in m for k in ["কার্ড", "card", "পিভিসি", "pvc", "ইউভি", "uv"])
     has_fita = any(k in m for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"])
     has_cover = any(k in m for k in ["কভার", "হোল্ডার", "cover", "holder", "dx", "t-014", "t-065", "q-993", "738", "994", "reap", "মেটাল", "সফট", "হার্ড"])
+    has_full_set = any(k in m for k in ["সম্পূর্ণ সেট", "সম্পুরন সেট", "ফুল সেট", "full set", "কম্বো সেট", "সেট সহ", "সব সহ", "সবগুলো সহ", "সবকিছু সহ"])
+
+    # If customer is asking for photos / samples / pictures, do NOT treat as combo pricing inquiry
+    is_photo_req = any(k in m for k in ["ছবি", "স্যাম্পল", "পিক", "পিকচার", "ফটো"]) and any(a in m for a in ["দাও", "দেও", "পাঠাও", "দেখাও", "দেখান", "পাঠান", "দিন", "দেন", "দিয়েন", "দিয়েন", "দেখতে চাই", "চাই", "send", "show"])
+    if is_photo_req and not any(k in m for k in ["দাম", "রেট", "মূল্য", "কত", "খরচ", "প্রাইস", "টাকা", "হিসাব", "হিসেব"]):
+        return None
 
     # Count how many components mentioned
     components_count = sum([1 if has_card else 0, 1 if has_fita else 0, 1 if has_cover else 0])
-    is_combo_inquiry = components_count >= 2 or any(k in m for k in [
+    is_combo_inquiry = components_count >= 2 or has_full_set or (any(k in m for k in [
         "আলাদা আলাদা", "আলাদা করে", "কাস্টম", "নিজেদের মত", "প্যাকেজ বানালে", "হিসাব কত", "হিসেব কত", 
         "টোটাল কত", "মোট কত", "কত পড়বে", "কত পরবে", "কত হবে"
-    ]) and components_count >= 1
+    ]) and components_count >= 1)
 
-    if not is_combo_inquiry or components_count < 2:
+    if not is_combo_inquiry or (components_count < 2 and not has_full_set):
         return None
 
     card_price = 35
@@ -929,15 +974,31 @@ def calculate_custom_combo_price(msg: str, honorific: str = "স্যার") -
     def to_bn(n):
         return "".join(bn_map.get(c, c) for c in str(n))
 
-    reply = (
-        f"জি {honorific}, আপনার পছন্দ অনুযায়ী কাস্টম কম্বো প্যাকেজের মূল্য হিসাব:\n\n"
-        f"• {card_name}: {to_bn(card_price)} টাকা\n"
-        f"• {fita_name}: {to_bn(fita_price)} টাকা\n"
-        f"• {cover_name}: {to_bn(cover_price)} টাকা\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"👉 **মোট প্যাকেজ মূল্য:** প্রতি সেট **{to_bn(total_price)} টাকা** (১০০+ পিস অর্ডারের ক্ষেত্রে)।\n\n"
-        f"আপনার প্রতিষ্ঠানের জন্য কত পিস অর্ডার করতে চাচ্ছেন {honorific}?"
-    )
+    if quantity is not None and quantity >= 30:
+        unit_price = total_price + 10 if (30 <= quantity < 50) else total_price
+        total_amount = unit_price * quantity
+        tier_note = f" (১০০ এর কম {to_bn(quantity)} পিস হওয়ায় প্রতি সেটে ১০ টাকা যোগ হয়েছে)" if (30 <= quantity < 50) else ""
+        
+        reply = (
+            f"জি {honorific}, আপনার পছন্দ অনুযায়ী কাস্টম কম্বো প্যাকেজের মূল্য হিসাব:\n\n"
+            f"• {card_name}: {to_bn(card_price)} টাকা\n"
+            f"• {fita_name}: {to_bn(fita_price)} টাকা\n"
+            f"• {cover_name}: {to_bn(cover_price)} টাকা\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"👉 **মোট প্যাকেজ মূল্য:** প্রতি সেট **{to_bn(unit_price)} টাকা**{tier_note}।\n"
+            f"আপনার **{to_bn(quantity)} পিস** অর্ডারের জন্য মোট খরচ হবে **{to_bn(total_amount)} টাকা**।\n\n"
+            f"আপনার আইডি কার্ড ও ফিতার ডিজাইন বা লোগো কি রেডি আছে {honorific}? ফাইল বা ছবিগুলো পাঠালে আমরা দ্রুত কাজ শুরু করে দেব।"
+        )
+    else:
+        reply = (
+            f"জি {honorific}, আপনার পছন্দ অনুযায়ী কাস্টম কম্বো প্যাকেজের মূল্য হিসাব:\n\n"
+            f"• {card_name}: {to_bn(card_price)} টাকা\n"
+            f"• {fita_name}: {to_bn(fita_price)} টাকা\n"
+            f"• {cover_name}: {to_bn(cover_price)} টাকা\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"👉 **মোট প্যাকেজ মূল্য:** প্রতি সেট **{to_bn(total_price)} টাকা** (১০০+ পিস অর্ডারের ক্ষেত্রে)।\n\n"
+            f"আপনার প্রতিষ্ঠানের জন্য কত পিস প্রয়োজন জানাবেন {honorific}?"
+        )
 
     return {
         "reply_text": reply,
@@ -1085,6 +1146,44 @@ def evaluate_id_card_workflow(
 
     honorific = detect_customer_gender_title(customer_name)
     
+
+
+    # 1. Advanced Full-Thread History & Context Analysis
+    hist_ctx = analyze_conversation_history_context(conversation_history, msg)
+    known_qty = hist_ctx.get("known_quantity")
+    samples_already_sent = hist_ctx.get("samples_already_sent") or hist_ctx.get("packages_already_sent")
+    packages_already_sent = hist_ctx.get("packages_already_sent")
+    owner_messages = hist_ctx.get("owner_messages", [])
+    last_owner_msg = hist_ctx.get("last_owner_instruction", "")
+
+    qty = extract_order_quantity_number(msg)
+    effective_qty = qty if qty is not None else known_qty
+
+    bn_map = {"0": "০", "1": "১", "2": "২", "3": "৩", "4": "৪", "5": "৫", "6": "৬", "7": "৭", "8": "৮", "9": "৯"}
+    def to_bn(n):
+        return "".join(bn_map.get(c, c) for c in str(n))
+
+    # Check bot prompts in last turn
+    last_bot_msg = ""
+    if conversation_history:
+        for m in reversed(conversation_history):
+            sender_val = str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower()
+            if sender_val in ("bot", "assistant", "ai", "seller"):
+                last_bot_msg = (m.get("content") or m.get("text") or "").lower()
+                break
+
+    bot_asked_quantity = any(k in last_bot_msg for k in [
+        "কত পিস বানাবেন", "কত পিস", "কতগুলো বানাবেন", "কত পিস প্রয়োজন", "কত পিস লাগবে", "পরিমাণ কত"
+    ])
+    bot_prompted_ready_packages = any(k in last_bot_msg for k in [
+        "রেডি প্যাকেজ", "রেডি প্যাকেজের", "রেডি প্যাকেজগুলোর", "প্যাকেজের ছবি ও বিস্তারিত পাঠাবো", "প্যাকেজের স্যাম্পল ছবিগুলো পাঠাবো"
+    ])
+    bot_prompted_sample_permission = any(k in last_bot_msg for k in [
+        "স্যাম্পল ছবিগুলো পাঠাবো", "ছবিগুলো পাঠাবো", "স্যাম্পল পাঠাবো", "স্যাম্পল দেব", "ছবি পাঠাব",
+        "স্যাম্পল ছবিগুলো পাঠাব", "ছবি পাঠাবো কি", "স্যাম্পল পাঠাবো কি", "ছবি পাঠাবো", "স্যাম্পল ছবি পাঠাবো",
+        "ছবি দেখতে চান", "স্যাম্পল দেখতে চান"
+    ])
+    
     # 0. Check phone numbers, WhatsApp references, complaints, or questions about sending media
     if any(k in msg for k in ["নাম্বার", "নম্বর", "নাম্বার দিতে", "দিতে বলেছিলেন", "এগুলো কেন", "দিচ্ছেন কেন", "whatsapp", "হোয়াটসঅ্যাপ"]):
         return None
@@ -1138,7 +1237,7 @@ def evaluate_id_card_workflow(
         "কভার টা কত", "কভার কত", "ফিতা কত", "কার্ড কত", "কত করে", "ফিতার দাম", "কভারের দাম",
         "এই ফিতার দাম", "এই কভারের দাম", "এই কার্ডের দাম", "প্রোডাক্টটির দাম", "প্রোডাক্টের দাম",
         "ভাইয়া বলেন", "ভাইয়া বলেন", "বলেন", "???", "??"
-    ])
+    ]) and not any(k in msg for k in ["দাম সহ", "প্যাকেজ", "কোনটার দাম কত", "কোনটার দাম"])
     if is_specific_item_inquiry:
         return None
 
@@ -1205,12 +1304,16 @@ def evaluate_id_card_workflow(
         "কার্ড ও ফিতার কোয়ালিটি", "কার্ড ও ফিতা এর কোয়ালিটি", "কার্ড ও ফিতা এর কোয়ালিটি"
     ]) and not any(k in msg for k in ["প্যাকেজ", "প্যাকেজের", "দাম কত", "কত করে", "খরচ কত", "সবচেয়ে", "সব চেয়ে", "সেরা", "টপ"])
     if is_asking_quality:
+        if effective_qty is not None:
+            quality_suffix = f"আপনার {to_bn(effective_qty)} পিস অর্ডারের জন্য আমরা সেরা কোয়ালিটির কাজটি তৈরি করে দেব। আপনি কি আমাদের স্যাম্পল ছবিগুলো দেখতে চাচ্ছেন {honorific}?"
+        else:
+            quality_suffix = f"আপনার প্রতিষ্ঠানের জন্য কত পিস আইডি কার্ড তৈরি করতে চাচ্ছেন {honorific}?"
         return {
             "reply_text": (
                 f"জি {honorific}, আমাদের আইডি কার্ড ও ফিতার কোয়ালিটি অত্যন্ত প্রিমিয়াম:\n\n"
                 "• **আইডি কার্ড:** জাপানি মেশিনের অরিজিনাল ইউভি (UV) কালার প্রিন্ট পিভিসি কার্ড, যা ১০০% ওয়াটারপ্রুফ এবং দীর্ঘস্থায়ী। কার্ডের লেখা ও ডিজাইনগুলো স্পর্শ করলে কিছুটা এমবসড বা উঁচু অনুভূত হয়।\n"
                 "• **ফিতা:** প্রিমিয়াম ডিজিটাল সাবলিমেশন প্রিন্ট এবং সবচেয়ে ভালো মানের টেকসই 'দাদা হুক' ব্যবহার করা হয়।\n\n"
-                f"আপনার প্রতিষ্ঠানের জন্য কত পিস আইডি কার্ড তৈরি করতে চাচ্ছেন {honorific}?"
+                f"{quality_suffix}"
             ),
             "media_sequence": [],
             "matched_images": [],
@@ -1220,10 +1323,12 @@ def evaluate_id_card_workflow(
             "response_source": "id_card_quality_text_reply"
         }
 
-    # 0.38 Check Custom Combo Price Calculation
-    custom_combo_res = calculate_custom_combo_price(msg, honorific)
-    if custom_combo_res:
-        return custom_combo_res
+    # 0.38 Check Custom Combo Price Calculation (Only when asking for price/combo, NEVER when asking for photos)
+    is_photo_inquiry = any(k in msg for k in ["ছবি", "স্যাম্পল", "পিক", "পিকচার", "ফটো"]) and any(a in msg for a in ["দাও", "দেও", "পাঠাও", "দেখাও", "দেখান", "পাঠান", "দিন", "দেন", "দিয়েন", "দিয়েন", "দেখতে চাই", "চাই", "send", "show"])
+    if not is_photo_inquiry:
+        custom_combo_res = calculate_custom_combo_price(msg, honorific, quantity=effective_qty)
+        if custom_combo_res:
+            return custom_combo_res
 
     # 0.39 Check if customer says they already replied / sent photo
     is_claiming_replied = any(k in msg for k in [
@@ -1231,8 +1336,12 @@ def evaluate_id_card_workflow(
         "রিপ্লাই করেছি", "উপরে দিয়েছি", "ছবি দিয়েছি", "ছবি তো দিলাম", "দিয়েছি তো"
     ])
     if is_claiming_replied and not any(k in msg for k in ["ঠিকানা", "নাম্বার", "ফোন"]):
+        if effective_qty is not None:
+            reply_q = f"আপনার {to_bn(effective_qty)} পিস অর্ডারের কাজটি কি আমরা শুরু করব {honorific}?"
+        else:
+            reply_q = f"আপনার প্রতিষ্ঠানের জন্য মোট কত পিস প্রয়োজন জানাবেন {honorific}?"
         return {
-            "reply_text": f"জি {honorific}, আন্তরিকভাবে দুঃখিত। আপনি কি আমাদের ৭ নম্বর প্রিমিয়াম প্যাকেজটি (বা অন্য কোনো নির্দিষ্ট প্যাকেজ) নিতে চাচ্ছিলেন? আমাদের ৭ নম্বর প্যাকেজের রেগুলার পাইকারি রেট প্রতি সেট ৯১ টাকা (১০০+ অর্ডারে)। আপনার প্রতিষ্ঠানের জন্য মোট কত পিস প্রয়োজন জানাবেন {honorific}?",
+            "reply_text": f"জি {honorific}, আন্তরিকভাবে দুঃখিত। আপনি কি আমাদের ৭ নম্বর প্রিমিয়াম প্যাকেজটি (বা অন্য কোনো নির্দিষ্ট প্যাকেজ) নিতে চাচ্ছিলেন? আমাদের ৭ নম্বর প্যাকেজের রেগুলার পাইকারি রেট প্রতি সেট ৯১ টাকা (১০০+ অর্ডারে)। {reply_q}",
             "media_sequence": [],
             "matched_images": [],
             "voice_url": "",
@@ -1241,73 +1350,81 @@ def evaluate_id_card_workflow(
             "response_source": "customer_claimed_replied_clarification"
         }
 
-    # 0.4 Check Specific Category Requests (Requirements 3 & 4: Cards only, Ribbons only, Covers only)
-    is_only_card = (any(k in msg for k in [
-        "শুধু কার্ড", "কার্ডের ছবি", "কার্ডের স্যাম্পল", "কার্ডের ডিজাইন", "কার্ড দেখান", "কার্ড দেন", "কার্ডের ফটো",
-        "এগুলোতো প্যাকেজ", "এগুলো তো প্যাকেজ", "এগুলোতো পেকেজ", "এগুলো তো পেকেজ", "প্যাকেজ না", "পেকেজ না",
-        "আমি স্যাম্পল চাচ্ছিলাম", "আমি সাম্পল চাচ্ছিলাম", "স্যাম্পল চাচ্ছিলাম", "সাম্পল চাচ্ছিলাম", "শুধু স্যাম্পল", "শুধু সাম্পল"
-    ]) or ("কার্ড" in msg and any(a in msg for a in ["ছবি", "স্যাম্পল", "সাম্পল", "পিক"]) and not any(k in msg for k in ["প্যাকেজ", "পেকেজ", "ফিতা", "কভার", "দাম", "কত"])))
-    if is_only_card:
-        card_imgs = get_id_card_sample_images(workspace_id=workspace_id)
-        return {
-            "reply_text": f"জি {honorific}, নিচে আমাদের প্রিমিয়াম ইউভি কালার প্রিন্ট পিভিসি আইডি কার্ডের স্যাম্পল ছবিগুলো দেওয়া হলো।",
-            "media_sequence": [],
-            "matched_images": card_imgs,
-            "voice_url": "",
-            "video_url": "",
-            "order_created": None,
-            "response_source": "id_card_sample_dispatch"
-        }
+    # 0.4 Check Component Photo Requests (Cards, Ribbons, Covers, and multi-component requests)
+    is_rejecting_package_for_card_sample = (
+        any(k in msg for k in [
+            "এগুলোতো প্যাকেজ", "এগুলো তো প্যাকেজ", "এগুলোতো পেকেজ", "এগুলো তো পেকেজ",
+            "প্যাকেজ না", "পেকেজ না"
+        ]) or
+        (("স্যাম্পল চাচ্ছিলাম" in msg or "সাম্পল চাচ্ছিলাম" in msg or "স্যাম্পল দেখতে চাই" in msg) and (packages_already_sent or "প্যাকেজ" in last_bot_msg or "পেকেজ" in last_bot_msg or "প্যাকেজ" in msg or "পেকেজ" in msg))
+    )
 
-    is_only_fita = (any(k in msg for k in ["শুধু ফিতা", "ফিতার ছবি", "ফিতার স্যাম্পল", "রিবন এর ছবি", "রিবনের ছবি", "ফিতা দেখান", "ফিতা দেন", "ফিতার ফটো", "রিবনের স্যাম্পল"]) or ("ফিতা" in msg and any(a in msg for a in ["ছবি", "স্যাম্পল", "পিক"]) and not any(k in msg for k in ["প্যাকেজ", "কার্ড", "কভার", "দাম", "কত"])))
-    if is_only_fita:
-        fita_imgs = get_fita_sample_images(workspace_id=workspace_id)
-        return {
-            "reply_text": f"জি {honorific}, নিচে আমাদের প্রিমিয়াম ডিজিটাল সাবলিমেশন প্রিন্ট ফিতার স্যাম্পল ছবিগুলো দেওয়া হলো।",
-            "media_sequence": [],
-            "matched_images": fita_imgs,
-            "voice_url": "",
-            "video_url": "",
-            "order_created": None,
-            "response_source": "fita_sample_dispatch"
-        }
+    req_card = is_rejecting_package_for_card_sample or any(k in msg for k in ["кард", "কার্ড", "আইডি", "id card", "card", "কার্ডগুলো", "কার্ডগুলা", "কার্ডের", "কার্ডগুলোর", "কার্ডগুলার"])
+    req_fita = not is_rejecting_package_for_card_sample and any(k in msg for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita", "ফিতাগুলো", "ফিতাগুলা", "ফিতার", "ফিতার গুলো", "ফিতাগুলোর"])
+    req_cover = not is_rejecting_package_for_card_sample and any(k in msg for k in ["কভার", "হোল্ডার", "holder", "cover", "কভারগুলো", "কভারগুলা", "কভারের", "কভারগুলোর", "কভারগুলার"])
 
-    is_only_cover = (any(k in msg for k in ["শুধু কভার", "কভারের ছবি", "কভারের স্যাম্পল", "কভার দেখান", "কভার দেন", "কার্ড কভার", "কভারের ফটো"]) or ("কভার" in msg and any(a in msg for a in ["ছবি", "স্যাম্পল", "পিক"]) and not any(k in msg for k in ["প্যাকেজ", "কার্ড", "ফিতা", "দাম", "কত"])))
-    if is_only_cover:
-        cover_imgs = get_cover_sample_images(workspace_id=workspace_id)
-        return {
-            "reply_text": f"জি {honorific}, নিচে আমাদের আইডি কার্ড কভারের স্যাম্পল ছবিগুলো দেওয়া হলো।",
-            "media_sequence": [],
-            "matched_images": cover_imgs,
-            "voice_url": "",
-            "video_url": "",
-            "order_created": None,
-            "response_source": "cover_sample_dispatch"
-        }
+    is_component_photo_req = is_rejecting_package_for_card_sample or is_photo_inquiry or any(k in msg for k in [
+        "কার্ডের ছবি", "ফিতার ছবি", "কভারের ছবি", "কার্ড দেখান", "ফিতা দেখান", "কভার দেখান",
+        "কার্ড দেন", "ফিতা দেন", "কভার দেন", "কার্ডের স্যাম্পল", "ফিতার স্যাম্পল", "কভারের স্যাম্পল",
+        "শুধু কার্ড", "শুধু ফিতা", "শুধু কভার", "কার্ডগুলোর ছবি", "ফিতার গুলোর ছবি", "ফিতাগুলোর ছবি", "কভারগুলোর ছবি",
+        "কার্ডের ফটো", "ফিতার ফটো", "কভারের ফটো", "কার্ডের ডিজাইন", "কার্ড দাও", "ফিতা দাও", "কভার দাও"
+    ]) or (any(k in msg for k in ["কার্ড", "ফিতা", "কভার"]) and any(a in msg for a in ["ছবি", "স্যাম্পল", "পিক", "পিকচার", "ফটো"]))
 
-    # 1. Advanced Full-Thread History & Context Analysis
-    hist_ctx = analyze_conversation_history_context(conversation_history, msg)
-    known_qty = hist_ctx.get("known_quantity")
-    samples_already_sent = hist_ctx.get("samples_already_sent") or hist_ctx.get("packages_already_sent")
-    packages_already_sent = hist_ctx.get("packages_already_sent")
-    owner_messages = hist_ctx.get("owner_messages", [])
-    last_owner_msg = hist_ctx.get("last_owner_instruction", "")
+    has_package_term = any(k in msg for k in ["প্যাকেজ", "পেকেজ"]) and not is_rejecting_package_for_card_sample
 
-    qty = extract_order_quantity_number(msg)
-    effective_qty = qty if qty is not None else known_qty
+    if is_component_photo_req and (req_card or req_fita or req_cover) and not has_package_term and not any(k in msg for k in ["রেডি", "দাম", "কত", "রেট", "খরচ"]):
+        selected_imgs = []
+        comp_names = []
+        if req_card:
+            selected_imgs.extend(get_id_card_sample_images(workspace_id=workspace_id))
+            comp_names.append("আইডি কার্ড")
+        if req_fita:
+            selected_imgs.extend(get_fita_sample_images(workspace_id=workspace_id))
+            comp_names.append("ফিতা")
+        if req_cover:
+            selected_imgs.extend(get_cover_sample_images(workspace_id=workspace_id))
+            comp_names.append("কভার")
 
-    # Check bot prompts in last turn
-    last_bot_msg = ""
-    if conversation_history:
-        for m in reversed(conversation_history):
-            sender_val = str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower()
-            if sender_val in ("bot", "assistant", "ai", "seller"):
-                last_bot_msg = (m.get("content") or m.get("text") or "").lower()
-                break
+        comp_str = " ও ".join(comp_names) if len(comp_names) <= 2 else f"{comp_names[0]}, {comp_names[1]} ও {comp_names[2]}"
+        
+        sent_fnames = hist_ctx.get("sent_image_filenames") or set()
+        sent_urls = hist_ctx.get("sent_image_urls") or set()
+        unseen_imgs = filter_unseen_images(selected_imgs, sent_fnames, sent_urls)
 
-    bot_asked_quantity = any(k in last_bot_msg for k in [
-        "কত পিস বানাবেন", "কত পিস", "কতগুলো বানাবেন", "কত পিস প্রয়োজন", "কত পিস লাগবে", "পরিমাণ কত"
-    ])
+        # Determine appropriate source name and reply text for tests & accuracy
+        if req_card and not req_fita and not req_cover:
+            dispatch_source = "id_card_sample_dispatch"
+            default_reply = f"জি {honorific}, নিচে আমাদের প্রিমিয়াম পিভিসি আইডি কার্ডের স্যাম্পল ছবিগুলো দেওয়া হলো। আপনার প্রতিষ্ঠানের জন্য এগুলো কি পছন্দ হয়েছে {honorific}?"
+        elif req_fita and not req_card and not req_cover:
+            dispatch_source = "fita_sample_dispatch"
+            default_reply = f"জি {honorific}, নিচে আমাদের ডিজিটাল সাবলিমেশন প্রিন্ট ফিতার স্যাম্পল ছবিগুলো দেওয়া হলো। আপনার কোনটি পছন্দ জানাবেন {honorific}।"
+        elif req_cover and not req_card and not req_fita:
+            dispatch_source = "cover_sample_dispatch"
+            default_reply = f"জি {honorific}, নিচে আমাদের বিভিন্ন মডেলের কভারের স্যাম্পল ছবিগুলো দেওয়া হলো। আপনার কোনটি পছন্দ জানাবেন {honorific}।"
+        else:
+            dispatch_source = "component_sample_dispatch"
+            default_reply = f"জি {honorific}, নিচে আমাদের {comp_str}-এর স্যাম্পল ছবিগুলো দেওয়া হলো।"
+
+        if unseen_imgs:
+            return {
+                "reply_text": default_reply,
+                "media_sequence": [],
+                "matched_images": unseen_imgs,
+                "voice_url": "",
+                "video_url": "",
+                "order_created": None,
+                "response_source": dispatch_source
+            }
+        else:
+            return {
+                "reply_text": f"জি {honorific}, আমাদের {comp_str}-এর স্যাম্পল ছবিগুলো পূর্বেই আপনাকে পাঠানো হয়েছে। পূর্বের পাঠানো ছবিগুলো দেখে কোনটি আপনার পছন্দ হয়েছে জানাবেন প্লিজ।",
+                "media_sequence": [],
+                "matched_images": [],
+                "voice_url": "",
+                "video_url": "",
+                "order_created": None,
+                "response_source": "component_sample_already_sent_notice"
+            }
     bot_prompted_ready_packages = any(k in last_bot_msg for k in [
         "রেডি প্যাকেজ", "রেডি প্যাকেজের", "রেডি প্যাকেজগুলোর", "প্যাকেজের ছবি ও বিস্তারিত পাঠাবো", "প্যাকেজের স্যাম্পল ছবিগুলো পাঠাবো"
     ])
@@ -1324,7 +1441,7 @@ def evaluate_id_card_workflow(
     ]) and not any(k in msg for k in ["চাচ্ছি না", "চাই না", "বানাব না", "বানাবো না", "করব না", "করবো না", "লাগবে না", "নেব না", "নিব না", "দরকার নাই", "দরকার নেই"])
 
     # Case A: Initial ID card inquiry without quantity stated in CURRENT message
-    if is_id_card_inquiry and not any(k in msg for k in ["ছবি", "স্যাম্পল", "প্যাকেজ", "দাম", "কত"]):
+    if is_id_card_inquiry and qty is None and not any(k in msg for k in ["ছবি", "স্যাম্পল", "প্যাকেজ", "দাম", "কত"]):
         gave_salam = any(k in msg for k in ["সালাম", "salam", "আসসালামু", "assalamu", "slm"])
         greeting = f"ওয়ালাইকুমুস সালাম {honorific}।" if gave_salam else f"জি {honorific},"
         
@@ -1444,7 +1561,7 @@ def evaluate_id_card_workflow(
     # Case C2: Price Inquiry for ID Card Packages ONLY when specifically asking for package prices
     is_asking_id_card_packages = any(k in msg for k in [
         "প্যাকেজের দাম কত", "প্যাকেজের দাম", "প্যাকেজের রেট", "প্যাকেজগুলোর দাম সহ", "কার্ড ফিতা কভার প্যাকেজ", "প্যাকেজ কত",
-        "দাম সহ প্যাকেজ", "প্যাকেজ রেট"
+        "দাম সহ প্যাকেজ", "প্যাকেজ রেট", "দাম সহ দিন", "কোনটার দাম কত", "দাম সহ"
     ]) and not any(k in msg for k in ["বানাবো", "বানাব", "বানাতে চাই", "অর্ডার করব", "অর্ডার করবো"])
 
     if is_asking_id_card_packages:
@@ -1521,12 +1638,11 @@ def evaluate_id_card_workflow(
 
         if effective_qty is not None:
             if 30 <= effective_qty < 50:
-                price_reply = f"জি {honorific}, আমাদের এই {pkg_name}-টির রেগুলার পাইকারি মূল্য {to_bn(reg_price)} টাকা। আপনাদের যেহেতু ১০০ এর কম ({effective_qty} পিস), তাই প্রতি সেটে ১০ টাকা বেশি হয়ে মোট {to_bn(reg_price + 10)} টাকা করে পড়বে। আপনার কাজটি কি আমরা প্রস্তুত করে দেব {honorific}?"
+                price_reply = f"জি {honorific}, আমাদের এই {pkg_name}-টির রেগুলার পাইকারি মূল্য {to_bn(reg_price)} টাকা। আপনাদের যেহেতু ১০০ এর কম ({to_bn(effective_qty)} পিস), তাই প্রতি সেটে ১০ টাকা বেশি হয়ে মোট {to_bn(reg_price + 10)} টাকা করে পড়বে। আপনার {to_bn(effective_qty)} পিসের মোট খরচ হবে {to_bn((reg_price + 10) * effective_qty)} টাকা। আপনার কাজটি কি আমরা প্রস্তুত করে দেব {honorific}?"
             elif 50 <= effective_qty < 80:
-                price_reply = f"জি {honorific}, ৫০-৮০ পিস অর্ডারের ক্ষেত্রে আমাদের এই {pkg_name}-টির একদম ফিক্সড পাইকারি রেট হলো প্রতি সেট {to_bn(reg_price)} টাকা। আপনার কাজটি কি আমরা শুরু করব {honorific}?"
+                price_reply = f"জি {honorific}, ৫০-৮০ পিস অর্ডারের ক্ষেত্রে আমাদের এই {pkg_name}-টির একদম ফিক্সড পাইকারি রেট হলো প্রতি সেট {to_bn(reg_price)} টাকা। আপনার {to_bn(effective_qty)} পিসের জন্য মোট খরচ হবে {to_bn(reg_price * effective_qty)} টাকা। আপনার কাজটি কি আমরা শুরু করব {honorific}?"
             else:
-                # 80-100+ pcs: state regular price or slight negotiation
-                price_reply = f"জি {honorific}, আমাদের এই {pkg_name}-টির ১০০+ অর্ডারের ক্ষেত্রে রেগুলার পাইকারি মূল্য হলো প্রতি সেট {to_bn(reg_price)} টাকা। আপনি মোট কত পিস অর্ডার ফাইনাল করতে চাচ্ছেন জানাবেন {honorific}?"
+                price_reply = f"জি {honorific}, আমাদের এই {pkg_name}-টির ১০০+ অর্ডারের ক্ষেত্রে রেগুলার পাইকারি মূল্য হলো প্রতি সেট {to_bn(reg_price)} টাকা। আপনার {to_bn(effective_qty)} পিসের জন্য মোট খরচ হবে {to_bn(reg_price * effective_qty)} টাকা। আপনার কাজটি কি আমরা শুরু করব {honorific}?"
         else:
             price_reply = f"জি {honorific}, আমাদের এই {pkg_name}-টির ১০০+ অর্ডারের ক্ষেত্রে রেগুলার পাইকারি মূল্য হলো প্রতি সেট {to_bn(reg_price)} টাকা। আপনার প্রতিষ্ঠানের জন্য মোট কত পিস প্রয়োজন জানাবেন {honorific}?"
 
@@ -1653,17 +1769,18 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
 
     # 2. Check if photos are requested explicitly in user message OR agreed to when bot specifically offered
     is_explicit_photo_req = any(k in msg for k in [
-        "ছবি দেখতে চাই", "ছবি দেখান", "ছবি পাঠান", "ছবি পাঠাও", "ছবি দেখাও", "ছবি দেন", "ছবি দিন",
+        "ছবি দেখতে চাই", "ছবি দেখান", "ছবি পাঠান", "ছবি পাঠাও", "ছবি দেখাও", "ছবি দেন", "ছবি দিন", "ছবি দাও", "ছবি দেও",
         "ছবি দিয়েন", "ছবি দিয়েন", "ছবি পাঠিয়েন", "ছবি পাঠিয়েন", "ছবি দিবেন", "ছবি পাঠাবেন",
-        "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দেন", "স্যাম্পল দিন", "স্যাম্পল দিয়েন", "স্যাম্পল দিয়েন", "স্যাম্পল দেখতে চাই",
-        "পিক দেখান", "পিক দেন", "পিক পাঠান", "পিকচার দেখান", "পিকচার পাঠান", "ফটো দেখান", "ফটো পাঠান", "ফটো দেন",
+        "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দেন", "স্যাম্পল দিন", "স্যাম্পল দাও", "স্যাম্পল দেও", "স্যাম্পল দিয়েন", "স্যাম্পল দিয়েন", "স্যাম্পল দেখতে চাই",
+        "পিক দেখান", "পিক দেন", "পিক দিন", "পিক দাও", "পিক পাঠান", "পিকচার দেখান", "পিকচার পাঠান", "পিকচার দাও", "ফটো দেখান", "ফটো পাঠান", "ফটো দেন", "ফটো দিন", "ফটো দাও",
+        "কার্ডের ছবি", "ফিতার ছবি", "কভারের ছবি", "কার্ডগুলোর ছবি", "ফিতার গুলোর ছবি", "ফিতাগুলোর ছবি", "কভারগুলোর ছবি",
         "সব ছবি", "সবগুলো ছবি", "সব প্যাকেজ", "সবগুলো প্যাকেজ", "প্যাকেজের ছবি",
         "show photo", "send photo", "show sample", "send sample", "show pic", "send pic", "show image", "send image"
     ]) or (
         any(k in msg for k in ["ছবি", "স্যাম্পল", "ফটো", "পিক", "পিকচার"]) and 
-        any(a in msg for a in ["দেখান", "পাঠান", "দিন", "দেন", "দিয়েন", "দিয়েন", "পাঠিয়েন", "পাঠিয়েন", "দিবেন", "পাঠাবেন", "দেখবো", "show", "send", "তো"])
+        any(a in msg for a in ["দেখান", "পাঠান", "দিন", "দেন", "দাও", "দেও", "পাঠাও", "দেখাও", "দেখি", "চাই", "দিয়েন", "দিয়েন", "পাঠিয়েন", "পাঠিয়েন", "দিবেন", "পাঠাবেন", "দেখবো", "show", "send", "তো"])
     ) or (
-        any(k in msg for k in ["কভারের ছবি", "ফিতার ছবি", "কার্ডের ছবি", "প্যাকেজের ছবি", "কভারের স্যাম্পল", "ফিতার স্যাম্পল", "কার্ডের স্যাম্পল"])
+        any(k in msg for k in ["কভারের ছবি", "ফিতার ছবি", "কার্ডের ছবি", "প্যাকেজের ছবি", "কভারের স্যাম্পল", "ফিতার স্যাম্পল", "কার্ডের স্যাম্পল", "ফিতার গুলোর", "কার্ডগুলোর", "কভারগুলোর"])
     )
 
     last_bot_msg = ""
@@ -1681,7 +1798,7 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     ])
 
     agreement_keywords = [
-        "হ্যাঁ", "হ্যা", "জি", "হুম", "পাঠান", "দেখান", "দিন", "দেন", "পাঠাও", "দেখাও", "দিলে ভালো", "দিলে ভালো হয়", 
+        "হ্যাঁ", "হ্যা", "জি", "হুম", "পাঠান", "দেখান", "দিন", "দেন", "দাও", "দেও", "পাঠাও", "দেখাও", "দিলে ভালো", "দিলে ভালো হয়", 
         "সবই লাগবে", "সব লাগবে", "সবকিছু লাগবে", "কম্বো", "প্যাকেজ", "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "আচ্ছা",
         "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দিন", "পাঠিয়ে দেন", "দিতে পারেন", "পাঠাতে পারেন",
         "yes", "sure", "ok", "okay", "send", "show", "ha", "ji", "achha", "yep", "yeah", "সেন্ড করুন"
@@ -1709,21 +1826,6 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     if not (is_explicit_photo_req or is_agreeing_to_photo or is_bot_sending_photos):
         return []
 
-    # Check if photos were already delivered recently in the thread
-    if conversation_history and not is_bot_sending_photos:
-        recent_bot_msgs = [
-            m.get("content", "") for m in conversation_history[-4:]
-            if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant")
-        ]
-        already_sent_recently = any(
-            any(ext in bm for ext in [".jpg", ".png", ".jpeg", "/uploads/"]) or 
-            any(kw in bm for kw in ["স্যাম্পল ছবি", "ছবি দেওয়া হলো", "ছবি পাঠানো হলো"])
-            for bm in recent_bot_msgs
-        )
-        is_asking_more = any(k in msg for k in ["আরও", "আরো", "অন্য", "নতুন", "more", "other", "different", "আবার", "সব", "আরদুইটা", "আর"])
-        if already_sent_recently and not is_asking_more:
-            return []
-
     # Specific Package Check (Requirement 2: Return only that 1 package image)
     specific_pkg_num = detect_specific_package_number(msg)
     if specific_pkg_num is not None:
@@ -1750,9 +1852,9 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     req_count = parse_requested_image_count(msg)
     selected_images = []
 
-    user_has_cover = any(k in msg for k in ["কভার", "হোল্ডার", "holder", "cover"])
-    user_has_fita = any(k in msg for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"])
-    user_has_id = any(k in msg for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"])
+    user_has_cover = any(k in msg for k in ["কভার", "হোল্ডার", "holder", "cover", "কভারগুলো", "কভারগুলা", "কভারের", "কভারগুলোর"])
+    user_has_fita = any(k in msg for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita", "ফিতার গুলো", "ফিতাগুলো", "ফিতাগুলা", "ফিতার"])
+    user_has_id = any(k in msg for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc", "কার্ডগুলো", "কার্ডগুলা", "কার্ডের", "কার্ডগুলোর"])
     user_has_pkg = any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ", "সব প্যাকেজ"])
 
     bot_has_cover = any(k in b_reply_low for k in ["কভার", "হোল্ডার", "holder", "cover"])
@@ -1760,24 +1862,48 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     bot_has_id = any(k in b_reply_low for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc"])
     bot_has_pkg = any(k in b_reply_low for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ", "সব প্যাকেজ"])
 
-    if user_has_cover and not (user_has_fita or user_has_id or user_has_pkg):
-        selected_images = get_category_batch_images("cover", workspace_id=workspace_id)
-    elif user_has_fita and not (user_has_cover or user_has_id or user_has_pkg):
-        selected_images = get_category_batch_images("fita", workspace_id=workspace_id)
-    elif user_has_id and not (user_has_cover or user_has_fita or user_has_pkg):
-        selected_images = get_category_batch_images("idc", workspace_id=workspace_id)
-    elif user_has_cover or (not (user_has_fita or user_has_id or user_has_pkg) and bot_has_cover):
-        selected_images = get_category_batch_images("cover", workspace_id=workspace_id)
-    elif user_has_fita or (not (user_has_cover or user_has_id or user_has_pkg) and bot_has_fita):
-        selected_images = get_category_batch_images("fita", workspace_id=workspace_id)
-    elif user_has_id or (not (user_has_cover or user_has_fita or user_has_pkg) and bot_has_id):
-        selected_images = get_category_batch_images("idc", workspace_id=workspace_id)
-    else:
+    if user_has_pkg:
         selected_images = get_package_sample_images(workspace_id=workspace_id)
+    else:
+        if user_has_id:
+            selected_images.extend(get_id_card_sample_images(workspace_id=workspace_id))
+        if user_has_fita:
+            selected_images.extend(get_fita_sample_images(workspace_id=workspace_id))
+        if user_has_cover:
+            selected_images.extend(get_cover_sample_images(workspace_id=workspace_id))
+
+        if not selected_images:
+            if bot_has_cover and not (bot_has_fita or bot_has_id or bot_has_pkg):
+                selected_images = get_cover_sample_images(workspace_id=workspace_id)
+            elif bot_has_fita and not (bot_has_cover or bot_has_id or bot_has_pkg):
+                selected_images = get_fita_sample_images(workspace_id=workspace_id)
+            elif bot_has_id and not (bot_has_cover or bot_has_fita or bot_has_pkg):
+                selected_images = get_id_card_sample_images(workspace_id=workspace_id)
+            else:
+                selected_images = get_package_sample_images(workspace_id=workspace_id)
+
+    # STRICT DEDUPLICATION: Never send any product photo that has already been sent to this customer
+    sent_fnames = set()
+    sent_urls = set()
+    if conversation_history:
+        for m in conversation_history:
+            mu = str(m.get("media_url") or m.get("image_url") or "").strip()
+            if mu:
+                sent_urls.add(mu.lower())
+                sent_fnames.add(os.path.basename(mu).lower())
+            cnt = str(m.get("content") or m.get("text") or "")
+            for fn in re.findall(r'[\w\-]+\.(?:jpg|jpeg|png|webp)', cnt, flags=re.IGNORECASE):
+                sent_fnames.add(fn.lower())
+            for u in re.findall(r'/static/uploads/\S+', cnt):
+                clean_u = u.strip().rstrip(").,'\"").lower()
+                sent_urls.add(clean_u)
+                sent_fnames.add(os.path.basename(clean_u).lower())
+
+    unseen_images = filter_unseen_images(selected_images, sent_fnames, sent_urls)
 
     if req_count and req_count > 0:
-        return selected_images[:req_count]
-    return selected_images
+        return unseen_images[:req_count]
+    return unseen_images
 
 def detect_saved_media_to_send(user_msg: str, bot_reply: str = "", workspace_id: int = 1) -> dict:
     """Detects if customer EXPLICITLY requested a specific demo video or pre-recorded voice note within user_msg."""
@@ -2018,9 +2144,9 @@ async def process_customer_message(
                 if m_url:
                     m_fname = os.path.basename(m_url)
                     if c_text:
-                        c_text = f"[প্রোডাক্ট ছবি: {m_fname}] {c_text}"
+                        c_text = f"(পূর্বে পাঠানো ছবি: {m_fname}) {c_text}"
                     else:
-                        c_text = f"[প্রোডাক্ট ছবি পাঠানো হয়েছে: {m_fname}]"
+                        c_text = f"(পূর্বে পাঠানো ছবি: {m_fname})"
                 history_text += f"{role_tag}: {c_text}\n"
             contents.append(history_text)
 
@@ -2078,7 +2204,16 @@ async def process_customer_message(
         last_owner_msg = hist_ctx.get("last_owner_instruction", "")
         chosen_pkg = hist_ctx.get("chosen_package")
 
-        realtime_memory_guard = "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🚨 সক্রিয় কনভারসেশন মেমোরি ও হিস্ট্রি ট্র্যাকিং (LIVE CONTEXT MEMORY):\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        realtime_memory_guard = (
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "🚨 সক্রিয় কনভারসেশন মেমোরি ও হিস্ট্রি ট্র্যাকিং (LIVE CONTEXT MEMORY):\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "🚨🚨🚨 কাস্টমারের প্রশ্নের উত্তর ও ছবি সংক্রান্ত কঠোর নিয়ম (STRICT NEVER REPEAT RULE): 🚨🚨🚨\n"
+            "১. যে উত্তর কাস্টমার একবার চ্যাটে দিয়ে দিয়েছেন (যেমন: পরিমাণ/পিস, প্রতিষ্ঠানের নাম, মোবাইল নম্বর, পছন্দের প্যাকেজ), সেই একই প্রশ্ন দ্বিতীয়বার ঐ কাস্টমারকে করা সম্পূর্ণ নিষেধ!\n"
+            "২. যে প্রডাক্টের ছবি কাস্টমারকে একবার পাঠানো হয়েছে, সেই ছবি দ্বিতীয়বার কাস্টমারকে পাঠানো সম্পূর্ণ নিষেধ!\n"
+            "৩. উত্তর সবসময় অতি সংক্ষিপ্ত (সর্বোচ্চ ১ থেকে ২ বাক্যে) টু-দ্য-পয়েন্ট হবে। কোনো লম্বা টেক্সট লিখবে না।\n"
+            "৪. উত্তরের টেক্সটে কখনোই ব্র্যাকেট ট্যাগ যেমন [প্রোডাক্ট ছবি পাঠানো হয়েছে: ...] লিখবে না।\n"
+        )
         
         if known_qty_in_history:
             realtime_memory_guard += (
@@ -2221,6 +2356,10 @@ async def process_customer_message(
         clean_reply = re.sub(r'!\[[^\]]*\]\([^)]+\)', '', clean_reply)
         clean_reply = re.sub(r'\[Image[s]?:\s*[^\]]+\]', '', clean_reply, flags=re.IGNORECASE)
         clean_reply = re.sub(r'/static/uploads/\S+', '', clean_reply)
+        clean_reply = re.sub(r'\[(?:প্রোডাক্ট\s+)?ছবি[^\n\]]*\]', '', clean_reply, flags=re.IGNORECASE)
+        clean_reply = re.sub(r'\[(?:সিস্টেম)[^\]]*\]', '', clean_reply, flags=re.IGNORECASE)
+        clean_reply = re.sub(r'\[[^\]]*\.(?:jpg|jpeg|png|webp|mp4|mp3|aac|opus)[^\]]*\]', '', clean_reply, flags=re.IGNORECASE)
+        clean_reply = re.sub(r'\((?:পূর্বে\s+পাঠানো\s+)?ছবি:\s*[^)]+\)', '', clean_reply, flags=re.IGNORECASE)
 
         # Detect sample photos to send
         sample_batch = detect_sample_photos_to_send(
@@ -2254,20 +2393,27 @@ async def process_customer_message(
         clean_reply = re.sub(r'ভাইয়া/আপু', honorific, clean_reply)
         clean_reply = re.sub(r'স্যার/ম্যাম', honorific, clean_reply)
 
-        # If sending package images (PKG-COMBO), eliminate long package lists and replace with clean polite prompt
-        if matched_images and any("pakage" in str(u).lower() or "pkg" in str(u).lower() for u in matched_images):
-            if "প্যাকেজ ০১" in clean_reply or "প্যাকেজ ০২" in clean_reply or "•" in clean_reply or "প্যাকেজ" in clean_reply or len(clean_reply) > 40:
-                clean_reply = f"জি {honorific}, অবশ্যই দিচ্ছি।"
+        # NEVER REPEAT QUESTIONS: If quantity is already known, remove repetitive quantity questions
+        if known_qty_in_history:
+            clean_reply = re.sub(r'(আপনার\s+)?(প্রতিষ্ঠানের\s+জন্য\s+)?(মোট\s+)?কত\s+পিস[^\n।!?]*[।!?]?', '', clean_reply).strip()
+            clean_reply = re.sub(r'কোয়ান্টিটি\s+কত[^\n।!?]*[।!?]?', '', clean_reply).strip()
+
+        # EXTREME BREVITY: If sending images, keep text reply ultra-short and clean
+        if matched_images:
+            if len(clean_reply) > 60 or any(k in clean_reply for k in ["প্যাকেজ ০১", "•", "👉", "কাস্টম কম্বো", "হিসাব:", "রেট:"]):
+                clean_reply = f"জি {honorific}, নিচে আমাদের স্যাম্পল ছবিগুলো দেওয়া হলো।"
+
+        # EXTREME BREVITY: Truncate long multi-line texts to maximum 1-2 sentences
+        lines = [line.strip() for line in clean_reply.splitlines() if line.strip()]
+        if len(lines) > 2 and not any(k in clean_reply for k in ["ঠিকানা:", "Google Form", "লিংক:"]):
+            clean_reply = " ".join(lines[:2])
 
         # If clean_reply became too brief after cleaning, provide polite human greeting
         if not clean_reply or len(clean_reply) < 6:
             if matched_images:
-                if any("pakage" in str(u).lower() or "pkg" in str(u).lower() for u in matched_images):
-                    clean_reply = f"জি {honorific}, অবশ্যই দিচ্ছি।"
-                else:
-                    clean_reply = f"জি {honorific}, নিচে আমাদের আকর্ষণীয় স্যাম্পল ছবিগুলো পাঠানো হলো।"
+                clean_reply = f"জি {honorific}, নিচে আমাদের স্যাম্পল ছবিগুলো দেওয়া হলো।"
             else:
-                clean_reply = f"জি {honorific}, আমাদের প্রডাক্ট ও অর্ডার সম্পর্কে যেকোনো তথ্য প্রয়োজন হলে জানাবেন প্লিজ।"
+                clean_reply = f"জি {honorific}, আমাদের প্রডাক্ট ও সার্ভিস সম্পর্কে কোনো তথ্য প্রয়োজন হলে জানাবেন প্লিজ।"
 
         # Detect demo videos and pre-recorded voice clips
         media_found = detect_saved_media_to_send(user_msg=message_text, bot_reply=clean_reply, workspace_id=ws_id)

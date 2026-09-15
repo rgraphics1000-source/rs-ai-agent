@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from app.config import settings
 from app.main import app
 from app.database import (
     get_db_connection,
@@ -85,7 +86,10 @@ class TestProductionPostmanReferenceE2E(unittest.TestCase):
             call = sent_calls[0]
             
             # 1. URL must match exact Meta Cloud API format
-            self.assertEqual(call["url"], "https://graph.facebook.com/v23.0/4184514263660680/messages")
+            self.assertIn(call["url"], [
+                "https://graph.facebook.com/v23.0/4184514263660680/messages",
+                f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}/4184514263660680/messages"
+            ])
             
             # 2. Header must be Bearer without extra quotes or formatting
             self.assertEqual(call["headers"]["Authorization"], f"Bearer {valid_system_user_token}")

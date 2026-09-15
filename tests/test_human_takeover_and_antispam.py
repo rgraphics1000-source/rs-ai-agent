@@ -115,11 +115,13 @@ class TestHumanTakeoverAndAntiSpam(unittest.TestCase):
 
     def test_05_manual_command_pauses_and_resumes_ai(self):
         """'#pause' pauses AI and '#ai' resumes AI."""
-        add_muted_number(self.test_sender)
-        self.assertFalse(is_conversation_ai_active(self.test_sender))
+        sender = "fb_cust_test_manual_pause_888"
+        remove_muted_number(sender)
+        add_muted_number(sender)
+        self.assertFalse(is_conversation_ai_active(sender))
         
-        remove_muted_number(self.test_sender)
-        self.assertTrue(is_conversation_ai_active(self.test_sender))
+        remove_muted_number(sender)
+        self.assertTrue(is_conversation_ai_active(sender))
         print("✓ Test 5 Passed: AI pause and resume controls working 100% reliably.")
 
 if __name__ == "__main__":

@@ -431,5 +431,33 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
             self.assertGreater(len(res["matched_images"]), 0)
             self.assertIn("পিভিসি আইডি কার্ডের স্যাম্পল ছবিগুলো", res["reply_text"])
 
+    def test_19_known_quantity_custom_combo_no_repeated_quantity_question(self):
+        """
+        Verify that when a customer mentions quantity earlier (e.g. '৬৫ পিস') and later asks
+        for 'ফিতা সহ কভার সম্পূর্ণ সেট', the AI calculates the combo price for 65 pcs and does NOT
+        ask for quantity again.
+        """
+        history = [
+            {"sender": "user", "content": "৬৫ পিস"},
+            {"sender": "bot", "content": "জি স্যার, ৬৫ পিস অর্ডারের ক্ষেত্রে আমাদের প্যাকেজের নির্ধারিত রেগুলার পাইকারি রেট প্রযোজ্য হবে। আপনি কি শুধু ফিতা নাকি ফিতা সহ কভারের ফুল সেট নিতে চাচ্ছেন?"}
+        ]
+        res = evaluate_id_card_workflow(
+            message_text="ফিতা সহ কভার সম্পূর্ণ সেট",
+            conversation_history=history,
+            customer_name="Shaheen",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "custom_combo_calculation_dispatch")
+        self.assertNotIn("কত পিস", res["reply_text"])
+        self.assertNotIn("কত পিস অর্ডার", res["reply_text"])
+        self.assertIn("৬৫ পিস", res["reply_text"])
+        # Unit price = 35 (Card) + 28 (Fita) + 12 (DX Cover) = 75 Tk
+        # Total amount = 75 * 65 = 4875 Tk (Bengali: ৪৮৭৫)
+        self.assertIn("৭৫ টাকা", res["reply_text"])
+        self.assertIn("৪৮৭৫ টাকা", res["reply_text"])
+        self.assertIn("ডিজাইন বা লোগো", res["reply_text"])
+
 if __name__ == "__main__":
     unittest.main()
+
