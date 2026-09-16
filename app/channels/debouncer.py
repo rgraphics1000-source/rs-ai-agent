@@ -28,7 +28,7 @@ class PendingBatch:
         page_id: str = "",
         effective_phone_id: str = "",
         effective_token: str = "",
-        debounce_seconds: float = 1.2
+        debounce_seconds: float = 2.5
     ):
         self.channel = channel
         self.workspace_id = workspace_id
@@ -50,6 +50,7 @@ class PendingBatch:
         self.is_processing = False
         self.processing_lock = asyncio.Lock()
         self.callback: Optional[Callable[['PendingBatch'], Any]] = None
+        self.pending_followup: List[Dict[str, Any]] = []
 
     @property
     def conversation_id(self) -> str:
@@ -67,7 +68,7 @@ class MessageDebouncer:
     - Priority 0 immediate cancellation upon Admin Takeover.
     - Idempotency against duplicate webhook messages.
     """
-    def __init__(self, debounce_seconds: float = 1.2):
+    def __init__(self, debounce_seconds: float = 2.5):
         self.debounce_seconds = debounce_seconds
         self._batches: Dict[str, PendingBatch] = {}
         self._processed_batches: Set[str] = set()
@@ -94,7 +95,7 @@ class MessageDebouncer:
         callback: Callable[[PendingBatch], Any] = None
     ) -> bool:
         """
-        Enqueues an incoming customer message into the pending batch and resets the 3-second timer.
+        Enqueues an incoming customer message into the pending batch and resets the debounce timer.
         Returns True if enqueued, False if dropped due to admin takeover or duplicate.
         """
         key = self._get_key(channel, workspace_id, sender_id)
@@ -112,12 +113,32 @@ class MessageDebouncer:
             batch = self._batches.get(key)
 
             # Idempotency check: Ignore duplicate msg_id within the active batch
-            if batch and not batch.is_cancelled and not batch.is_processing and batch.status == "PENDING":
+            if batch and not batch.is_cancelled:
                 if msg_id and msg_id in batch.seen_msg_ids:
                     print(f"[AI_DEBOUNCER_DUPLICATE_IGNORED] key={key} msg_id={msg_id} action=skip_duplicate_in_batch")
                     return False
 
-            if not batch or batch.is_cancelled or batch.is_processing or batch.status != "PENDING":
+            if batch and not batch.is_cancelled and batch.is_processing:
+                # An AI generation is CURRENTLY ACTIVE for this conversation.
+                # Buffer incoming follow-up message into the active batch to prevent starting a concurrent/duplicate batch.
+                batch.pending_followup.append({
+                    "msg_id": msg_id,
+                    "text": text,
+                    "image_bytes": image_bytes,
+                    "image_mime": image_mime,
+                    "audio_bytes": audio_bytes,
+                    "audio_mime": audio_mime,
+                    "timestamp": now
+                })
+                if msg_id:
+                    batch.seen_msg_ids.add(msg_id)
+                print(
+                    f"[BATCH_BUFFERED_DURING_PROCESSING] conversation_id={batch.conversation_id} "
+                    f"batch_id={batch.batch_id} msg_id={msg_id} pending_followup_count={len(batch.pending_followup)}"
+                )
+                return True
+
+            if not batch or batch.is_cancelled or batch.status != "PENDING":
                 batch = PendingBatch(
                     channel=channel,
                     workspace_id=workspace_id,
@@ -181,7 +202,7 @@ class MessageDebouncer:
 
     async def _debounce_worker(self, key: str, batch: PendingBatch):
         try:
-            # Loop until 3 full seconds have passed since the LAST message
+            # Loop until debounce deadline has passed since the LAST message
             while True:
                 now = time.time()
                 remaining = batch.debounce_deadline - now
@@ -201,10 +222,6 @@ class MessageDebouncer:
 
                 batch.status = "PROCESSING"
                 batch.is_processing = True
-
-                async with self._lock:
-                    if self._batches.get(key) == batch:
-                        del self._batches[key]
 
             # Re-verify Takeover & Version State at Finalization
             state = get_conversation_state(sender_id=batch.sender_id, workspace_id=batch.workspace_id)
@@ -257,13 +274,51 @@ class MessageDebouncer:
                     else:
                         batch.callback(batch)
 
-                # Mark turn as responded
-                mark_turn_responded(batch.channel, batch.sender_id, customer_turn_ver, batch.workspace_id)
-                batch.status = "PROCESSED"
-                print(f"[GENERATION_END] conversation_id={batch.conversation_id} batch_id={batch.batch_id}")
+                # Fetch updated customer_turn_version in DB to absorb any turns during generation
+                updated_turn_info = get_conversation_turn_versions(batch.channel, batch.sender_id, batch.workspace_id)
+                current_customer_turn = max(customer_turn_ver, updated_turn_info.get("customer_turn_version", 1))
 
+                # Check if follow-up messages arrived while generating
+                followups = list(batch.pending_followup)
+                batch.pending_followup.clear()
+
+                def is_pure_greeting(txt: str) -> bool:
+                    clean = (txt or "").strip().lower()
+                    clean = "".join(c for c in clean if c.isalnum() or c.isspace()).strip()
+                    return clean in ["hi", "hello", "hey", "হাই", "হ্যালো", "সালাম", "assalamu alaikum", "slm", ""] or (len(clean) <= 5 and clean in ["hi", "hii", "helo", "hello"])
+
+                substantive_followups = [m for m in followups if not is_pure_greeting(m.get("text", ""))]
+
+                # Mark turn as responded with the latest turn version
+                mark_turn_responded(batch.channel, batch.sender_id, current_customer_turn, batch.workspace_id)
+                batch.status = "PROCESSED"
+                print(f"[GENERATION_END] conversation_id={batch.conversation_id} batch_id={batch.batch_id} responded_turn_version={current_customer_turn}")
+
+                # If there are substantive follow-up messages, schedule a follow-up batch
+                if substantive_followups:
+                    async with self._lock:
+                        new_batch = PendingBatch(
+                            channel=batch.channel,
+                            workspace_id=batch.workspace_id,
+                            sender_id=batch.sender_id,
+                            customer_name=batch.customer_name,
+                            initial_version=batch.initial_version,
+                            page_id=batch.page_id,
+                            effective_phone_id=batch.effective_phone_id,
+                            effective_token=batch.effective_token,
+                            debounce_seconds=self.debounce_seconds
+                        )
+                        new_batch.messages = substantive_followups
+                        new_batch.callback = batch.callback
+                        self._batches[key] = new_batch
+                        new_batch.timer_task = asyncio.create_task(
+                            self._debounce_worker(key, new_batch)
+                        )
             finally:
                 await release_generation_lock(batch.conversation_id)
+                async with self._lock:
+                    if self._batches.get(key) == batch:
+                        del self._batches[key]
 
         except asyncio.CancelledError:
             # Expected when extended by a new message or cancelled by admin
@@ -322,4 +377,4 @@ class MessageDebouncer:
 
 
 # Global debouncer instance
-message_debouncer = MessageDebouncer(debounce_seconds=1.2)
+message_debouncer = MessageDebouncer(debounce_seconds=2.5)

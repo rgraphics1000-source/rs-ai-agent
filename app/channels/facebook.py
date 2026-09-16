@@ -25,9 +25,24 @@ from app.database import (
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.channels.debouncer import message_debouncer, PendingBatch
-from app.ai_agent.gemini_brain import process_customer_message, detect_customer_gender_title
+from app.ai_agent.gemini_brain import (
+    process_customer_message, detect_customer_gender_title,
+    has_customer_consented_or_requested_photos
+)
 
 GRAPH_API_URL = "https://graph.facebook.com/v19.0"
+
+import threading
+
+# Deduplication and rapid-fire cooldown cache for outbound Facebook messages
+# Key: f"{page_id}:{recipient_id}" -> {"body": norm_text, "time": timestamp, "message_id": out_mid}
+_RECENT_FB_OUTBOUND_CACHE: dict = {}
+_FB_OUTBOUND_CACHE_LOCK = threading.Lock()
+
+def clear_recent_fb_outbound_cache():
+    """Clears the recent outbound Facebook message cache (useful for testing)."""
+    with _FB_OUTBOUND_CACHE_LOCK:
+        _RECENT_FB_OUTBOUND_CACHE.clear()
 PROCESSED_OR_ACTIVE_COMMENTS = set()
 
 def get_fb_token(page_id: str = None) -> str:
@@ -197,6 +212,23 @@ def send_fb_text_message(recipient_id: str, text: str, page_token: str = None, p
         print("[Facebook Send Error]: Missing recipient_id!")
         return False
 
+    norm_text = " ".join(str(text or "").strip().split())
+    fb_cache_key = f"{page_id or 'default'}:{recipient_id}"
+    now = time.time()
+
+    # Outbound Guard: Drop identical duplicate messages within 180s (3 minutes)
+    with _FB_OUTBOUND_CACHE_LOCK:
+        prev = _RECENT_FB_OUTBOUND_CACHE.get(fb_cache_key)
+        if prev:
+            prev_body = prev.get("body", "")
+            prev_time = prev.get("time", 0.0)
+            time_diff = now - prev_time
+
+            # Exact Duplicate Drop (within 180s / 3 minutes):
+            if norm_text == prev_body and time_diff < 180.0:
+                print(f"[DUPLICATE_FB_OUTBOUND_DROPPED] recipient={recipient_id} duplicate_of_msg_sent={time_diff:.1f}s_ago action=DROP_DUPLICATE body_prefix={repr(norm_text[:35])}")
+                return True
+
     url = f"{GRAPH_API_URL}/me/messages"
     params = {"access_token": clean_token}
     payload = {
@@ -213,7 +245,15 @@ def send_fb_text_message(recipient_id: str, text: str, page_token: str = None, p
                 if out_mid:
                     record_outbound_ai_message("facebook", out_mid, workspace_id=1, page_id_or_phone_id=page_id)
             except Exception:
-                pass
+                out_mid = ""
+
+            with _FB_OUTBOUND_CACHE_LOCK:
+                _RECENT_FB_OUTBOUND_CACHE[fb_cache_key] = {
+                    "body": norm_text,
+                    "time": time.time(),
+                    "message_id": out_mid
+                }
+
         print(f"[Facebook Send Result]: HTTP {r.status_code}, Body: {r.text}")
         return status_ok
     except Exception as e:
@@ -863,12 +903,21 @@ async def process_facebook_batch(batch: PendingBatch):
 
     base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
     
+    # Guard: Strictly verify customer consent before delivering images
+    has_photo_consent = has_customer_consented_or_requested_photos(
+        user_msg=combined_text,
+        conversation_history=history
+    )
+
     # Handle phased media sequence if generated
     media_sequence = ai_result.get("media_sequence")
     if media_sequence and isinstance(media_sequence, list) and len(media_sequence) > 0:
         for item in media_sequence:
             item_type = item.get("type")
             if item_type == "images":
+                if not has_photo_consent:
+                    print(f"[Facebook Photo Consent Guard] Blocked {len(item.get('urls', []))} images in media_sequence for {sender_id} (No customer consent).")
+                    continue
                 for img_path in item.get("urls", []):
                     if not img_path:
                         continue
@@ -916,6 +965,9 @@ async def process_facebook_batch(batch: PendingBatch):
     else:
         # Fallback to standard matched images delivery
         matched_images = ai_result.get("matched_images", [])
+        if matched_images and not has_photo_consent:
+            print(f"[Facebook Photo Consent Guard] Blocked {len(matched_images)} matched_images for {sender_id} (No customer consent).")
+            matched_images = []
         fb_img_sent_count = 0
 
         for img_path in matched_images:

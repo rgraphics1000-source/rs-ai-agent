@@ -142,10 +142,11 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
 ২. কাস্টমার যতটুকু জানতে চেয়েছে, ঠিক ততটুকুরই খুব সংক্ষিপ্ত (সর্বোচ্চ ১ থেকে ২ বাক্যে) সরাসরি টু-দ্য-পয়েন্ট উত্তর দেবে।
 ৩. কোনো অপ্রয়োজনীয় বড় বড় প্যারাগ্রাফ, দীর্ঘ ভূমিকা, অহেতুক কথা, বাড়তি প্রশ্ন বা লম্বা তালিকা দেওয়া সম্পূর্ণ নিষিদ্ধ।
 ৪. কাস্টমার কোনো পণ্যের দাম জানতে চাইলে সরাসরি শুধুমাত্র সেই পণ্যের সঠিক বিক্রয়মূল্য জানাবে।
-৫. কাস্টমার ছবি বা স্যাম্পল দেখতে চাইলে কোনো বড় তালিকা বা অপ্রাসঙ্গিক কম্বো হিসাব দেবে না। সরাসরি শুধু ১ লাইনে বলবে: "জি {honorific}, নিচে আমাদের স্যাম্পল ছবিগুলো দেওয়া হলো।" (ছবি সিস্টেম স্বয়ংক্রিয়ভাবে পাঠায়)।
-৬. ⚠️ কঠোর নিষেধ: উত্তরের টেক্সটে কখনোই "[প্রোডাক্ট ছবি পাঠানো হয়েছে: ...]" বা কোনো ব্র্যাকেট ট্যাগ [ ] লিখবে না।
-৭. বারবার অপ্রয়োজনীয় প্রশ্ন ("আপনার প্রতিষ্ঠানের জন্য কত পিস অর্ডার করতে চাচ্ছেন স্যার?") করবে না।
-৮. উত্তর সবসময় মিষ্টি, মার্জিত, প্রফেশনাল ও অতি সংক্ষিপ্ত হবে।
+৫. কাস্টমার নিজে স্পষ্ট করে ছবি দেখতে চাইলে (যেমন: "ছবি দেখান", "ছবি পাঠান", "স্যাম্পল দেখতে চাই") তবেই কেবল বলবে: "জি {honorific}, নিচে আমাদের স্যাম্পল ছবিগুলো দেওয়া হলো।" (ছবি সিস্টেম স্বয়ংক্রিয়ভাবে পাঠায়)।
+৬. 🚨🚨🚨 কাস্টমারের সম্মতি ব্যাতিত ছবি সেন্ড করা সম্পূর্ণ নিষিদ্ধ (STRICT PHOTO CONSENT MANDATE): কাস্টমার নিজে ছবি দেখতে না চাইলে অথবা তোমার অনুমতির উত্তরে সম্মতি ("হ্যাঁ" / "পাঠান" / "দিন") না দেওয়া পর্যন্ত ভুলেও কোনো ছবি পাঠাবে না। কাস্টমার দাম বা তথ্য জানতে চাইলে শুধুমাত্র টেক্সটে সংক্ষিপ্ত উত্তর দেবে।
+৭. ⚠️ কঠোর নিষেধ: উত্তরের টেক্সটে কখনোই "[প্রোডাক্ট ছবি পাঠানো হয়েছে: ...]" বা কোনো ব্র্যাকেট ট্যাগ [ ] লিখবে না।
+৮. বারবার অপ্রয়োজনীয় প্রশ্ন ("আপনার প্রতিষ্ঠানের জন্য কত পিস অর্ডার করতে চাচ্ছেন স্যার?") করবে না।
+৯. উত্তর সবসময় মিষ্টি, মার্জিত, প্রফেশনাল ও অতি সংক্ষিপ্ত হবে।
 {training_text}
 {faq_text}
 {custom_prompt}
@@ -1184,6 +1185,29 @@ def evaluate_id_card_workflow(
         "ছবি দেখতে চান", "স্যাম্পল দেখতে চান"
     ])
     
+    # 0.05 Greeting repetition guard: If message is pure greeting and bot already greeted or asked quantity
+    clean_greeting = re.sub(r'[^\w\s]', '', msg).strip().lower()
+    is_pure_greeting_msg = clean_greeting in [
+        "hi", "hello", "hey", "hii", "hiii", "helloo", "helo",
+        "হাই", "হ্যালো", "সালাম", "আসসালামু আলাইকুম", "আসসালামু", "সালামু আলাইকুম",
+        "assalamu alaikum", "assalamualaykum", "salam", "slm"
+    ]
+    if is_pure_greeting_msg:
+        if bot_asked_quantity or bot_prompted_sample_permission or bot_prompted_ready_packages or any(
+            any(k in (m.get("content") or m.get("text") or "").lower() for k in ["কত পিস বানাবেন", "কত পিস", "আইডি কার্ড কত পিস", "আসসালামু আলাইকুম"])
+            for m in (conversation_history or [])[-4:]
+            if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant", "ai")
+        ):
+            return {
+                "reply_text": f"জি {honorific}, আপনার প্রতিষ্ঠানের জন্য কত পিস আইডি কার্ড বানাবেন জানাবেন প্লিজ?",
+                "media_sequence": [],
+                "matched_images": [],
+                "voice_url": "",
+                "video_url": "",
+                "order_created": None,
+                "response_source": "id_card_greeting_followup_prompt"
+            }
+
     # 0. Check phone numbers, WhatsApp references, complaints, or questions about sending media
     if any(k in msg for k in ["নাম্বার", "নম্বর", "নাম্বার দিতে", "দিতে বলেছিলেন", "এগুলো কেন", "দিচ্ছেন কেন", "whatsapp", "হোয়াটসঅ্যাপ"]):
         return None
@@ -1744,87 +1768,106 @@ def parse_requested_image_count(user_msg: str) -> Optional[int]:
 
     return None
 
-def detect_sample_photos_to_send(user_msg: str, conversation_history: list = None, bot_reply: str = "", workspace_id: int = 1) -> list:
+def has_customer_consented_or_requested_photos(user_msg: str, conversation_history: list = None) -> bool:
     """
-    Strict detection for sending sample photos. ONLY sends if customer EXPLICITLY requested photos in user_msg.
-    Never sends photos if user is just asking questions, sending phone number, or discussing price.
+    Strict Customer Consent & Request Verifier for Outbound Photos/Images.
+    Ensures that NO photo/image is ever sent unless the customer explicitly asked for it
+    or affirmatively consented to a prior photo offer from the agent.
     """
     msg = (user_msg or "").strip().lower()
-    
-    # 1. Stop / Cancellation check
-    stop_phrases = [
-        "লাগবে না", "আর লাগবে না", "থামুন", "আর দিয়েন না", "আর পাঠাবেন না", 
-        "ছবি লাগবে না", "ফটো লাগবে না", "আর না", "চাই না", "আর দিও না",
-        "stop", "no more", "don't send", "dont send"
+    if not msg:
+        return False
+
+    # 1. Check for negative intent / refusal (Always Highest Priority)
+    refusal_keywords = [
+        "লাগবে না", "আর লাগবে না", "না", "ছবি লাগবে না", "ফটো লাগবে না", "স্যাম্পল লাগবে না",
+        "দরকার নেই", "দরকার নাই", "চাই না", "নেব না", "নিব না", "বানাব না", "বানাবো না",
+        "করব না", "করবো না", "না থাক", "থাক", "stop", "no", "don't send", "dont send"
     ]
-    if any(sp in msg for sp in stop_phrases):
-        return []
+    for rk in refusal_keywords:
+        if rk == msg or msg.startswith(rk + " ") or msg.endswith(" " + rk) or f" {rk} " in f" {msg} ":
+            return False
 
-    # Ignore phone numbers and common non-photo messages
+    # 2. Standalone phone numbers or price inquiries without photo keywords are NOT consent
     cleaned_digits = re.sub(r'\D', '', msg)
-    if len(cleaned_digits) >= 10:
-        return []
-    if any(k in msg for k in ["নাম্বার", "নম্বর", "whatsapp", "কেন দিচ্ছেন", "এগুলো কেন", "দাম কত", "কত করে", "খরচ কত"]):
-        return []
+    if len(cleaned_digits) >= 10 and not any(k in msg for k in ["ছবি", "স্যাম্পল", "পিক", "ফটো"]):
+        return False
 
-    # 2. Check if photos are requested explicitly in user message OR agreed to when bot specifically offered
-    is_explicit_photo_req = any(k in msg for k in [
+    # 3. Check for explicit photo/sample request from customer in user_msg
+    explicit_photo_phrases = [
         "ছবি দেখতে চাই", "ছবি দেখান", "ছবি পাঠান", "ছবি পাঠাও", "ছবি দেখাও", "ছবি দেন", "ছবি দিন", "ছবি দাও", "ছবি দেও",
-        "ছবি দিয়েন", "ছবি দিয়েন", "ছবি পাঠিয়েন", "ছবি পাঠিয়েন", "ছবি দিবেন", "ছবি পাঠাবেন",
-        "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দেন", "স্যাম্পল দিন", "স্যাম্পল দাও", "স্যাম্পল দেও", "স্যাম্পল দিয়েন", "স্যাম্পল দিয়েন", "স্যাম্পল দেখতে চাই",
-        "পিক দেখান", "পিক দেন", "পিক দিন", "পিক দাও", "পিক পাঠান", "পিকচার দেখান", "পিকচার পাঠান", "পিকচার দাও", "ফটো দেখান", "ফটো পাঠান", "ফটো দেন", "ফটো দিন", "ফটো দাও",
+        "ছবি দিয়েন", "ছবি দিয়েন", "ছবি পাঠিয়েন", "ছবি পাঠিয়েন", "ছবি দিবেন", "ছবি পাঠাবেন", "ছবি দেন প্লিজ", "ছবি দিন প্লিজ",
+        "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দেন", "স্যাম্পল দিন", "স্যাম্পল দাও", "স্যাম্পল দেও", "স্যাম্পল দিয়েন",
+        "স্যাম্পল দিয়েন", "স্যাম্পল দেখতে চাই", "স্যাম্পল চাই", "স্যাম্পল পাঠাও", "স্যাম্পল দেখাও", "স্যাম্পল দিন প্লিজ",
+        "পিক দেখান", "পিক দেন", "পিক দিন", "পিক দাও", "পিক পাঠান", "পিকচার দেখান", "পিকচার পাঠান", "পিকচার দাও",
+        "ফটো দেখান", "ফটো পাঠান", "ফটো দেন", "ফটো দিন", "ফটো দাও",
         "কার্ডের ছবি", "ফিতার ছবি", "কভারের ছবি", "কার্ডগুলোর ছবি", "ফিতার গুলোর ছবি", "ফিতাগুলোর ছবি", "কভারগুলোর ছবি",
-        "সব ছবি", "সবগুলো ছবি", "সব প্যাকেজ", "সবগুলো প্যাকেজ", "প্যাকেজের ছবি",
+        "কার্ডের স্যাম্পল", "ফিতার স্যাম্পল", "কভারের স্যাম্পল", "কার্ডের ফটো", "ফিতার ফটো", "কভারের ফটো",
+        "কার্ড দেখান", "ফিতা দেখান", "কভার দেখান", "কার্ড দেন", "ফিতা দেন", "কভার দেন", "কার্ড দিন", "ফিতা দিন", "কভার দিন",
+        "শুধু কার্ড", "শুধু ফিতা", "শুধু কভার",
+        "সব ছবি", "সবগুলো ছবি", "সব প্যাকেজ", "সবগুলো প্যাকেজ", "প্যাকেজের ছবি", "রেডি প্যাকেজের ছবি",
+        "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজ দেন", "প্যাকেজ দিন", "প্যাকেজ দাও", "প্যাকেজ দেও",
+        "প্যাকেজগুলো পাঠান", "প্যাকেজগুলো দেখান", "রেডি প্যাকেজ দিন", "রেডি প্যাকেজের ছবি দিন",
+        "সবচেয়ে প্রিমিয়াম প্যাকেজের ছবি", "টপ কোয়ালিটির প্যাকেজ দেখান", "সেরা প্যাকেজ দেখতে চাই",
+        "কম বাজেটের প্যাকেজ দেখতে চাই", "লো বাজেট প্যাকেজ দেখান", "সবচেয়ে ভালো মানের প্যাকেজ কোনটা",
+        "সবচেয়ে দামি প্যাকেজ কোনটা", "যার বাজেট একবারে কম তার জন্য কোন প্যাকেজ", "সবচেয়ে কম খরচের প্যাকেজ কোনটা",
+        "সবচেয়ে প্রিমিয়াম", "টপ কোয়ালিটি", "সেরা প্যাকেজ", "লো বাজেট", "কম বাজেট", "বাজেট কম",
+        "কাজের ছবি", "কাজের স্যাম্পল", "কাজ দেখতে চাই",
         "show photo", "send photo", "show sample", "send sample", "show pic", "send pic", "show image", "send image"
-    ]) or (
-        any(k in msg for k in ["ছবি", "স্যাম্পল", "ফটো", "পিক", "পিকচার"]) and 
-        any(a in msg for a in ["দেখান", "পাঠান", "দিন", "দেন", "দাও", "দেও", "পাঠাও", "দেখাও", "দেখি", "চাই", "দিয়েন", "দিয়েন", "পাঠিয়েন", "পাঠিয়েন", "দিবেন", "পাঠাবেন", "দেখবো", "show", "send", "তো"])
-    ) or (
-        any(k in msg for k in ["কভারের ছবি", "ফিতার ছবি", "কার্ডের ছবি", "প্যাকেজের ছবি", "কভারের স্যাম্পল", "ফিতার স্যাম্পল", "কার্ডের স্যাম্পল", "ফিতার গুলোর", "কার্ডগুলোর", "কভারগুলোর"])
-    )
+    ]
+    if any(ep in msg for ep in explicit_photo_phrases):
+        return True
 
-    last_bot_msg = ""
-    if conversation_history:
-        for m in reversed(conversation_history):
-            sender_val = str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower()
-            if sender_val in ("bot", "assistant", "seller"):
-                last_bot_msg = (m.get("content") or m.get("text") or "").lower()
+    # Check combinations: (ছবি/স্যাম্পল/পিক/ফটো) + (দেখান/পাঠান/দিন/দেন/দাও/দেও/চাই/দেখতে চাই/পাঠাবেন/দিবেন/send/show)
+    photo_terms = ["ছবি", "স্যাম্পল", "সাম্পল", "পিক", "পিকচার", "ফটো", "photo", "pic", "picture", "sample"]
+    req_terms = ["দেখান", "পাঠান", "দিন", "দেন", "দাও", "দেও", "পাঠাও", "দেখাও", "দেখতে চাই", "চাই", "দিয়েন", "দিয়েন", "দিবেন", "পাঠাবেন", "সেন্ড", "send", "show", "দিলে ভালো", "দিলে ভালো হয়", "দেখবো", "দেখি"]
+    if any(pt in msg for pt in photo_terms) and any(rt in msg for rt in req_terms):
+        return True
+
+    # Specific package with viewing verb (e.g. "প্যাকেজ ৩ দেখান", "প্যাকেজ ২ এর ছবি")
+    if detect_specific_package_number(msg) is not None:
+        if any(v in msg for v in ["দেখান", "দেখাও", "পাঠান", "পাঠাও", "দিন", "দেন", "দাও", "ছবি", "পিক", "দেখতে চাই"]):
+            return True
+
+    # 4. Check affirmative agreement following agent's photo offer
+    agreement_keywords = [
+        "হ্যাঁ", "হ্যা", "জি", "হুম", "পাঠান", "দেখান", "দিন", "দেন", "দাও", "দেও", "পাঠাও", "দেখাও",
+        "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "আচ্ছা", "দিতে পারেন", "পাঠাতে পারেন",
+        "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দাও", "পাঠিয়ে দিন", "পাঠিয়ে দেন",
+        "হুম পাঠান", "জি পাঠান", "জি দিন", "জি দেন", "হ্যাঁ দিন", "হ্যাঁ পাঠান", "হ্যা পাঠান", "হ্যা দিন",
+        "দিলে ভালো হয়", "দিলে ভালো", "দেখতে চাই", "yes", "sure", "ok", "okay", "send", "show",
+        "ha", "ji", "achha", "yep", "yeah", "সেন্ড করুন", "সেন্ড করেন"
+    ]
+    is_agreeing = any(ak == msg or msg.startswith(ak + " ") or msg.endswith(" " + ak) or f" {ak} " in f" {msg} " for ak in agreement_keywords)
+
+    if is_agreeing and conversation_history:
+        # Find last bot turn
+        for h in reversed(conversation_history[-4:]):
+            role = str(h.get("sender_role") or h.get("sender") or h.get("sender_type") or h.get("role") or "").lower()
+            if role in ("bot", "assistant", "ai", "seller"):
+                b_text = str(h.get("content") or h.get("text") or "")
+                if any(p in b_text for p in [
+                    "স্যাম্পল ছবিগুলো পাঠাবো", "ছবিগুলো পাঠাবো", "স্যাম্পল পাঠাবো", "স্যাম্পল দেব", "ছবি পাঠাব",
+                    "স্যাম্পল ছবিগুলো পাঠাব", "ছবি পাঠাবো কি", "স্যাম্পল পাঠাবো কি", "ছবি পাঠাবো", "স্যাম্পল ছবি পাঠাবো",
+                    "ছবি দেখতে চান", "স্যাম্পল দেখতে চান", "রেডি প্যাকেজের ছবি ও রেট দেখতে চাচ্ছেন",
+                    "রেডি প্যাকেজগুলোর ছবি ও বিস্তারিত পাঠাবো", "স্যাম্পলগুলো কি পাঠাবো", "স্যাম্পল ছবিগুলো দেখতে চাচ্ছেন",
+                    "স্যাম্পল পাঠাতে পারি", "ছবি পাঠাতে পারি", "ছবিগুলো দেওয়া হলো", "ছবি পাঠানো হলো"
+                ]):
+                    return True
                 break
 
-    bot_offered_photos_last_turn = any(k in last_bot_msg for k in [
-        "ছবি দেখতে চান", "স্যাম্পল দেখতে চান", "ছবি পাঠাব", "স্যাম্পল পাঠাব", "ছবি দেব", 
-        "পিকচার দেখতে চান", "স্যাম্পল দেব", "ছবি পাঠাবো", "স্যাম্পল ছবিগুলো দিতে সুবিধা হতো", 
-        "স্যাম্পল ছবিগুলো দিতে", "স্যাম্পল ছবিগুলো পাঠাবো", "প্যাকেজের স্যাম্পল ছবিগুলো পাঠাবো"
-    ])
+    return False
 
-    agreement_keywords = [
-        "হ্যাঁ", "হ্যা", "জি", "হুম", "পাঠান", "দেখান", "দিন", "দেন", "দাও", "দেও", "পাঠাও", "দেখাও", "দিলে ভালো", "দিলে ভালো হয়", 
-        "সবই লাগবে", "সব লাগবে", "সবকিছু লাগবে", "কম্বো", "প্যাকেজ", "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "আচ্ছা",
-        "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দিন", "পাঠিয়ে দেন", "দিতে পারেন", "পাঠাতে পারেন",
-        "yes", "sure", "ok", "okay", "send", "show", "ha", "ji", "achha", "yep", "yeah", "সেন্ড করুন"
-    ]
-    is_agreeing_to_photo = any(k == msg or msg.startswith(k + " ") or msg.endswith(" " + k) or f" {k} " in f" {msg} " for k in agreement_keywords) and bot_offered_photos_last_turn
-
-    # Also check if bot_reply explicitly promises to send photos/samples below
-    b_reply_low = (bot_reply or "").lower()
-    is_bot_sending_photos = any(k in b_reply_low for k in [
-        "ছবিগুলো নিচে পাঠানো হলো", "ছবিগুলো নিচে দেওয়া হলো", "ছবিগুলো নিচে দেয়া হলো",
-        "নিচে ছবিগুলো দেওয়া হলো", "নিচে ছবিগুলো দেয়া হলো", "নিচে ছবিগুলো পাঠানো হলো",
-        "স্যাম্পল ছবিগুলো নিচে", "প্যাকেজগুলো নিচে পাঠানো হলো", "প্যাকেজের ছবিগুলো নিচে",
-        "স্যাম্পল নিচে পাঠানো হলো", "ছবি নিচে পাঠানো হলো", "ছবি দেওয়া হলো", "ছবি পাঠানো হলো",
-        "স্যাম্পল দেওয়া হলো", "স্যাম্পল পাঠানো হলো", "স্যাম্পলগুলো নিচে পাঠানো হলো",
-        "প্যাকেজগুলো পাঠানো হলো", "স্যাম্পল ছবিগুলো নিচে পাঠানো হলো", "ছবিগুলো নিচে পাঠানো হল",
-        "স্যাম্পল পাঠানো হল", "স্যাম্পল ছবিগুলো নিচে পাঠানো হলো স্যার", "ছবি পাঠিয়ে দিচ্ছি",
-        "ছবি পাঠাচ্ছি", "ছবি দিলাম", "ছবি দিচ্ছি", "স্যাম্পল পাঠিয়ে দিচ্ছি", "স্যাম্পল পাঠাচ্ছি",
-        "স্যাম্পল দিলাম", "স্যাম্পল দিচ্ছি", "নিচে ছবি দেওয়া হলো", "নিচে ছবি দেয়া হলো",
-        "নিচে ছবি পাঠানো হলো", "নিচে স্যাম্পল দেওয়া হলো"
-    ]) or (
-        any(k in b_reply_low for k in ["ছবি", "স্যাম্পল", "প্যাকেজ"]) and 
-        any(a in b_reply_low for a in ["নিচে দেওয়া হলো", "নিচে দেয়া হলো", "নিচে পাঠানো হলো", "পাঠিয়ে দিচ্ছি", "পাঠিয়ে দিলাম", "পাঠাচ্ছি", "দিচ্ছি", "পাঠানো হলো", "পাঠিয়ে দেওয়া হলো", "পাঠিয়ে দেয়া হলো"])
-    )
-
-    if not (is_explicit_photo_req or is_agreeing_to_photo or is_bot_sending_photos):
+def detect_sample_photos_to_send(user_msg: str, conversation_history: list = None, bot_reply: str = "", workspace_id: int = 1) -> list:
+    """
+    Strict detection for sending sample photos. ONLY sends if customer has consented or requested photos.
+    Never sends photos if user is just asking questions, sending phone number, or discussing price.
+    """
+    if not has_customer_consented_or_requested_photos(user_msg=user_msg, conversation_history=conversation_history):
         return []
+
+    msg = (user_msg or "").strip().lower()
+    b_reply_low = (bot_reply or "").lower()
 
     # Specific Package Check (Requirement 2: Return only that 1 package image)
     specific_pkg_num = detect_specific_package_number(msg)
@@ -2010,13 +2053,13 @@ def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", worksp
             elif qty < 30:
                 return f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
             else:
-                return f"জি {honorific}, অবশ্যই দিচ্ছি। নিচে আমাদের স্যাম্পলগুলো পাঠানো হলো:"
+                return f"জি {honorific}, আপনার অর্ডারের জন্য আমি কি আমাদের স্যাম্পল ছবিগুলো পাঠাবো {honorific}?"
 
         if qty is not None and any(k in msg for k in ["পিস", "টা", "টি", "বানাবো", "pcs"]):
             if qty < 30:
                 return f"দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
             else:
-                return f"জি {honorific}, অবশ্যই দিচ্ছি। নিচে আমাদের স্যাম্পলগুলো পাঠানো হলো:"
+                return f"জি {honorific}, আপনার অর্ডারের জন্য আমি কি আমাদের স্যাম্পল ছবিগুলো পাঠাবো {honorific}?"
 
         if any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo"]):
             return f"জি {honorific}, আপনি কত পিস আইডি কার্ড বানাবেন জানাবেন প্লিজ?"
@@ -2211,8 +2254,9 @@ async def process_customer_message(
             "🚨🚨🚨 কাস্টমারের প্রশ্নের উত্তর ও ছবি সংক্রান্ত কঠোর নিয়ম (STRICT NEVER REPEAT RULE): 🚨🚨🚨\n"
             "১. যে উত্তর কাস্টমার একবার চ্যাটে দিয়ে দিয়েছেন (যেমন: পরিমাণ/পিস, প্রতিষ্ঠানের নাম, মোবাইল নম্বর, পছন্দের প্যাকেজ), সেই একই প্রশ্ন দ্বিতীয়বার ঐ কাস্টমারকে করা সম্পূর্ণ নিষেধ!\n"
             "২. যে প্রডাক্টের ছবি কাস্টমারকে একবার পাঠানো হয়েছে, সেই ছবি দ্বিতীয়বার কাস্টমারকে পাঠানো সম্পূর্ণ নিষেধ!\n"
-            "৩. উত্তর সবসময় অতি সংক্ষিপ্ত (সর্বোচ্চ ১ থেকে ২ বাক্যে) টু-দ্য-পয়েন্ট হবে। কোনো লম্বা টেক্সট লিখবে না।\n"
-            "৪. উত্তরের টেক্সটে কখনোই ব্র্যাকেট ট্যাগ যেমন [প্রোডাক্ট ছবি পাঠানো হয়েছে: ...] লিখবে না।\n"
+            "৩. 🚨 যেকোনো পিকচার কাস্টমারের সম্মতি ব্যাতিত সেন্ড করা সম্পূর্ণ নিষিদ্ধ! কাস্টমার নিজে ছবি দেখতে না চাইলে বা অনুমতি না দিলে কোনো ছবি পাঠানো যাবে না।\n"
+            "৪. উত্তর সবসময় অতি সংক্ষিপ্ত (সর্বোচ্চ ১ থেকে ২ বাক্যে) টু-দ্য-পয়েন্ট হবে। কোনো লম্বা টেক্সট লিখবে না।\n"
+            "৫. উত্তরের টেক্সটে কখনোই ব্র্যাকেট ট্যাগ যেমন [প্রোডাক্ট ছবি পাঠানো হয়েছে: ...] লিখবে না।\n"
         )
         
         if known_qty_in_history:
@@ -2339,19 +2383,41 @@ async def process_customer_message(
                 print(f"[Fake Form Link Safety Interception Error]: {e}")
 
         # Clean markdown image tags & bracket tags from text
-        matched_images = []
-        md_img_matches = re.findall(r'!\[([^\]]*)\]\(([^)]+)\)', clean_reply)
-        for alt, url in md_img_matches:
-            u = url.strip()
-            if u and u not in matched_images:
-                matched_images.append(u)
+        has_photo_consent = has_customer_consented_or_requested_photos(
+            user_msg=message_text,
+            conversation_history=conversation_history
+        )
 
-        # Clean raw /static/uploads/... links from text if Gemini printed them
-        raw_urls = re.findall(r'/static/uploads/\S+', clean_reply)
-        for u in raw_urls:
-            u_clean = u.strip().rstrip(").,'\"")
-            if u_clean and u_clean not in matched_images:
-                matched_images.append(u_clean)
+        matched_images = []
+        if has_photo_consent:
+            md_img_matches = re.findall(r'!\[([^\]]*)\]\(([^)]+)\)', clean_reply)
+            for alt, url in md_img_matches:
+                u = url.strip()
+                if u and u not in matched_images:
+                    matched_images.append(u)
+
+            # Clean raw /static/uploads/... links from text if Gemini printed them
+            raw_urls = re.findall(r'/static/uploads/\S+', clean_reply)
+            for u in raw_urls:
+                u_clean = u.strip().rstrip(").,'\"")
+                if u_clean and u_clean not in matched_images:
+                    matched_images.append(u_clean)
+
+            # Detect sample photos to send
+            sample_batch = detect_sample_photos_to_send(
+                user_msg=message_text,
+                conversation_history=conversation_history,
+                bot_reply=clean_reply,
+                workspace_id=ws_id
+            )
+            if sample_batch:
+                matched_images = sample_batch
+        else:
+            matched_images = []
+            clean_reply = re.sub(r'নিচে\s+(আমাদের\s+)?(স্যাম্পল\s+)?(ছবিগুলো|ছবি|প্যাকেজগুলো)\s+(দেওয়া|দেয়া|পাঠানো)\s+হলো[।,\.\s]*', '', clean_reply, flags=re.IGNORECASE)
+            clean_reply = re.sub(r'(ছবি|স্যাম্পল)\s+পাঠিয়ে\s+দিচ্ছি[।,\.\s]*', '', clean_reply, flags=re.IGNORECASE)
+            clean_reply = re.sub(r'নিচে\s+এর\s+ছবি\s+দেওয়া\s+হলো[।,\.\s]*', '', clean_reply, flags=re.IGNORECASE)
+            clean_reply = re.sub(r'নিচে\s+ছবি\s+দেওয়া\s+হলো[।,\.\s]*', '', clean_reply, flags=re.IGNORECASE)
 
         clean_reply = re.sub(r'!\[[^\]]*\]\([^)]+\)', '', clean_reply)
         clean_reply = re.sub(r'\[Image[s]?:\s*[^\]]+\]', '', clean_reply, flags=re.IGNORECASE)
@@ -2360,16 +2426,6 @@ async def process_customer_message(
         clean_reply = re.sub(r'\[(?:সিস্টেম)[^\]]*\]', '', clean_reply, flags=re.IGNORECASE)
         clean_reply = re.sub(r'\[[^\]]*\.(?:jpg|jpeg|png|webp|mp4|mp3|aac|opus)[^\]]*\]', '', clean_reply, flags=re.IGNORECASE)
         clean_reply = re.sub(r'\((?:পূর্বে\s+পাঠানো\s+)?ছবি:\s*[^)]+\)', '', clean_reply, flags=re.IGNORECASE)
-
-        # Detect sample photos to send
-        sample_batch = detect_sample_photos_to_send(
-            user_msg=message_text,
-            conversation_history=conversation_history,
-            bot_reply=clean_reply,
-            workspace_id=ws_id
-        )
-        if sample_batch:
-            matched_images = sample_batch
 
         # Clean robotic voice acknowledgement and asking for type
         clean_reply = re.sub(r'^(জি\s+)?(ভাইয়া|আপু|স্যার|ম্যাম)?[,\s]*আপনার\s+ভয়েস\s+(মেসেজটি|বার্তাটি)?\s*(পেয়েছি|শুনেছি)[।,\.\s]*', '', clean_reply, flags=re.IGNORECASE)

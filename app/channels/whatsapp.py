@@ -26,10 +26,25 @@ from app.database import (
     is_outbound_ai_message, claim_webhook_event, is_own_whatsapp_number
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
-from app.ai_agent.gemini_brain import process_customer_message, detect_customer_gender_title
+from app.ai_agent.gemini_brain import (
+    process_customer_message, detect_customer_gender_title,
+    has_customer_consented_or_requested_photos
+)
 
 GRAPH_API_URL = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}"
 PROCESSED_WA_MESSAGE_IDS = set()
+
+import threading
+
+# Deduplication and rapid-fire cooldown cache for outbound WhatsApp messages
+# Key: f"{workspace_id}:{norm_to}" -> {"body": norm_body, "time": timestamp, "message_id": msg_id}
+_RECENT_OUTBOUND_CACHE: dict = {}
+_OUTBOUND_CACHE_LOCK = threading.Lock()
+
+def clear_recent_outbound_cache():
+    """Clears the recent outbound message cache (useful for testing)."""
+    with _OUTBOUND_CACHE_LOCK:
+        _RECENT_OUTBOUND_CACHE.clear()
 
 def mask_phone_number(raw_phone: str) -> str:
     """Masks a phone number for secure logging (e.g. 88018****4097)."""
@@ -441,6 +456,32 @@ def send_whatsapp_message_detailed(to_number: str, message_text: str, phone_id: 
         }
 
     norm_to = normalize_whatsapp_phone_number(to_number)
+    norm_body = " ".join(str(message_text or "").strip().split())
+    cache_key = f"{workspace_id or 1}:{norm_to}"
+    now = time.time()
+
+    # Outbound Guard: Drop identical duplicate messages within 180s (3 minutes)
+    with _OUTBOUND_CACHE_LOCK:
+        prev = _RECENT_OUTBOUND_CACHE.get(cache_key)
+        if prev:
+            prev_body = prev.get("body", "")
+            prev_time = prev.get("time", 0.0)
+            time_diff = now - prev_time
+
+            # Exact Duplicate Drop (within 180s / 3 minutes):
+            if norm_body == prev_body and time_diff < 180.0:
+                print(f"[DUPLICATE_OUTBOUND_DROPPED] recipient={masked_rec} duplicate_of_msg_sent={time_diff:.1f}s_ago action=DROP_DUPLICATE body_prefix={repr(norm_body[:35])}")
+                return {
+                    "success": True,
+                    "http_status": 200,
+                    "message_id": prev.get("message_id", "cached_dedup_success"),
+                    "phone_number_id": phone_id,
+                    "token_source": "cached_dedup",
+                    "token_valid": True,
+                    "token_preview": token_masked,
+                    "recipient": masked_rec,
+                    "duplicate_dropped": True
+                }
 
     # Determine priority list of phone_ids to try (handles both 15-digit and 16-digit variants)
     target_phone_ids = [phone_id]
@@ -479,6 +520,15 @@ def send_whatsapp_message_detailed(to_number: str, message_text: str, phone_id: 
                         record_outbound_ai_message("whatsapp", msg_id, workspace_id=workspace_id or 1, page_id_or_phone_id=cur_phone_id)
                 except Exception:
                     msg_id = ""
+
+                # Record successful outbound send in cache for deduplication & cooldown
+                with _OUTBOUND_CACHE_LOCK:
+                    _RECENT_OUTBOUND_CACHE[cache_key] = {
+                        "body": norm_body,
+                        "time": time.time(),
+                        "message_id": msg_id
+                    }
+
                 print(f"[WhatsApp Send] workspace_id={workspace_id or 1} phone_number_id={cur_phone_id} recipient={masked_rec} graph_api_version={settings.META_GRAPH_VERSION} token_source=explicit token_valid=true status=success message_id={msg_id} http_status={r.status_code}")
                 return {
                     "success": True,
@@ -964,12 +1014,21 @@ async def process_whatsapp_batch(batch: PendingBatch):
         else:
             print(f"[WhatsApp Send] Delivery FAILED for {masked_sender}. AI message was NOT recorded as sent.")
 
+    # Guard: Strictly verify customer consent before delivering images
+    has_photo_consent = has_customer_consented_or_requested_photos(
+        user_msg=combined_text,
+        conversation_history=history
+    )
+
     # Handle phased media sequence if generated
     media_sequence = ai_result.get("media_sequence")
     if media_sequence and isinstance(media_sequence, list) and len(media_sequence) > 0:
         for item in media_sequence:
             item_type = item.get("type")
             if item_type == "images":
+                if not has_photo_consent:
+                    print(f"[WhatsApp Photo Consent Guard] Blocked {len(item.get('urls', []))} images in media_sequence for {masked_sender} (No customer consent).")
+                    continue
                 for img_path in item.get("urls", []):
                     if not img_path:
                         continue
@@ -1012,6 +1071,9 @@ async def process_whatsapp_batch(batch: PendingBatch):
     else:
         # Fallback to standard matched images delivery
         matched_images = ai_result.get("matched_images", [])
+        if matched_images and not has_photo_consent:
+            print(f"[WhatsApp Photo Consent Guard] Blocked {len(matched_images)} matched_images for {masked_sender} (No customer consent).")
+            matched_images = []
         if matched_images:
             print(f"[WhatsApp Batch Images on Workspace {workspace_id}] Sending {len(matched_images)} images to {sender_phone}...")
             sent_count = 0

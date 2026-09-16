@@ -437,6 +437,145 @@ class TestNoAIReplyLoop(unittest.TestCase):
         second_claimed = claim_webhook_event("facebook", dup_mid, workspace_id=1, page_id_or_phone_id="105116472071659")
         self.assertFalse(second_claimed, "Duplicate Facebook webhook delivery must be rejected atomically")
 
+    # --------------------------------------------------------------------------
+    # WhatsApp Outbound Deduplication & Rapid-Fire Cooldown Guard
+    # --------------------------------------------------------------------------
+    def test_whatsapp_outbound_deduplication_and_cooldown(self):
+        from app.channels.whatsapp import send_whatsapp_message_detailed, clear_recent_outbound_cache
+        clear_recent_outbound_cache()
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"messages": [{"id": "wamid_test_outbound_1"}]}
+
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            # First send: should call Meta API
+            res1 = send_whatsapp_message_detailed(
+                to_number=self.test_phone,
+                message_text="জি স্যার, আসসালামু আলাইকুম। আপনি আইডি কার্ড কত পিস বানাবেন?",
+                phone_id="4184514263660680",
+                token="TOKEN_UNIT_TEST_MOCK_SECRET_VALID_123456",
+                workspace_id=self.workspace_id
+            )
+            self.assertTrue(res1.get("success"))
+            self.assertEqual(mock_post.call_count, 1)
+
+            # Second send with IDENTICAL text: must be dropped as duplicate
+            res2 = send_whatsapp_message_detailed(
+                to_number=self.test_phone,
+                message_text="জি স্যার, আসসালামু আলাইকুম। আপনি আইডি কার্ড কত পিস বানাবেন?",
+                phone_id="4184514263660680",
+                token="TOKEN_UNIT_TEST_MOCK_SECRET_VALID_123456",
+                workspace_id=self.workspace_id
+            )
+            self.assertTrue(res2.get("success"))
+            self.assertTrue(res2.get("duplicate_dropped"), "Identical text within 180s must be dropped as duplicate")
+            self.assertEqual(mock_post.call_count, 1, "Meta API must NOT be called for duplicate message")
+
+    # --------------------------------------------------------------------------
+    # Facebook Outbound Deduplication Guard
+    # --------------------------------------------------------------------------
+    def test_facebook_outbound_deduplication_and_cooldown(self):
+        from app.channels.facebook import send_fb_text_message, clear_recent_fb_outbound_cache
+        clear_recent_fb_outbound_cache()
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = '{"message_id": "mid.fb_out_1"}'
+        mock_resp.json.return_value = {"message_id": "mid.fb_out_1"}
+
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            # First send: should call Meta Graph API
+            ok1 = send_fb_text_message(
+                recipient_id=self.fb_sender_id,
+                text="জি স্যার, আসসালামু আলাইকুম। আপনি আইডি কার্ড কত পিস বানাবেন?",
+                page_token="EAA_mock_token",
+                page_id="105116472071659"
+            )
+            self.assertTrue(ok1)
+            self.assertEqual(mock_post.call_count, 1)
+
+            # Second send with IDENTICAL text: must be dropped
+            ok2 = send_fb_text_message(
+                recipient_id=self.fb_sender_id,
+                text="জি স্যার, আসসালামু আলাইকুম। আপনি আইডি কার্ড কত পিস বানাবেন?",
+                page_token="EAA_mock_token",
+                page_id="105116472071659"
+            )
+            self.assertTrue(ok2)
+            self.assertEqual(mock_post.call_count, 1, "Meta Graph API must NOT be called for duplicate FB message")
+
+    # --------------------------------------------------------------------------
+    # In-Flight Message Buffering & Greeting Absorption Test
+    # --------------------------------------------------------------------------
+    def test_in_flight_message_buffering_and_greeting_filtering(self):
+        debouncer = MessageDebouncer(debounce_seconds=0.03)
+        generation_count = 0
+
+        async def dummy_slow_callback(batch: PendingBatch):
+            nonlocal generation_count
+            generation_count += 1
+            # Simulate Gemini generating response for 0.08s
+            await asyncio.sleep(0.08)
+
+        async def run_test():
+            # 1. Customer sends initial message
+            await debouncer.add_message(
+                channel="whatsapp",
+                workspace_id=self.workspace_id,
+                sender_id=self.test_phone,
+                customer_name="Test Customer",
+                msg_id="msg_init",
+                text="Hi",
+                callback=dummy_slow_callback
+            )
+            # Wait for debounce to finish and worker to enter PROCESSING state
+            await asyncio.sleep(0.04)
+
+            # 2. Customer sends follow-up greeting WHILE worker is actively processing
+            enqueued = await debouncer.add_message(
+                channel="whatsapp",
+                workspace_id=self.workspace_id,
+                sender_id=self.test_phone,
+                customer_name="Test Customer",
+                msg_id="msg_inflight_hello",
+                text="Hello",
+                callback=dummy_slow_callback
+            )
+            self.assertTrue(enqueued, "In-flight message should be buffered successfully")
+
+            # 3. Wait for the processing to finish and cleanup
+            await asyncio.sleep(0.12)
+
+        asyncio.run(run_test())
+
+        # Generation must have executed EXACTLY ONCE: "Hello" was recognized as greeting and absorbed
+        self.assertEqual(generation_count, 1, "Follow-up greeting during processing must NOT trigger a second generation")
+
+    # --------------------------------------------------------------------------
+    # Greeting Repetition Prevention in Gemini Brain
+    # --------------------------------------------------------------------------
+    def test_greeting_repetition_does_not_resend_full_greeting_template(self):
+        from app.ai_agent.gemini_brain import evaluate_id_card_workflow
+
+        history = [
+            {"sender": "user", "text": "Hi"},
+            {"sender": "bot", "text": "জি স্যার, আসসালামু আলাইকুম। আপনি আইডি কার্ড কত পিস বানাবেন এবং কার্ডের সঙ্গে ফিতা ও কভারও নিতে চান কি?"}
+        ]
+
+        # Customer sends "Hello" after bot already asked for quantity
+        res = evaluate_id_card_workflow(
+            message_text="Hello",
+            conversation_history=history,
+            customer_name="Rahim",
+            workspace_id=1
+        )
+
+        self.assertIsNotNone(res)
+        self.assertIn("কত পিস", res.get("reply_text", ""))
+        self.assertNotIn("কার্ডের সঙ্গে ফিতা ও কভারও নিতে চান কি", res.get("reply_text", ""), "Must not repeat the full initial template")
+
 
 if __name__ == "__main__":
     unittest.main()
+
