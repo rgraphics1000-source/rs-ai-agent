@@ -637,8 +637,15 @@ def analyze_conversation_history_context(conversation_history: list = None, curr
                 context["chosen_package"] = pkg_num
                 summary_lines.append(f"• কাস্টমার প্যাকেজ পছন্দ করেছেন: প্যাকেজ ০{pkg_num}")
 
+    curr_pkg = detect_specific_package_number(current_message, packages_context=context["packages_already_sent"])
+    if curr_pkg is not None:
+        context["chosen_package"] = curr_pkg
+
+    is_standalone_pkg_digit = (
+        curr_pkg is not None and not any(k in current_message for k in ["পিস", "পিসেস", "pcs", "pc", "pieces", "piece", "কপি", "জন", "টা", "টি"])
+    )
     curr_qty = extract_order_quantity_number(current_message)
-    if curr_qty and curr_qty >= 1:
+    if not is_standalone_pkg_digit and curr_qty and curr_qty >= 1:
         c_low_curr = current_message.lower()
         if context["known_quantity"] is None or any(k in c_low_curr for k in ["পরিবর্তন", "না", "কমিয়ে", "বাড়িয়ে", "করব", "বানাব", "পিস"]):
             context["known_quantity"] = curr_qty
@@ -806,19 +813,66 @@ PACKAGE_SPECIFIC_DETAILS = {
     7: "প্যাকেজ ০৭ (সবচেয়ে প্রিমিয়াম): জাপানি মেশিনের UV কালার প্রিন্ট PVC আইডি কার্ড + ডিজিটাল প্রিন্ট ফিতা (২ সে.মি.) + মেটাল কভার। ১০০+ অর্ডারে পাইকারি মূল্য ৯১ টাকা/সেট।"
 }
 
-def detect_specific_package_number(msg: str) -> Optional[int]:
-    """Detects if customer asks for a specific package number (1 to 7)."""
+def detect_specific_package_number(msg: str, packages_context: bool = False) -> Optional[int]:
+    """
+    Detects if customer asks for, selects, or refers to a specific package number (1 to 7).
+    Supports English & Bengali digits, Bengali words (এক..সাত), and variations of নং/নম্বর/নাম্বার/package.
+    """
     if not msg:
         return None
-    m = msg.lower()
+    m = msg.lower().strip()
+    
+    # Standalone single digit or Bengali word if packages context is active or short input
+    digit_map = {
+        '1': 1, '০১': 1, '১': 1, 'এক': 1,
+        '2': 2, '০২': 2, '২': 2, 'দুই': 2,
+        '3': 3, '০৩': 3, '৩': 3, 'তিন': 3,
+        '4': 4, '০৪': 4, '৪': 4, 'চার': 4,
+        '5': 5, '০৫': 5, '৫': 5, 'পাঁচ': 5,
+        '6': 6, '০৬': 6, '৬': 6, 'ছয়': 6, 'ছয়': 6,
+        '7': 7, '০৭': 7, '৭': 7, 'সাত': 7,
+    }
+    if (packages_context or len(m) <= 4) and m in digit_map:
+        return digit_map[m]
+
     patterns = [
-        (1, [r'প্যাকেজ\s*(?:০১|০1|১|1)\b', r'১\s*নম্বর\s*প্যাকেজ', r'1\s*no\s*package', r'package\s*(?:01|1)\b', r'pkg\s*(?:01|1)\b']),
-        (2, [r'প্যাকেজ\s*(?:০২|০2|২|2)\b', r'২\s*নম্বর\s*প্যাকেজ', r'2\s*no\s*package', r'package\s*(?:02|2)\b', r'pkg\s*(?:02|2)\b']),
-        (3, [r'প্যাকেজ\s*(?:০৩|০3|৩|3)\b', r'৩\s*নম্বর\s*প্যাকেজ', r'3\s*no\s*package', r'package\s*(?:03|3)\b', r'pkg\s*(?:03|3)\b']),
-        (4, [r'প্যাকেজ\s*(?:০৪|০4|৪|4)\b', r'৪\s*নম্বর\s*প্যাকেজ', r'4\s*no\s*package', r'package\s*(?:04|4)\b', r'pkg\s*(?:04|4)\b']),
-        (5, [r'প্যাকেজ\s*(?:০৫|০5|৫|5)\b', r'৫\s*নম্বর\s*প্যাকেজ', r'5\s*no\s*package', r'package\s*(?:05|5)\b', r'pkg\s*(?:05|5)\b']),
-        (6, [r'প্যাকেজ\s*(?:০৬|০6|৬|6)\b', r'৬\s*নম্বর\s*প্যাকেজ', r'6\s*no\s*package', r'package\s*(?:06|6)\b', r'pkg\s*(?:06|6)\b']),
-        (7, [r'প্যাকেজ\s*(?:০৭|০7|৭|7)\b', r'৭\s*নম্বর\s*প্যাকেজ', r'7\s*no\s*package', r'package\s*(?:07|7)\b', r'pkg\s*(?:07|7)\b']),
+        (1, [
+            r'প্যাকেজ\s*(?:০১|০1|১|1|এক)(?:\s|$|[^0-9a-zA-Z\u0980-\u09ff])',
+            r'(?:০১|১|1|এক)\s*(?:নং|নম্বর|নাম্বার|no|number)\s*(?:প্যাকেজ)?',
+            r'1\s*no\s*package', r'package\s*(?:01|1|no\s*1)(?:\s|$|[^0-9a-zA-Z])', r'pkg\s*(?:01|1)(?:\s|$|[^0-9a-zA-Z])',
+            r'সাশ্রয়ী\s*প্যাকেজ', r'সাশ্রয়ী\s*প্যাকেজ'
+        ]),
+        (2, [
+            r'প্যাকেজ\s*(?:০২|০2|২|2|দুই)(?:\s|$|[^0-9a-zA-Z\u0980-\u09ff])',
+            r'(?:০২|২|2|দুই)\s*(?:নং|নম্বর|নাম্বার|no|number)\s*(?:প্যাকেজ)?',
+            r'2\s*no\s*package', r'package\s*(?:02|2|no\s*2)(?:\s|$|[^0-9a-zA-Z])', r'pkg\s*(?:02|2)(?:\s|$|[^0-9a-zA-Z])'
+        ]),
+        (3, [
+            r'প্যাকেজ\s*(?:০৩|০3|৩|3|তিন)(?:\s|$|[^0-9a-zA-Z\u0980-\u09ff])',
+            r'(?:০৩|৩|3|তিন)\s*(?:নং|নম্বর|নাম্বার|no|number)\s*(?:প্যাকেজ)?',
+            r'3\s*no\s*package', r'package\s*(?:03|3|no\s*3)(?:\s|$|[^0-9a-zA-Z])', r'pkg\s*(?:03|3)(?:\s|$|[^0-9a-zA-Z])'
+        ]),
+        (4, [
+            r'প্যাকেজ\s*(?:০৪|০4|৪|4|চার)(?:\s|$|[^0-9a-zA-Z\u0980-\u09ff])',
+            r'(?:০৪|৪|4|চার)\s*(?:নং|নম্বর|নাম্বার|no|number)\s*(?:প্যাকেজ)?',
+            r'4\s*no\s*package', r'package\s*(?:04|4|no\s*4)(?:\s|$|[^0-9a-zA-Z])', r'pkg\s*(?:04|4)(?:\s|$|[^0-9a-zA-Z])'
+        ]),
+        (5, [
+            r'প্যাকেজ\s*(?:০৫|০5|৫|5|পাঁচ)(?:\s|$|[^0-9a-zA-Z\u0980-\u09ff])',
+            r'(?:০৫|৫|5|পাঁচ)\s*(?:নং|নম্বর|নাম্বার|no|number)\s*(?:প্যাকেজ)?',
+            r'5\s*no\s*package', r'package\s*(?:05|5|no\s*5)(?:\s|$|[^0-9a-zA-Z])', r'pkg\s*(?:05|5)(?:\s|$|[^0-9a-zA-Z])'
+        ]),
+        (6, [
+            r'প্যাকেজ\s*(?:০৬|০6|৬|6|ছয়|ছয়)(?:\s|$|[^0-9a-zA-Z\u0980-\u09ff])',
+            r'(?:০৬|৬|6|ছয়|ছয়)\s*(?:নং|নম্বর|নাম্বার|no|number)\s*(?:প্যাকেজ)?',
+            r'6\s*no\s*package', r'package\s*(?:06|6|no\s*6)(?:\s|$|[^0-9a-zA-Z])', r'pkg\s*(?:06|6)(?:\s|$|[^0-9a-zA-Z])'
+        ]),
+        (7, [
+            r'প্যাকেজ\s*(?:০৭|০7|৭|7|সাত)(?:\s|$|[^0-9a-zA-Z\u0980-\u09ff])',
+            r'(?:০৭|৭|7|সাত)\s*(?:নং|নম্বর|নাম্বার|no|number)\s*(?:প্যাকেজ)?',
+            r'7\s*no\s*package', r'package\s*(?:07|7|no\s*7)(?:\s|$|[^0-9a-zA-Z])', r'pkg\s*(?:07|7)(?:\s|$|[^0-9a-zA-Z])',
+            r'মেটাল\s*(?:ফ্রেম\s*)?কভার'
+        ]),
     ]
     for num, pat_list in patterns:
         for p in pat_list:
@@ -1177,56 +1231,54 @@ def detect_quoted_or_mentioned_package(msg: str) -> dict:
             "image": "/static/uploads/package/IMG-20260113-WA0003.jpg"
         }
 
-    # 2. Explicit Bengali package text
-    if any(k in m for k in ["প্যাকেজ ৭", "প্যাকেজ ০৭", "৭ নম্বর", "৭ নং", "মেটাল কভার", "প্রিমিয়াম প্যাকেজ", "প্রিমিয়াম প্যাকেজ"]):
-        return {
+    # 2. Package number detected via detect_specific_package_number
+    detected_num = detect_specific_package_number(msg, packages_context=True)
+    pkg_meta = {
+        7: {
             "pkg_num": 7,
             "name": "প্রিমিয়াম ৭ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + মেটাল ফ্রেম কভার)",
             "price": 91,
             "image": "/static/uploads/package/IMG-20260114-WA0057.jpg"
-        }
-    if any(k in m for k in ["প্যাকেজ ৬", "প্যাকেজ ০৬", "৬ নম্বর", "৬ নং"]):
-        return {
+        },
+        6: {
             "pkg_num": 6,
             "name": "৬ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + হার্ড প্লাস্টিক কভার)",
             "price": 83,
             "image": "/static/uploads/package/IMG-20260113-WA0006.jpg"
-        }
-    if any(k in m for k in ["প্যাকেজ ৫", "প্যাকেজ ০৫", "৫ নম্বর", "৫ নং"]):
-        return {
+        },
+        5: {
             "pkg_num": 5,
             "name": "৫ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + হার্ড প্লাস্টিক কভার)",
             "price": 83,
             "image": "/static/uploads/package/IMG-20260118-WA0045.jpg"
-        }
-    if any(k in m for k in ["প্যাকেজ ৪", "প্যাকেজ ০৪", "৪ নম্বর", "৪ নং"]):
-        return {
+        },
+        4: {
             "pkg_num": 4,
             "name": "৪ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + নরমাল প্লাস্টিক কভার)",
             "price": 73,
             "image": "/static/uploads/package/IMG-20260121-WA0081.jpg"
-        }
-    if any(k in m for k in ["প্যাকেজ ৩", "প্যাকেজ ০৩", "৩ নম্বর", "৩ নং"]):
-        return {
+        },
+        3: {
             "pkg_num": 3,
             "name": "৩ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ২ সেমি ডিজিটাল সাবলিমেশন ফিতা + সফট রাবার কভার)",
             "price": 73,
             "image": "/static/uploads/package/IMG-20260117-WA0023.jpg"
-        }
-    if any(k in m for k in ["প্যাকেজ ২", "প্যাকেজ ০২", "২ নম্বর", "২ নং"]):
-        return {
+        },
+        2: {
             "pkg_num": 2,
             "name": "২ নম্বর প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ১.৫ সেমি ডিজিটাল সাবলিমেশন ফিতা + নরমাল প্লাস্টিক কভার)",
             "price": 70,
             "image": "/static/uploads/package/IMG-20260113-WA0002.jpg"
-        }
-    if any(k in m for k in ["প্যাকেজ ১", "প্যাকেজ ০১", "১ নম্বর", "১ নং", "সাশ্রয়ী প্যাকেজ", "সাশ্রয়ী প্যাকেজ"]):
-        return {
+        },
+        1: {
             "pkg_num": 1,
             "name": "১ নম্বর সাশ্রয়ী প্যাকেজ (জাপানি UV কালার প্রিন্ট PVC কার্ড + ১.৫ সেমি ডিজিটাল সাবলিমেশন ফিতা + সফট রাবার কভার)",
             "price": 70,
             "image": "/static/uploads/package/IMG-20260113-WA0003.jpg"
         }
+    }
+    if detected_num in pkg_meta:
+        return pkg_meta[detected_num]
 
     # 3. Default fallback if general reference
     return {
@@ -1268,19 +1320,6 @@ def evaluate_id_card_workflow(
     owner_messages = hist_ctx.get("owner_messages", [])
     last_owner_msg = hist_ctx.get("last_owner_instruction", "")
 
-    qty = extract_order_quantity_number(msg)
-    if qty is not None and qty >= 1:
-        if known_qty is None or any(k in msg for k in ["পরিবর্তন", "না", "কমিয়ে", "বাড়িয়ে", "করব", "বানাব", "পিস", "কপি"]):
-            known_qty = qty
-            if sender_id:
-                set_conversation_order_quantity(sender_id, qty, workspace_id=workspace_id)
-
-    effective_qty = known_qty if known_qty is not None else qty
-
-    bn_map = {"0": "০", "1": "১", "2": "২", "3": "৩", "4": "৪", "5": "৫", "6": "৬", "7": "৭", "8": "৮", "9": "৯"}
-    def to_bn(n):
-        return "".join(bn_map.get(c, c) for c in str(n))
-
     # Check bot prompts in last turn
     last_bot_msg = ""
     if conversation_history:
@@ -1301,6 +1340,27 @@ def evaluate_id_card_workflow(
         "স্যাম্পল ছবিগুলো পাঠাব", "ছবি পাঠাবো কি", "স্যাম্পল পাঠাবো কি", "ছবি পাঠাবো", "স্যাম্পল ছবি পাঠাবো",
         "ছবি দেখতে চান", "স্যাম্পল দেখতে চান"
     ])
+    bot_asked_package_selection = any(k in last_bot_msg for k in [
+        "প্যাকেজটি পছন্দ", "কোন প্যাকেজ", "প্যাকেজ পছন্দ", "প্যাকেজের", "চূড়ান্ত করব", "কোনটি আপনার", "প্যাকেজটি চূড়ান্ত"
+    ])
+
+    pkg_in_msg = detect_specific_package_number(msg, packages_context=(packages_already_sent or bot_asked_package_selection))
+    is_standalone_pkg_num = (
+        pkg_in_msg is not None and not any(k in msg for k in ["পিস", "পিসেস", "pcs", "pc", "pieces", "piece", "কপি", "জন", "টা", "টি"])
+    )
+
+    qty = None if is_standalone_pkg_num else extract_order_quantity_number(msg)
+    if qty is not None and qty >= 1:
+        if known_qty is None or any(k in msg for k in ["পরিবর্তন", "না", "কমিয়ে", "বাড়িয়ে", "করব", "বানাব", "পিস", "কপি"]):
+            known_qty = qty
+            if sender_id:
+                set_conversation_order_quantity(sender_id, qty, workspace_id=workspace_id)
+
+    effective_qty = known_qty if known_qty is not None else qty
+
+    bn_map = {"0": "০", "1": "১", "2": "২", "3": "৩", "4": "৪", "5": "৫", "6": "৬", "7": "৭", "8": "৮", "9": "৯"}
+    def to_bn(n):
+        return "".join(bn_map.get(c, c) for c in str(n))
     
     # 0.05 Greeting repetition guard: If message is pure greeting and bot already greeted or asked quantity
     clean_greeting = re.sub(r'[\!\?.,:;\-_~`\'"()\[\]{}।]', '', msg).strip().lower()
@@ -1344,6 +1404,14 @@ def evaluate_id_card_workflow(
     if len(cleaned_digits) >= 10 and (re.search(r'01[3-9]\d{8}', msg_without_system_tags) or re.search(r'8801[3-9]\d{8}', msg_without_system_tags) or len(msg_without_system_tags.strip().split()) <= 2):
         return None
 
+    # 0.08 Check contrastive negation & larger quantity intent (e.g. "আমি তো ১০০ পিস বানাবো না আরো বেশি বানাবো")
+    has_more_quantity_intent = any(k in msg for k in [
+        "আরো বেশি", "আরও বেশি", "বেশি বানাবো", "বেশি বানাব", "বেশি করবো", "বেশি করব",
+        "অনেক বেশি", "বেশি লাগবে", "বেশি নিব", "বেশি নেব", "না আরো", "না আরও",
+        "না বেশি", "না, আরো", "না, আরও", "তার চেয়ে বেশি", "তার চেয়ে বেশি",
+        "বেশি পরিমাণ", "বেশি সংখ্যা"
+    ])
+
     # 0.1 Check cancellation / refusal / not interested
     refusal_phrases = [
         "চাচ্ছি না", "চাই না", "লাগবে না", "আর লাগবে না", "দরকার নেই", "দরকার নাই",
@@ -1351,7 +1419,9 @@ def evaluate_id_card_workflow(
         "লাগবে না তো", "লাগবে না আমার", "নিব না", "নেব না", "দরকার নাই তো",
         "stop", "cancel", "not interested"
     ]
-    is_refusing = any(rp in msg for rp in refusal_phrases) or (len(msg.split()) == 1 and msg.strip() in ["না", "no"])
+    is_refusing = not has_more_quantity_intent and (
+        any(rp in msg for rp in refusal_phrases) or (len(msg.split()) == 1 and msg.strip() in ["না", "no"])
+    )
     if is_refusing:
         return {
             "reply_text": f"জি {honorific}, ঠিক আছে, কোনো সমস্যা নেই। পরবর্তীতে আপনার অন্য কোনো সার্ভিস বা তথ্যের প্রয়োজন হলে অবশ্যই জানাবেন।",
@@ -1361,6 +1431,22 @@ def evaluate_id_card_workflow(
             "video_url": "",
             "order_created": None,
             "response_source": "customer_not_interested"
+        }
+
+    if has_more_quantity_intent:
+        pkg_clause = ""
+        if pkg_in_msg:
+            pkg_clause = f"{to_bn(pkg_in_msg)} নম্বর প্যাকেজে "
+        elif hist_ctx.get("chosen_package"):
+            pkg_clause = f"{to_bn(hist_ctx.get('chosen_package'))} নম্বর প্যাকেজে "
+        return {
+            "reply_text": f"জি {honorific}, মাশাআল্লাহ! ১০০ পিসের বেশি হলে তো খুবই ভালো। {pkg_clause}আপনার সম্ভাব্য মোট কত পিস প্রয়োজন জানাবেন {honorific}? বেশি পরিমাণের ক্ষেত্রে আমরা আপনাকে সর্বোচ্চ সুবিধা ও বিশেষ পাইকারি রেট দেব।",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "id_card_larger_quantity_intent"
         }
 
     # 0.15 Check Shop Address / Location Inquiry
@@ -1391,6 +1477,54 @@ def evaluate_id_card_workflow(
     ]) and not any(k in msg for k in ["দাম সহ", "প্যাকেজ", "কোনটার দাম কত", "কোনটার দাম"])
     if is_specific_item_inquiry:
         return None
+
+    # 0.18 Check Package Selection / Confirmation (Promoted to prevent re-prompting or photo spam)
+    is_asking_to_see_single_pkg = any(k in msg for k in [
+        "দেখান", "দেখতে চাই", "দেখবো", "দেখব", "ছবি দেন", "ছবি দিন", "ছবি দেখতে", 
+        "স্যাম্পল দেখতে", "কি কি আছে", "বিস্তারিত বলেন", "ছবি পাঠান", "ছবি দেখান"
+    ])
+
+    is_package_selection = not is_asking_to_see_single_pkg and not is_refusing and (
+        any(k in msg for k in [
+            "পছন্দ হয়েছে", "পছন্দ হইছে", "পছন্দ হয়েছে", "পছন্দ হচ্ছে", "পছন্দ হয়েছে", "পছন্দ",
+            "এটি দেন", "এটা দেন", "এইটা দেন", "এটা দিন", "এটি দিন", "এইটা দিন", 
+            "এটা ফাইনাল", "এটি ফাইনাল", "এটা অর্ডার", "এটা কনফার্ম", 
+            "এটা নিব", "এটা নেব", "এটি নিব", "এটি নেব", "এইটা নিব", "এইটা নেব", "এটা বানাবো", "এটা বানাব", 
+            "এটি করব", "এটা করব", "অর্ডার করতে চাই", "অর্ডার করব", "অর্ডার কনফার্ম", "অর্ডার দেন"
+        ]) or (
+            pkg_in_msg is not None and (
+                packages_already_sent or 
+                bot_asked_package_selection or 
+                any(k in msg for k in ["পছন্দ", "নিব", "নেব", "দেন", "দিন", "ফাইনাল", "কনফার্ম", "অর্ডার", "বানাব"]) or
+                re.fullmatch(r'^(?:প্যাকেজ\s*)?(?:[১-৭]|০১|০২|০৩|০৪|০৫|০৬|০৭|[1-7]|এক|দুই|তিন|চার|পাঁচ|ছয়|ছয়|সাত)\s*(?:নং|নম্বর|নাম্বার)?$', msg.strip())
+            )
+        )
+    )
+
+    if is_package_selection and not is_refusing:
+        pkg_info = detect_quoted_or_mentioned_package(msg)
+        pkg_name = pkg_info["name"]
+        tier_note = ""
+        if effective_qty is not None and 30 <= effective_qty < 50:
+            tier_note = f"\n(যেহেতু আপনাদের পরিমাণ {to_bn(effective_qty)} পিস—১০০ এর কম, তাই প্যাকেজের রেগুলার মূল্যের সাথে প্রতি পিসে ১০ টাকা যোগ হবে।)\n"
+            
+        ack_text = (
+            f"জি {honorific}, চমৎকার পছন্দ! আপনি আমাদের এই আকর্ষণীয় {pkg_name}টি নির্বাচন করেছেন।{tier_note}\n\n"
+            f"আপনার অর্ডারটি চূড়ান্ত করতে অনুগ্রহ করে নিচের তথ্যগুলো দিন:\n"
+            f"১. প্রতিষ্ঠানের নাম:\n"
+            f"২. পূর্ণাঙ্গ ঠিকানা:\n"
+            f"৩. যোগাযোগের মোবাইল নম্বর:\n\n"
+            f"তথ্যগুলো দিলে আমরা সাথে সাথে ছবি ও তথ্য আপলোড করার জন্য একটি ডেডিকেটেড গুগল ফর্ম লিংক পাঠিয়ে দেব {honorific}।"
+        )
+        return {
+            "reply_text": ack_text,
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "id_card_package_selection_acknowledged"
+        }
 
     # 0.2 Check Specific Package Request (Requirement 2: Show only the requested package)
     specific_pkg_num = detect_specific_package_number(msg)
@@ -1584,6 +1718,14 @@ def evaluate_id_card_workflow(
         "স্যাম্পল ছবিগুলো পাঠাব", "ছবি পাঠাবো কি", "স্যাম্পল পাঠাবো কি", "ছবি পাঠাবো", "স্যাম্পল ছবি পাঠাবো",
         "ছবি দেখতে চান", "স্যাম্পল দেখতে চান"
     ])
+    bot_asked_package_selection = any(k in last_bot_msg for k in [
+        "প্যাকেজটি পছন্দ", "কোন প্যাকেজ", "প্যাকেজ পছন্দ", "প্যাকেজের", "চূড়ান্ত করব", "কোনটি আপনার", "প্যাকেজটি চূড়ান্ত"
+    ])
+
+    pkg_in_msg = detect_specific_package_number(msg, packages_context=(packages_already_sent or bot_asked_package_selection))
+    is_standalone_pkg_num = (
+        pkg_in_msg is not None and not any(k in msg for k in ["পিস", "পিসেস", "pcs", "pc", "pieces", "piece", "কপি", "জন", "টা", "টি"])
+    )
 
     # Check if message is ID card related (and not negative)
     is_id_card_inquiry = any(k in msg for k in [
@@ -1632,10 +1774,10 @@ def evaluate_id_card_workflow(
     # Case B: Answering quantity
     is_asking_question = any(k in msg for k in ["?", "কত", "কেন", "কি", "কী", "দাম", "চার্জ", "সময়", "কেমন", "ডেলিভারি", "কোথায়"])
     is_answering_quantity = (
-        qty is not None and not is_asking_question and (
+        qty is not None and not is_standalone_pkg_num and not is_asking_question and (
             bot_asked_quantity or 
             any(k in msg for k in ["পিস", "টা", "টি", "pcs", "কপি", "বানাবো", "বানাতে চাই"]) or
-            re.fullmatch(r'\d{1,5}', msg.strip())
+            (re.fullmatch(r'\d{1,5}', msg.strip()) and not (packages_already_sent or bot_asked_package_selection))
         )
     )
     
@@ -1883,40 +2025,7 @@ def evaluate_id_card_workflow(
                 "response_source": "package_counter_offer_floor_accepted"
             }
 
-    # Case D2: Customer explicitly selects / confirms a package photo (e.g. "এটি নিব", "পছন্দ হয়েছে", "এটা দেন")
-    is_package_selection = not is_asking_pkg_price_or_discount and (
-        any(k in msg for k in [
-            "পছন্দ হয়েছে", "পছন্দ হইছে", "পছন্দ হয়েছে", "এটি দেন", "এটা দেন", "এইটা দেন", 
-            "এটা দিন", "এটি দিন", "এইটা দিন", "এটা ফাইনাল", "এটি ফাইনাল", "এটা অর্ডার", "এটা কনফার্ম", 
-            "এটা নিব", "এটা নেব", "এটি নিব", "এটি নেব", "এইটা নিব", "এইটা নেব", "এটা বানাবো", "এটা বানাব", 
-            "এটি করব", "এটা করব", "অর্ডার করতে চাই", "অর্ডার করব", "অর্ডার কনফার্ম"
-        ])
-    )
 
-    if is_package_selection and not is_refusing:
-        pkg_info = detect_quoted_or_mentioned_package(msg)
-        pkg_name = pkg_info["name"]
-        tier_note = ""
-        if effective_qty is not None and 30 <= effective_qty < 50:
-            tier_note = f"\n(যেহেতু আপনাদের পরিমাণ {effective_qty} পিস—১০০ এর কম, তাই প্যাকেজের রেগুলার মূল্যের সাথে প্রতি পিসে ১০ টাকা যোগ হবে।)\n"
-            
-        ack_text = (
-            f"জি {honorific}, চমৎকার পছন্দ! আপনি আমাদের এই আকর্ষণীয় {pkg_name}টি নির্বাচন করেছেন।{tier_note}\n\n"
-            f"আপনার অর্ডারটি চূড়ান্ত করতে অনুগ্রহ করে নিচের তথ্যগুলো দিন:\n"
-            f"১. প্রতিষ্ঠানের নাম:\n"
-            f"২. পূর্ণাঙ্গ ঠিকানা:\n"
-            f"৩. যোগাযোগের মোবাইল নম্বর:\n\n"
-            f"তথ্যগুলো দিলে আমরা সাথে সাথে ছবি ও তথ্য আপলোড করার জন্য একটি ডেডিকেটেড গুগল ফর্ম লিংক পাঠিয়ে দেব {honorific}।"
-        )
-        return {
-            "reply_text": ack_text,
-            "media_sequence": [],
-            "matched_images": [],
-            "voice_url": "",
-            "video_url": "",
-            "order_created": None,
-            "response_source": "id_card_package_selection_acknowledged"
-        }
 
     return None
 
@@ -2494,8 +2603,16 @@ async def process_customer_message(
         if chosen_pkg:
             realtime_memory_guard += (
                 f"• পছন্দের প্যাকেজ (CHOSEN PACKAGE): প্যাকেজ ০{chosen_pkg}।\n"
-                f"  ⚠️ প্যাকেজ ০{chosen_pkg} অনুযায়ী কথা বলো এবং লোগো/তথ্য ও ডেলিভারি ঠিকানার দিকে এগিয়ে যাও।\n"
+                f"  ⚠️🚨 চূড়ান্ত কঠোর নির্দেশ: কাস্টমার ইতোমধ্যে প্যাকেজ ০{chosen_pkg} পছন্দ করেছেন। ভুলেও আর 'আপনার জন্য কোন প্যাকেজটি চূড়ান্ত করব বলুন স্যার?', 'কোন প্যাকেজ পছন্দ হয়েছে?' ইত্যাদি প্রশ্ন করবে না! সরাসরি কাস্টমারের পছন্দের প্যাকেজ ০{chosen_pkg}-কে ধন্যবাদ জানিয়ে অর্ডারটি কনফার্ম করতে প্রতিষ্ঠানের নাম, পূর্ণাঙ্গ ঠিকানা ও মোবাইল নম্বর চাও।\n"
             )
+
+        realtime_memory_guard += (
+            "🚨🚨🚨 বেশি পরিমাণ বনাম অর্ডার বাতিল (MORE QUANTITY vs CANCELLATION DIRECTIVE): 🚨🚨🚨\n"
+            "• কাস্টমার যদি বলে 'আমি তো ১০০ পিস বানাবো না আরো বেশি বানাবো', 'না আরো বেশি বানাবো', 'বেশি করব':\n"
+            "• এটি কোনোভাবেই অর্ডার বাতিল বা অনীহা নয়! কাস্টমার ১০০ এর চেয়েও বেশি পরিমাণ বানাতে চান।\n"
+            "• ভুলেও 'ঠিক আছে কোনো সমস্যা নেই, পরবর্তীতে তথ্যের প্রয়োজন হলে জানাবেন' জাতীয় বাতিল বার্তা দেবে না!\n"
+            "• অত্যন্ত উৎসাহিত হয়ে বলবে: 'জি স্যার, মাশাআল্লাহ! ১০০ পিসের বেশি হলে তো খুবই ভালো। আপনার সম্ভাব্য মোট কত পিস প্রয়োজন জানাবেন স্যার? বেশি পরিমাণের ক্ষেত্রে আমরা আপনাকে সর্বোচ্চ সুবিধা ও আরও বিশেষ পাইকারি রেট দেব।'\n"
+        )
 
         if owner_msgs:
             owner_summary = " | ".join(owner_msgs[-3:])

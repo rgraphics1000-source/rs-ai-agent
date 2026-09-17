@@ -321,5 +321,122 @@ class TestQuantityRepetitionAndPackageVoiceFlow(unittest.TestCase):
         self.assertIn("পূর্ণাঙ্গ ঠিকানা", reply)
         self.assertIn("মোবাইল নম্বর", reply)
 
+    def test_12_single_digit_package_choice_not_moq_under_30(self):
+        """
+        When customer replies with '৭' (Bengali digit 7) after ready packages were sent
+        and the bot asked 'আপনার কোন প্যাকেজটি পছন্দ হয়েছে, বলুন স্যার।',
+        the agent must acknowledge Package 7 selection, ask for order finalization details,
+        and NEVER trigger MOQ < 30 error.
+        """
+        sender_id = "8801777777778"
+        set_conversation_order_quantity(sender_id, 100, workspace_id=1)
+
+        history_packages_sent = [
+            {"sender": "customer", "content": "১০০ পিস বানাবো"},
+            {"sender": "bot", "content": "১০০ পিস অর্ডারের ক্ষেত্রে আমাদের প্যাকেজের নির্ধারিত রেগুলার পাইকারি রেট প্রযোজ্য হবে।"},
+            {"sender": "customer", "content": "প্যাকেজগুলো পাঠান"},
+            {"sender": "bot", "content": "রেডি প্যাকেজ ১ /static/uploads/package/IMG-20260113-WA0003.jpg", "media_url": "/static/uploads/package/IMG-20260113-WA0003.jpg"},
+            {"sender": "bot", "content": "রেডি প্যাকেজ ৭ /static/uploads/package/IMG-20260114-WA0057.jpg", "media_url": "/static/uploads/package/IMG-20260114-WA0057.jpg"},
+            {"sender": "bot", "content": "আপনার কোন প্যাকেজটি পছন্দ হয়েছে, বলুন স্যার।"}
+        ]
+
+        res = evaluate_id_card_workflow(
+            message_text="৭",
+            conversation_history=history_packages_sent,
+            customer_name="Customer",
+            workspace_id=1,
+            sender_id=sender_id
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "id_card_package_selection_acknowledged")
+        self.assertNotIn("সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস", res["reply_text"])
+        self.assertIn("৭ নম্বর প্যাকেজ", res["reply_text"])
+        self.assertIn("প্রতিষ্ঠানের নাম", res["reply_text"])
+        self.assertIn("পূর্ণাঙ্গ ঠিকানা", res["reply_text"])
+        self.assertIn("মোবাইল নম্বর", res["reply_text"])
+
+        # Ensure order quantity remains 100 in DB
+        db_qty = get_conversation_order_quantity(sender_id, workspace_id=1)
+        self.assertEqual(db_qty, 100)
+
+    def test_13_package_selection_with_poshondo_hochhe_no_re_prompt(self):
+        """
+        When customer says 'আমি বলছি আমার সাত নং প্যাকেজ পছন্দ হচ্ছে',
+        the agent must acknowledge Package 7 and ask for institution details,
+        without asking 'আপনার জন্য কোন প্যাকেজটি চূড়ান্ত করব বলুন স্যার?'.
+        """
+        sender_id = "8801777777779"
+        set_conversation_order_quantity(sender_id, 100, workspace_id=1)
+
+        history = [
+            {"sender": "customer", "content": "১০০ পিস বানাবো"},
+            {"sender": "bot", "content": "আপনার কোন প্যাকেজটি পছন্দ হয়েছে, বলুন স্যার।"},
+            {"sender": "customer", "content": "৭"},
+            {"sender": "bot", "content": "জি স্যার, চমৎকার পছন্দ! আপনি আমাদের এই আকর্ষণীয় প্রিমিয়াম ৭ নম্বর প্যাকেজ নির্বাচন করেছেন।"}
+        ]
+
+        res = evaluate_id_card_workflow(
+            message_text="আমি বলছি আমার সাত নং প্যাকেজ পছন্দ হচ্ছে",
+            conversation_history=history,
+            customer_name="Customer",
+            workspace_id=1,
+            sender_id=sender_id
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "id_card_package_selection_acknowledged")
+        self.assertIn("৭ নম্বর প্যাকেজ", res["reply_text"])
+        self.assertIn("প্রতিষ্ঠানের নাম", res["reply_text"])
+        self.assertNotIn("কোন প্যাকেজটি চূড়ান্ত করব", res["reply_text"])
+
+    def test_14_more_quantity_intent_not_treated_as_refusal(self):
+        """
+        When customer says 'আমি তো ১০০ পিস বানাবো না আরো বেশি বানাবো',
+        it contains 'বানাবো না' but expresses intent for MORE quantity.
+        It must NOT trigger customer_not_interested or cancellation.
+        It must welcome the larger order and ask for estimated quantity.
+        """
+        sender_id = "8801777777780"
+        set_conversation_order_quantity(sender_id, 100, workspace_id=1)
+
+        history = [
+            {"sender": "customer", "content": "১০০ পিস বানাবো"},
+            {"sender": "bot", "content": "জি স্যার, মেটাল কভারসহ প্রিমিয়াম ৭ নম্বর প্যাকেজটি ১০০ পিসের ক্ষেত্রে সর্বোচ্চ কমিয়ে ৮২ টাকা পর্যন্ত রাখা সম্ভব।"}
+        ]
+
+        res = evaluate_id_card_workflow(
+            message_text="আমি তো ১০০ পিস বানাবো না আরো বেশি বানাবো",
+            conversation_history=history,
+            customer_name="Customer",
+            workspace_id=1,
+            sender_id=sender_id
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "id_card_larger_quantity_intent")
+        self.assertNotIn("কোনো সমস্যা নেই", res["reply_text"])
+        self.assertNotIn("অন্য কোনো সার্ভিস বা তথ্যের প্রয়োজন হলে", res["reply_text"])
+        self.assertIn("বেশি", res["reply_text"])
+        self.assertIn("কত পিস প্রয়োজন", res["reply_text"])
+
+    def test_15_spelled_out_bengali_package_number_detection(self):
+        """
+        Verify spelled out Bengali package names and numbers (সাত নং, ছয় নম্বর, ৭ নাম্বার, ইত্যাদি).
+        """
+        from app.ai_agent.gemini_brain import detect_specific_package_number, detect_quoted_or_mentioned_package
+
+        self.assertEqual(detect_specific_package_number("সাত নং প্যাকেজ"), 7)
+        self.assertEqual(detect_specific_package_number("আমার সাত নং প্যাকেজ পছন্দ হচ্ছে"), 7)
+        self.assertEqual(detect_specific_package_number("৭ নাম্বার"), 7)
+        self.assertEqual(detect_specific_package_number("ছয় নম্বর প্যাকেজ"), 6)
+        self.assertEqual(detect_specific_package_number("পাঁচ নং"), 5)
+        self.assertEqual(detect_specific_package_number("চার নং প্যাকেজ"), 4)
+        self.assertEqual(detect_specific_package_number("তিন নম্বর"), 3)
+        self.assertEqual(detect_specific_package_number("দুই নং"), 2)
+        self.assertEqual(detect_specific_package_number("এক নম্বর সাশ্রয়ী প্যাকেজ"), 1)
+
+        meta_7 = detect_quoted_or_mentioned_package("আমার সাত নং প্যাকেজ পছন্দ হচ্ছে")
+        self.assertEqual(meta_7["pkg_num"], 7)
+        self.assertEqual(meta_7["price"], 91)
+
 if __name__ == "__main__":
     unittest.main()
+
