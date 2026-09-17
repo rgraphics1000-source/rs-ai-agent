@@ -1155,8 +1155,19 @@ async def handle_whatsapp_webhook_event(data: dict):
                 wa_account = get_whatsapp_account_by_phone_id(meta_phone_id)
 
                 # 3. If not found by phone_number_id, check if it's the primary RS Graphics account or display number
-                if not wa_account and (meta_phone_id in ["4184514263660680", "418451426636680"] or "01816504097" in display_phone_number):
+                if not wa_account and (
+                    meta_phone_id in ["418451428636680", "4184514263660680", "418451426636680"]
+                    or "1816504097" in display_phone_number
+                    or "1816504097" in meta_phone_id
+                ):
                     wa_account = ensure_whatsapp_account_consistency()
+
+                # 4. Zero-Drop Safety Fallback: Never drop an RS Graphics WhatsApp message!
+                if not wa_account:
+                    all_accounts = get_all_whatsapp_accounts()
+                    if len(all_accounts) <= 1 or "1816504097" in display_phone_number or not meta_phone_id:
+                        print(f"[WhatsApp Routing Warning]: Phone number ID '{meta_phone_id}' (display: '{display_phone_number}') auto-routing to Workspace 1 canonical account to guarantee ZERO dropped messages.")
+                        wa_account = ensure_whatsapp_account_consistency()
 
                 if not wa_account:
                     print(f"[WhatsApp Routing Error]: Unknown phone_number_id {meta_phone_id}. No matching whatsapp_account found. Event dropped without fallback.")

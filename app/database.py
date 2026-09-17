@@ -25,11 +25,10 @@ def normalize_bd_mobile(phone: str) -> str:
     return digits
 
 def get_db_connection():
-    conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
+    conn = sqlite3.connect(str(DB_PATH), timeout=60.0)
     conn.row_factory = sqlite3.Row
     try:
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA busy_timeout=30000;")
+        conn.execute("PRAGMA busy_timeout=60000;")
     except Exception:
         pass
     return conn
@@ -37,6 +36,12 @@ def get_db_connection():
 def init_db():
     """Initializes the SQLite database with all necessary tables."""
     conn = get_db_connection()
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("PRAGMA busy_timeout=60000;")
+    except Exception:
+        pass
     cursor = conn.cursor()
 
     # 1. Products Table
@@ -790,19 +795,27 @@ def init_db():
     except Exception as e:
         print(f"[DB Auto-Snapshot Warning]: {e}")
 
-def get_setting(key: str, default: str = "") -> str:
+def get_setting(key: str, default: str = "", conn=None) -> str:
     # 1. Check database settings first (Primary Source of Truth)
+    close_conn = False
     try:
-        conn = get_db_connection()
+        if conn is None:
+            conn = get_db_connection()
+            close_conn = True
         cursor = conn.cursor()
         cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
         row = cursor.fetchone()
-        conn.close()
         
         if row and row["value"] is not None and str(row["value"]).strip() != "":
             return str(row["value"]).strip()
     except Exception:
         pass
+    finally:
+        if close_conn and conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     # 2. Fallback to environment variables if database is empty
     env_val = os.getenv(key.upper()) or os.getenv(key)
@@ -2238,31 +2251,35 @@ def ensure_whatsapp_account_consistency(conn=None) -> Optional[dict]:
     """
     Self-healing migration and consistency enforcer for WhatsApp accounts.
     Guarantees:
-    1. Workspace 1 (RS Graphics) always has a valid, canonical WhatsApp account with phone_number_id = 4184514263660680.
-    2. Zero duplicate rows for phone_number_id = 4184514263660680.
-    3. Legacy IDs (418451426636680, 8801816504097_wa, empty) are safely migrated without losing tokens, WABA ID, or conversation data.
-    4. Settings table is kept in sync (whatsapp_phone_number_id = 4184514263660680).
-    5. Fully idempotent and safe to call concurrently or repeatedly.
+    1. Workspace 1 (RS Graphics) always has a valid, canonical WhatsApp account with phone_number_id = 418451428636680.
+    2. Zero duplicate rows for phone_number_id = 418451428636680.
+    3. Legacy IDs (418451426636680, 4184514263660680, 8801816504097_wa, empty) are safely migrated without losing tokens, WABA ID, or conversation data.
+    4. Settings table is kept in sync (whatsapp_phone_number_id = 418451428636680).
+    5. Fully idempotent and safe to call concurrently with zero DB deadlock.
     """
-    target_wa_phone_id = str(get_setting("whatsapp_phone_number_id") or settings.WHATSAPP_PHONE_NUMBER_ID or "418451426636680").strip()
-    target_waba_id = str(get_setting("whatsapp_waba_id") or settings.WHATSAPP_WABA_ID or "271335301757320").strip()
-    target_display = str(settings.WHATSAPP_DISPLAY_PHONE_NUMBER or "+8801816504097").strip()
-    target_token = str(
-        get_setting("whatsapp_access_token")
-        or get_setting("meta_system_user_access_token")
-        or os.getenv("META_SYSTEM_USER_ACCESS_TOKEN")
-        or os.getenv("WHATSAPP_ACCESS_TOKEN")
-        or settings.WHATSAPP_ACCESS_TOKEN
-        or settings.META_SYSTEM_USER_ACCESS_TOKEN
-        or ""
-    ).strip()
-
     close_conn = False
     if conn is None:
         conn = get_db_connection()
         close_conn = True
 
     try:
+        configured_setting = str(get_setting("whatsapp_phone_number_id", conn=conn) or "").strip()
+        if configured_setting in ["418451426636680", "4184514263660680", ""]:
+            configured_setting = "418451428636680"
+
+        target_wa_phone_id = str(os.getenv("WHATSAPP_PHONE_NUMBER_ID") or configured_setting or settings.WHATSAPP_PHONE_NUMBER_ID or "418451428636680").strip()
+        target_waba_id = str(get_setting("whatsapp_waba_id", conn=conn) or settings.WHATSAPP_WABA_ID or "271335301757320").strip()
+        target_display = str(settings.WHATSAPP_DISPLAY_PHONE_NUMBER or "+8801816504097").strip()
+        target_token = str(
+            get_setting("whatsapp_access_token", conn=conn)
+            or get_setting("meta_system_user_access_token", conn=conn)
+            or os.getenv("META_SYSTEM_USER_ACCESS_TOKEN")
+            or os.getenv("WHATSAPP_ACCESS_TOKEN")
+            or settings.WHATSAPP_ACCESS_TOKEN
+            or settings.META_SYSTEM_USER_ACCESS_TOKEN
+            or ""
+        ).strip()
+
         cursor = conn.cursor()
 
         # Step 1: Check if an account already exists with the exact target phone_number_id
@@ -2295,8 +2312,8 @@ def ensure_whatsapp_account_consistency(conn=None) -> Optional[dict]:
             cursor.execute("""
                 SELECT * FROM whatsapp_accounts 
                 WHERE workspace_id = 1 
-                   OR phone_number_id IN ('418451426636680', '8801816504097_wa', '8801816504097', '')
-                   OR display_phone_number LIKE '%01816504097%'
+                   OR phone_number_id IN ('418451428636680', '418451426636680', '4184514263660680', '8801816504097_wa', '8801816504097', '')
+                   OR display_phone_number LIKE '%1816504097%'
                 ORDER BY id ASC
             """)
             w1_candidates = cursor.fetchall()
@@ -2362,11 +2379,17 @@ def ensure_whatsapp_account_consistency(conn=None) -> Optional[dict]:
     except Exception as e:
         print(f"[ensure_whatsapp_account_consistency Error]: {e}")
         if conn:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         return None
     finally:
         if close_conn and conn:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 def get_whatsapp_account_by_phone_id(phone_number_id: str) -> Optional[dict]:
     """Finds a WhatsApp account record by its Meta phone_number_id."""
@@ -2387,15 +2410,20 @@ def get_whatsapp_account_by_phone_id(phone_number_id: str) -> Optional[dict]:
             WHERE wa.phone_number_id = ?
         """, (phone_id_str,))
         row = cursor.fetchone()
-        if not row and phone_id_str in ["4184514263660680", "418451426636680"]:
-            return ensure_whatsapp_account_consistency(conn=conn)
+        if not row and (phone_id_str in ["418451428636680", "4184514263660680", "418451426636680"] or "1816504097" in phone_id_str):
+            conn.close()
+            conn = None
+            return ensure_whatsapp_account_consistency()
         return dict(row) if row else None
     except Exception as e:
         print(f"[DB get_whatsapp_account_by_phone_id Error]: {e}")
         return None
     finally:
         if conn:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 def get_whatsapp_account_by_page_id(page_id: str) -> Optional[dict]:
     """Finds the WhatsApp account linked to a specific connected Facebook Page."""
