@@ -437,6 +437,73 @@ class TestQuantityRepetitionAndPackageVoiceFlow(unittest.TestCase):
         self.assertEqual(meta_7["pkg_num"], 7)
         self.assertEqual(meta_7["price"], 91)
 
+    def test_16_voice_note_packages_promise_delivers_images(self):
+        """
+        When customer sends a voice note (message text is empty or voice placeholder)
+        and bot replies promising 7 ready package photos, detect_sample_photos_to_send
+        MUST deliver the 7 ready package photos.
+        """
+        from app.ai_agent.gemini_brain import detect_sample_photos_to_send, get_package_sample_images
+
+        # Voice note with empty text
+        imgs = detect_sample_photos_to_send(
+            user_msg="",
+            bot_reply="জি স্যার, অবশ্যই। আমাদের ৭টি রেডি প্যাকেজের ছবিগুলো নিচে দেওয়া হলো স্যার।",
+            workspace_id=1
+        )
+        self.assertEqual(len(imgs), 7, "Must deliver 7 ready package photos for voice note!")
+
+        # Voice note with Bengali placeholder
+        imgs_ph = detect_sample_photos_to_send(
+            user_msg="কাস্টমার একটি ভয়েস বার্তা পাঠিয়েছেন",
+            bot_reply="জি স্যার, অবশ্যই। আমাদের ৭টি রেডি প্যাকেজের ছবিগুলো নিচে দেওয়া হলো স্যার।",
+            workspace_id=1
+        )
+        self.assertEqual(len(imgs_ph), 7, "Must deliver 7 ready package photos for voice note with placeholder!")
+
+    def test_17_missing_photos_complaint_resends_ready_packages(self):
+        """
+        When customer texts 'ছবি তো আসেনি' or 'ছবি আসেনি' or 'ছবি পাই নাই',
+        evaluate_id_card_workflow MUST immediately intercept with ready_package_dispatch
+        and deliver the 7 ready packages with photos.
+        """
+        history = [
+            {"sender": "customer", "content": "১০০ পিস বানাবো"},
+            {"sender": "bot", "content": "জি স্যার, অবশ্যই। আমাদের ৭টি রেডি প্যাকেজের ছবিগুলো নিচে দেওয়া হলো স্যার।"}
+        ]
+        complaints = ["ছবি তো আসেনি", "ছবি আসেনি", "ছবি পাই নাই", "ছবি পাইনি", "প্যাকেজের ছবি আসেনি"]
+        for c in complaints:
+            res = evaluate_id_card_workflow(
+                message_text=c,
+                conversation_history=history,
+                customer_name="Customer",
+                workspace_id=1,
+                sender_id="8801700000001"
+            )
+            self.assertIsNotNone(res, f"Workflow must intercept complaint: '{c}'")
+            self.assertEqual(res["response_source"], "ready_package_dispatch")
+            self.assertEqual(len(res["matched_images"]), 7)
+            self.assertIn("আন্তরিকভাবে দুঃখিত", res["reply_text"])
+            self.assertIn("৭টি রেডি প্যাকেজের স্যাম্পল ছবি", res["reply_text"])
+
+    def test_18_no_hallucinated_piece_price_increase_on_package_number(self):
+        """
+        Ensure regex post-processing removes '(৭ পিসের ক্ষেত্রে নিয়ম অনুযায়ী প্যাকেজ প্রতি ১০ টাকা বৃদ্ধি পাবে)'
+        from Gemini output when Package 7 is confused with 7 pieces.
+        """
+        import re
+        raw_text = (
+            "ওয়ালাইকুমুস সালাম স্যার। জি স্যার, ছবিগুলো পাঠিয়ে দিচ্ছি। আপনার ৭ নম্বর প্যাকেজটি ১০০ পিসের ক্ষেত্রে "
+            "প্রতি সেট ৯১ টাকা (৭ পিসের ক্ষেত্রে নিয়ম অনুযায়ী প্যাকেজ প্রতি ১০ টাকা বৃদ্ধি পাবে)। আপনার অর্ডারটি চূড়ান্ত করতে প্রতিষ্ঠানের নাম দিন স্যার।"
+        )
+        cleaned = re.sub(r'\s*\([১-৭\d]+\s*পিসের\s*ক্ষেত্রে[^\)]*\)', '', raw_text)
+        cleaned = re.sub(r'\([১-৭\d]+\s*পিস\s*অর্ডারের\s*ক্ষেত্রে[^\)]*\)', '', cleaned)
+
+        self.assertNotIn("বৃদ্ধি পাবে", cleaned)
+        self.assertNotIn("৭ পিসের ক্ষেত্রে", cleaned)
+        self.assertIn("প্রতি সেট ৯১ টাকা", cleaned)
+
 if __name__ == "__main__":
     unittest.main()
+
 

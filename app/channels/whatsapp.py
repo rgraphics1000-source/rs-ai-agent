@@ -1032,10 +1032,23 @@ async def process_whatsapp_batch(batch: PendingBatch):
 
     # Guard: Strictly verify customer consent before delivering images
     resp_source = str(ai_result.get("response_source") or "").lower()
+    bot_reply_low = str(ai_result.get("reply_text") or "").lower()
     is_workflow_dispatch = any(k in resp_source for k in ["dispatch", "sample", "package", "component"])
-    has_photo_consent = is_workflow_dispatch or has_customer_consented_or_requested_photos(
-        user_msg=combined_text,
-        conversation_history=history
+    is_voice_turn = bool(audio_bytes) or ("ভয়েস" in (combined_text or "")) or ("ভয়েস" in (combined_text or "")) or not (combined_text or "").strip()
+    bot_promising_images = is_voice_turn and any(k in bot_reply_low for k in [
+        "ছবিগুলো নিচে দেওয়া হলো", "ছবি নিচে দেওয়া হলো", "ছবিগুলো দেওয়া হলো", "ছবি দেওয়া হলো",
+        "ছবিগুলো পাঠিয়ে দিচ্ছি", "ছবি পাঠিয়ে দিচ্ছি", "ছবিগুলো পাঠানো হলো", "ছবি পাঠানো হলো",
+        "স্যাম্পল দেওয়া হলো", "স্যাম্পল পাঠানো হলো", "রেডি প্যাকেজের ছবি", "প্যাকেজের ছবি",
+        "৭টি রেডি প্যাকেজ"
+    ])
+    has_photo_consent = (
+        is_workflow_dispatch or
+        bot_promising_images or
+        bool(audio_bytes) or
+        has_customer_consented_or_requested_photos(
+            user_msg=combined_text,
+            conversation_history=history
+        )
     )
 
     # Handle phased media sequence if generated
