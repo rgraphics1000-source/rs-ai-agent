@@ -248,8 +248,8 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
       - ⚠️ ছাড় ও দামাদামির কঠোর নিয়ম (Never Give Discount Upfront - Negotiate Step-by-Step):
         • শুরুতে সবসময় প্যাকেজের নির্ধারিত রেগুলার রেট বলতে হবে। শুরুতেই বা প্রথমে নিজে থেকে কোনো ছাড়ের রেট বা ডিসকাউন্ট বলা যাবে না।
         • কাস্টমার যদি দামাদামি করে বা কিছু কমানোর অনুরোধ করে, তখন ধাপে ধাপে দাম কমাতে হবে:
-          - প্রিমিয়াম ৭ নম্বর প্যাকেজ (মেটাল কভার, রেগুলার ৯১ টাকা): প্রথমে ৯১ টাকা বলবে। কাস্টমার দামাদামি করলে ধাপে ধাপে কমিয়ে (যেমন ৮৮৳ -> ৮৫৳) সর্বশেষ সর্বনিম্ন ৮২ টাকা পর্যন্ত রাখা যাবে (সর্বোচ্চ ৯ টাকা ছাড়)। একবারে সরাসরি ৮২ টাকায় নেমে যাবে না।
-          - অন্যান্য প্যাকেজ (প্যাকেজ ১ থেকে ৬): প্রথমে রেগুলার রেট বলবে। কাস্টমার দামাদামি করলে ধাপে ধাপে কমিয়ে প্রতি প্যাকেজে সর্বোচ্চ ৫ টাকা পর্যন্ত ছাড় দেওয়া যাবে (৫ টাকা মাইনাস করা যাবে)।
+          - প্রিমিয়াম ৭ নম্বর প্যাকেজ (মেটাল কভার, রেগুলার ৯১ টাকা): প্রথমে ৯১ টাকা বলবে। কাস্টমার দামাদামি করলে ধাপে ধাপে কমিয়ে (যেমন ৮৮৳ -> ৮৫৳) সর্বশেষ সর্বনিম্ন ৮২ টাকা পর্যন্ত রাখা যাবে (সর্বোচ্চ ৯ টাকা ছাড়)। কোনো অবস্থাতেই ৮২ টাকার নিচে (যেমন ৮০ টাকা, ৭৮ টাকা, ৭৫ টাকা, ৭০ টাকা) বিক্রি করা বা সম্মতি দেওয়া সম্পূর্ণ নিষিদ্ধ। কাস্টমার ৮০ বা ৭০ টাকা অফার দিলে বিনম্রভাবে বলবে যে ৮২ টাকার নিচে কোনোভাবেই রাখা সম্ভব নয়। ভুলেও ৮০ টাকায় রাজি হবে না এবং '৮০ টাকা করে দিলাম' বলবে না!
+          - অন্যান্য প্যাকেজ (প্যাকেজ ১ থেকে ৬): প্রথমে রেগুলার রেট বলবে। কাস্টমার দামাদামি করলে ধাপে ধাপে কমিয়ে প্রতি প্যাকেজে সর্বোচ্চ ৫ টাকা পর্যন্ত ছাড় দেওয়া যাবে (৫ টাকা মাইনাস করা যাবে)। এর চেয়ে কমাতে ওনারের অনুমোদনের প্রয়োজন হবে।
 
 ৩. একক আইটেমের মূল্য তালিকা (আইডি কার্ড, ফিতা ও কভারের নির্ধারিত রেট):
    - আইডি কার্ড: জাপানি মেশিনের অরজিনাল UV কালার প্রিন্ট প্রিমিয়াম PVC কার্ড = ৩৫ টাকা প্রতি পিস (১০০+ পিস অর্ডারে)।
@@ -432,7 +432,8 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
 def extract_order_quantity_number(text: str) -> Optional[int]:
     """
     Extracts order quantity integer from text supporting Bengali & English digits/words.
-    Strictly ignores phone numbers, prices (টাকা/tk/৳), dates, and non-quantity digits.
+    Strictly ignores phone numbers, prices (টাকা/tk/৳), bargaining rate offers (করে/দিব/রাখেন),
+    dates, and non-quantity digits.
     """
     if not text:
         return None
@@ -450,8 +451,19 @@ def extract_order_quantity_number(text: str) -> Optional[int]:
         cleaned += bengali_digits.get(ch, ch)
     cleaned_lower = cleaned.lower().strip()
     
-    # Ignore if talking about money/prices without explicit quantity words
-    if any(k in cleaned_lower for k in ["টাকা", "টাকার", "tk", "taka", "৳", "রেট", "মূল্য", "খরচ"]) and not any(k in cleaned_lower for k in ["পিস", "pcs", "টা", "টি", "কপি", "বানাবো"]):
+    # Check for price and bargaining rate indicators
+    price_keywords = ["টাকা", "টাকার", "টাকায়", "টাকায়", "tk", "taka", "৳", "রেট", "মূল্য", "খরচ", "বাজেট", "দাম", "প্রাইস", "price", "rate", "cost"]
+    bargain_keywords = [
+        "করে", "করে দিব", "করে দেব", "করে দেবো", "করে দিবো", "করে দেন", "করে দিন", "করে দিতে", 
+        "করে রাখবেন", "করে রাখেন", "রাখা যাবে", "রাখা যায়", "রাখা যাই", "রাখা যায়", "রাখবেন", 
+        "রাখেন", "দেওয়া যাবে", "দেয়া যাবে", "দেওয়া যাই", "দেয়া যাই", "দিবেন", "দিবেন কি", "দেবেন",
+        "কম দেন", "কম রাখেন", "কম রাখা", "লাস্ট", "সর্বনিম্ন", "একদাম", "ফিক্সড", "ছাড়", "ডিসকাউন্ট"
+    ]
+    has_price_or_rate = any(k in cleaned_lower for k in price_keywords + bargain_keywords)
+    has_explicit_unit = any(k in cleaned_lower for k in ["পিস", "পিসেস", "pcs", "pc", "pieces", "piece", "কপি", "জন", "সেট", "বানাবো", "বানাব", "বানাতে চাই"])
+
+    # If talking about price / per-unit rate without explicit quantity unit, DO NOT treat as quantity!
+    if has_price_or_rate and not has_explicit_unit:
         return None
 
     # Range pattern: e.g. "2-3 শত", "2-3 sho", "2-3শ", "200-300 পিস", "৫০-১০০ পিস"
@@ -484,14 +496,19 @@ def extract_order_quantity_number(text: str) -> Optional[int]:
         ('এক হাজার', 1000), ('হাজার', 1000), ('পাঁচশত', 500), ('পাঁচশ', 500),
         ('চারশত', 400), ('চারশ', 400),
         ('তিনশত', 300), ('তিনশ', 300), ('দুইশত', 200), ('দুইশ', 200),
-        ('একশত', 100), ('একশ', 100), ('নব্বই', 90), ('আশি', 80), ('সত্তর', 70),
+        ('একশত', 100), ('একশ', 100), ('নব্বই', 90), ('আশি', 80), ('সत्तर', 70),
         ('ষাট', 60), ('পঞ্চাশ', 50), ('পঁঞ্চাশ', 50), ('চল্লিশ', 40),
         ('ত্রিশ', 30), ('তিরিশ', 30), ('পঁচিশ', 25), ('পচিশ', 25),
         ('বিশ', 20), ('কুড়ি', 20), ('পনেরো', 15), ('পনের', 15), ('দশ', 10), ('পাঁচ', 5)
     ]
     for word, val in bengali_words:
-        if re.search(r'(?:^|\s)' + re.escape(word) + r'(?:\s|$|টা|টি|পিস|টি|পিসেস|pcs|ta|ti|কপি)', cleaned_lower):
-            return val
+        if has_price_or_rate:
+            if re.search(r'(?:^|\s)' + re.escape(word) + r'\s*(?:টা|টি|পিস|টি|পিসেস|pcs|ta|ti|কপি|জন)', cleaned_lower):
+                return val
+        else:
+            if not re.search(r'(?:^|\s)' + re.escape(word) + r'\s*(?:করে|টাকা|tk|টাকায়|দিব|দেব|রাখ|দে|হবে|\?)', cleaned_lower):
+                if re.search(r'(?:^|\s)' + re.escape(word) + r'(?:\s|$|টা|টি|পিস|টি|পিসেস|pcs|ta|ti|কপি)', cleaned_lower):
+                    return val
 
     # Match explicit quantity units: e.g. "50 পিস", "100 pcs", "30 টা", "80 টি", "100 জন", "50 কপি"
     m_unit = re.search(r'(\d+)\s*(?:পিস|পিসেস|টা|টি|pcs|pc|pieces|piece|জন|কপি|set|সেট)', cleaned_lower)
@@ -503,8 +520,8 @@ def extract_order_quantity_number(text: str) -> Optional[int]:
         except Exception:
             pass
 
-    # Match standalone digit only if it's a small standalone number (e.g. "50", "100", "30", "500") and NOT a phone or price
-    if re.fullmatch(r'\d{1,5}', cleaned_lower):
+    # Match standalone digit only if it's a small standalone number (e.g. "50", "100", "30", "500") and NOT a phone, rate or price
+    if not has_price_or_rate and re.fullmatch(r'\d{1,5}', cleaned_lower):
         val = int(cleaned_lower)
         if 1 <= val <= 20000:
             return val
@@ -608,10 +625,12 @@ def analyze_conversation_history_context(conversation_history: list = None, curr
             context["last_speaker"] = "customer"
             q_val = extract_order_quantity_number(c_low)
             if q_val and q_val >= 1:
-                context["known_quantity"] = q_val
-                summary_lines.append(f"• কাস্টমার পরিমাণ জানিয়েছেন: {q_val} পিস")
-                if sender_id:
-                    set_conversation_order_quantity(sender_id, q_val, workspace_id=workspace_id)
+                # Lock established quantity: only overwrite if quantity wasn't set or explicit change intent
+                if context["known_quantity"] is None or any(k in c_low for k in ["পরিবর্তন", "না", "কমিয়ে", "বাড়িয়ে", "করব", "বানাব", "পিস"]):
+                    context["known_quantity"] = q_val
+                    summary_lines.append(f"• কাস্টমার পরিমাণ জানিয়েছেন: {q_val} পিস")
+                    if sender_id:
+                        set_conversation_order_quantity(sender_id, q_val, workspace_id=workspace_id)
 
             pkg_num = detect_specific_package_number(c_low)
             if pkg_num is not None:
@@ -620,9 +639,11 @@ def analyze_conversation_history_context(conversation_history: list = None, curr
 
     curr_qty = extract_order_quantity_number(current_message)
     if curr_qty and curr_qty >= 1:
-        context["known_quantity"] = curr_qty
-        if sender_id:
-            set_conversation_order_quantity(sender_id, curr_qty, workspace_id=workspace_id)
+        c_low_curr = current_message.lower()
+        if context["known_quantity"] is None or any(k in c_low_curr for k in ["পরিবর্তন", "না", "কমিয়ে", "বাড়িয়ে", "করব", "বানাব", "পিস"]):
+            context["known_quantity"] = curr_qty
+            if sender_id:
+                set_conversation_order_quantity(sender_id, curr_qty, workspace_id=workspace_id)
 
     context["history_summary_text"] = "\n".join(summary_lines)
     return context
@@ -1029,6 +1050,74 @@ def calculate_custom_combo_price(msg: str, honorific: str = "স্যার", q
         "response_source": "custom_combo_calculation_dispatch"
     }
 
+def extract_bargaining_price_offer(text: str) -> Optional[int]:
+    """
+    Extracts customer's proposed per-piece price offer in bargaining context.
+    E.g.: 'আমি আশি করে দিব' -> 80, '৮০ টাকা করে দেওয়া যাবে?' -> 80, '৭০ টাকা দেওয়া যাবে না?' -> 70,
+    '৮২ টাকা রাখেন' -> 82, '৮০ করে রাখেন' -> 80, '৮০ টাকা' -> 80, '৮৫ টাকা' -> 85.
+    """
+    if not text:
+        return None
+    
+    # Ignore if text is a phone number (10+ digits or BD mobile pattern)
+    cleaned_digits_only = re.sub(r'\D', '', text)
+    if len(cleaned_digits_only) >= 10 or re.search(r'(?:\+?880?1|01)[3-9]\d{8}', text):
+        return None
+
+    bengali_digits = {'০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4', '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'}
+    cleaned = ''
+    for ch in text:
+        cleaned += bengali_digits.get(ch, ch)
+    cleaned_lower = cleaned.lower().strip()
+
+    # If text explicitly states order quantity like "100 পিস" without price words, don't treat as price
+    if any(k in cleaned_lower for k in ["পিস", "পিসেস", "pcs", "বানাবো", "বানাব", "কপি"]) and not any(k in cleaned_lower for k in ["টাকা", "tk", "করে", "রেট", "দর", "রাখ"]):
+        return None
+
+    # Check if text has bargaining / price offering indicators
+    has_bargain_intent = any(k in cleaned_lower for k in [
+        "টাকা", "টাকায়", "টাকায়", "tk", "taka", "৳", "করে", "দিব", "দেব", "দেবো", "দিবো",
+        "রাখা যাবে", "রাখা যায়", "রাখা যাই", "রাখা যায়", "রাখবেন", "রাখেন", "দেওয়া যাবে", "দেয়া যাবে",
+        "দেওয়া যাই", "দেয়া যাই", "দিবেন", "কম দেন", "কম রাখেন", "কম রাখা", "লাস্ট", "সর্বনিম্ন",
+        "হবে কি", "হবে?", "হবে না", "যাবে না", "যাবে কি", "পসিবল", "ফাইনাল"
+    ]) or re.search(r'^\s*(?:\d{2}|[^\d\s]+)\s*(?:টাকা|tk)?\s*\??$', cleaned_lower)
+
+    if not has_bargain_intent:
+        return None
+
+    # Bengali word numbers map for common package prices
+    bengali_word_map = [
+        ('একশত', 100), ('একশ', 100), ('নব্বই', 90), ('পঁচাশি', 85), ('পচাশি', 85),
+        ('বিরাশি', 82), ('আশি', 80), ('পঁচাত্তর', 75), ('পচাত্তর', 75),
+        ('সত্তর', 70), ('পঁয়ষট্টি', 65), ('পয়ষট্টি', 65), ('ষাট', 60),
+        ('পঞ্চাশ', 50), ('পঁঞ্চাশ', 50)
+    ]
+    for w, val in bengali_word_map:
+        if re.search(r'(?:^|\s)' + re.escape(w) + r'(?:\s|$|টাকা|tk|করে|দিব|দেব|রাখ|দে|হবে|\?)', cleaned_lower):
+            return val
+
+    # Match numeric patterns like "80 টাকা", "80 করে", "80 তে", "80 এ", "80 রাখা যাবে"
+    m_offer = re.search(r'(?:^|\s|[^\d])(\d{2,3})\s*(?:টাকা|টাকায়|টাকায়|tk|করে|এ|তে|রাখেন|রাখবেন|দিবেন|দিব|দেব|\?)', cleaned_lower)
+    if m_offer:
+        try:
+            val = int(m_offer.group(1))
+            if 40 <= val <= 200:
+                return val
+        except Exception:
+            pass
+
+    # Short direct price message like "80", "82", "70", "80 টাকা" when bargaining intent exists
+    m_num = re.search(r'\b(\d{2,3})\b', cleaned_lower)
+    if m_num:
+        try:
+            val = int(m_num.group(1))
+            if 40 <= val <= 200:
+                return val
+        except Exception:
+            pass
+
+    return None
+
 def detect_quoted_or_mentioned_package(msg: str) -> dict:
     """
     Accurately identifies exact package details from quoted image filenames or text.
@@ -1180,10 +1269,13 @@ def evaluate_id_card_workflow(
     last_owner_msg = hist_ctx.get("last_owner_instruction", "")
 
     qty = extract_order_quantity_number(msg)
-    if qty is not None and qty >= 1 and sender_id:
-        set_conversation_order_quantity(sender_id, qty, workspace_id=workspace_id)
+    if qty is not None and qty >= 1:
+        if known_qty is None or any(k in msg for k in ["পরিবর্তন", "না", "কমিয়ে", "বাড়িয়ে", "করব", "বানাব", "পিস", "কপি"]):
+            known_qty = qty
+            if sender_id:
+                set_conversation_order_quantity(sender_id, qty, workspace_id=workspace_id)
 
-    effective_qty = qty if qty is not None else known_qty
+    effective_qty = known_qty if known_qty is not None else qty
 
     bn_map = {"0": "০", "1": "১", "2": "২", "3": "৩", "4": "৪", "5": "৫", "6": "৬", "7": "৭", "8": "৮", "9": "৯"}
     def to_bn(n):
@@ -1721,6 +1813,75 @@ def evaluate_id_card_workflow(
             "order_created": None,
             "response_source": "package_price_and_discount_inquiry"
         }
+
+    # Case D1.5: Customer proposes a specific price / per-piece rate (e.g., "আমি আশি করে দিব", "৮০ টাকা করে দেওয়া যাবে?", "৭০ টাকা দেওয়া যাবে না?")
+    proposed_price = extract_bargaining_price_offer(msg)
+    if proposed_price is not None and not is_refusing:
+        pkg_info = detect_quoted_or_mentioned_package(msg)
+        if pkg_info.get("pkg_num") == 7 and hist_ctx.get("chosen_package"):
+            chosen_p = hist_ctx["chosen_package"]
+            if chosen_p in PACKAGE_SPECIFIC_DETAILS:
+                pkg_info = {
+                    "pkg_num": chosen_p,
+                    "name": f"প্যাকেজ ০{chosen_p}",
+                    "price": 83 if chosen_p in (5, 6) else (73 if chosen_p in (3, 4) else 70),
+                    "image": PACKAGE_SPECIFIC_IMAGES.get(chosen_p, "")
+                }
+        
+        pkg_num = pkg_info["pkg_num"]
+        pkg_name = pkg_info["name"]
+        reg_price = pkg_info["price"]
+
+        # Floor price calculation: Package 7 is strictly 82 Tk minimum; other packages allow up to 5 Tk discount
+        if pkg_num == 7:
+            floor_price = 82
+        else:
+            floor_price = max(reg_price - 5, 50)
+
+        # Quantity tier adjustments for less than 100 pcs
+        if effective_qty is not None and 30 <= effective_qty < 50:
+            tier_extra = 10
+            floor_price += tier_extra
+            reg_price += tier_extra
+
+        bn_offered = to_bn(proposed_price)
+        bn_floor = to_bn(floor_price)
+        bn_reg = to_bn(reg_price)
+
+        if proposed_price < floor_price:
+            qty_clause = f"{to_bn(effective_qty)} পিসের ক্ষেত্রে " if effective_qty else ""
+            reply_text = (
+                f"দুঃখিত {honorific}, আমাদের সবচেয়ে প্রিমিয়াম ৭ নম্বর প্যাকেজটি মেটাল কভারসহ হওয়ায় {bn_offered} টাকায় দেওয়া সম্ভব নয়। "
+                f"আপনার {qty_clause}এটি অনেক কমিয়ে সর্বশেষ সর্বনিম্ন {bn_floor} টাকা পর্যন্ত রাখা যাবে {honorific}। "
+                f"এই দামে কি অর্ডারটি চূড়ান্ত করব?"
+            )
+            return {
+                "reply_text": reply_text,
+                "media_sequence": [],
+                "matched_images": [],
+                "voice_url": "",
+                "video_url": "",
+                "order_created": None,
+                "response_source": "package_counter_offer_below_floor_rejected"
+            }
+        else:
+            reply_text = (
+                f"জি {honorific}, আপনাদের অর্ডারের ক্ষেত্রে বিশেষ বিবেচনায় আমরা ৭ নম্বর প্যাকেজটি প্রতি সেট {bn_offered} টাকা দরেই চূড়ান্ত করে দিচ্ছি।\n\n"
+                f"অর্ডারটি কনফার্ম করতে অনুগ্রহ করে নিচের তথ্যগুলো দিন:\n"
+                f"১. প্রতিষ্ঠানের নাম:\n"
+                f"২. পূর্ণাঙ্গ ঠিকানা:\n"
+                f"৩. যোগাযোগের মোবাইল নম্বর:\n\n"
+                f"তথ্যগুলো পেলে আমরা সাথে সাথে আইডি কার্ডের তথ্য ও ছবি আপলোড করার লিংক প্রস্তুত করে পাঠিয়ে দেব {honorific}।"
+            )
+            return {
+                "reply_text": reply_text,
+                "media_sequence": [],
+                "matched_images": [],
+                "voice_url": "",
+                "video_url": "",
+                "order_created": None,
+                "response_source": "package_counter_offer_floor_accepted"
+            }
 
     # Case D2: Customer explicitly selects / confirms a package photo (e.g. "এটি নিব", "পছন্দ হয়েছে", "এটা দেন")
     is_package_selection = not is_asking_pkg_price_or_discount and (
@@ -2309,7 +2470,20 @@ async def process_customer_message(
             realtime_memory_guard += (
                 f"• কাস্টমারের অর্ডার পরিমাণ পূর্বেই নিশ্চিত (KNOWN QUANTITY): {known_qty_in_history} পিস।\n"
                 f"  ⚠️🚨 চূড়ান্ত কঠোর নিষেধ: কাস্টমার ইতিপূর্বে জানিয়ে দিয়েছেন উনি {known_qty_in_history} পিস বানাবেন। ভুলেও আর কখনো 'কত পিস বানাবেন?', 'কত পিস আইডি কার্ড করতে চান?', 'বা কত পিস করতে চান?', 'কোয়ান্টিটি কত?' ইত্যাদি প্রশ্ন করবে না! এই প্রশ্ন দ্বিতীয়বার করলে কাস্টমার চূড়ান্ত বিরক্ত হবে। সরাসরি {known_qty_in_history} পিসের মোট বাজেট, প্যাকেজ পছন্দ (কোন প্যাকেজটি পছন্দ হয়েছে বলুন), দরদাম বা অর্ডার চূড়ান্ত করার বিষয়ে কথা বলো।\n"
+                f"  ⚠️🚨 দরদাম বনাম পরিমাণের পার্থক্য (PRICE BARGAINING vs QUANTITY - STRICT DIRECTIVE):\n"
+                f"     - কাস্টমার ইতিপূর্বে নিশ্চিত করেছেন উনি {known_qty_in_history} পিস বানাবেন।\n"
+                f"     - কাস্টমার যদি চ্যাটে বলে '৮০ করে দিব', 'আশি করে দিব', '৮০ টাকা করে দেওয়া যাবে?', '৭০ টাকা দেওয়া যাবে না?', '৮০ টাকা রাখেন', '৭০ রাখা যাবে?' ইত্যাদি—তবে এটি কাস্টমারের প্রস্তাবিত প্রতি সেটের দর/রেট (Price Offer), এটি কোনোভাবেই নতুন পিস বা পরিমাণ (Quantity) নয়!\n"
+                f"     - ভুলেও কখনোই 'যেহেতু আপনি ৮০ পিস অর্ডার করছেন' বা 'আপনার ৭০ পিসের জন্য' এমন কথা বলবে না! কাস্টমারের পরিমাণ সর্বদা অপরিবর্তিত {known_qty_in_history} পিস থাকবে।\n"
             )
+        
+        realtime_memory_guard += (
+            "🚨🚨🚨 প্যাকেজ ০৭ এর সর্বনিম্ন ফ্লোর রেট (৮২ টাকা) রক্ষার কঠোর নিয়ম (STRICT 82 TK FLOOR DIRECTIVE): 🚨🚨🚨\n"
+            "• প্রিমিয়াম ৭ নম্বর প্যাকেজের মেটাল ফ্রেম কভার ও জাপানি UV প্রিন্ট কার্ডসহ ১০০+ অর্ডারে রেগুলার পাইকারি রেট ৯১ টাকা।\n"
+            "• সর্বোচ্চ ছাড়ের পরও এই প্যাকেজের সর্বশেষ সর্বনিম্ন মূল্য হলো ৮২ টাকা (82 Tk)।\n"
+            "• কোনো অবস্থাতেই ৮২ টাকার নিচে (যেমন: ৮০ টাকা, ৭৮ টাকা, ৭৫ টাকা, ৭০ টাকা) বিক্রিতে সম্মতি দেওয়া বা রাজি হওয়া সম্পূর্ণ নিষিদ্ধ!\n"
+            "• কাস্টমার ৮০ টাকা বা ৭০ টাকা অফার দিলে সরাসরি বিনীতভাবে বলবে যে মেটাল কভারসহ প্রিমিয়াম প্যাকেজটি ১০০ পিসের ক্ষেত্রে অনেক কমিয়ে সর্বনিম্ন ৮২ টাকা পর্যন্ত রাখা সম্ভব, এর নিচে (৮০ বা ৭০ টাকায়) কোনোভাবেই রাখা সম্ভব নয়।\n"
+            "• ভুলেও '৮০ টাকা করেই চূড়ান্ত করে দিলাম' বলবে না! একবার সর্বনিম্ন ৮২ টাকা বললে নিজের কথার বিপরীত কোনো কথা বলবে না।\n"
+        )
         
         if samples_already_sent_in_history:
             realtime_memory_guard += (

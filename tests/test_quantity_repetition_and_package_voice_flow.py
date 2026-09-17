@@ -11,6 +11,8 @@ from app.ai_agent.gemini_brain import (
     build_ready_package_sequence,
     evaluate_id_card_workflow,
     analyze_conversation_history_context,
+    extract_order_quantity_number,
+    extract_bargaining_price_offer,
     VOICE_PACKAGE_SPECIAL_OFFER
 )
 
@@ -174,6 +176,150 @@ class TestQuantityRepetitionAndPackageVoiceFlow(unittest.TestCase):
         self.assertNotIn("কত পিস", clean_reply)
         self.assertNotIn(" বা ", f" {clean_reply} ")
         self.assertIn("আপনার প্রতিষ্ঠানের জন্য কোন প্যাকেজটি পছন্দ হয় জানাবেন স্যার।", clean_reply)
+
+    def test_07_rate_bargaining_phrases_not_extracted_as_quantity(self):
+        """
+        Verify that rate bargaining expressions like 'আমি আশি করে দিব',
+        '৮০ টাকা করে দেওয়া যাবে?', '৭০ টাকা দেওয়া যাবে না?' are NOT extracted as order quantity.
+        """
+        # Rate offers should return None for order quantity
+        self.assertIsNone(extract_order_quantity_number("আমি আশি করে দিব"))
+        self.assertIsNone(extract_order_quantity_number("৮০ টাকা করে দেওয়া যাবে?"))
+        self.assertIsNone(extract_order_quantity_number("৭০ টাকা দেওয়া যাবে না?"))
+        self.assertIsNone(extract_order_quantity_number("৮০ করে রাখেন"))
+        self.assertIsNone(extract_order_quantity_number("আশি টাকা"))
+        self.assertIsNone(extract_order_quantity_number("৭০ টাকা"))
+        self.assertIsNone(extract_order_quantity_number("৮০ টাকা রাখা যাবে?"))
+
+        # Explicit quantity with rate should still correctly extract quantity
+        self.assertEqual(extract_order_quantity_number("১০০ পিস বানাবো ৮০ টাকা করে"), 100)
+        self.assertEqual(extract_order_quantity_number("১০০ পিস বানাবো"), 100)
+        self.assertEqual(extract_order_quantity_number("১০০ পিস"), 100)
+        self.assertEqual(extract_order_quantity_number("১০০"), 100)
+
+    def test_08_bargaining_price_offer_extraction(self):
+        """
+        Verify that extract_bargaining_price_offer extracts the proposed per-piece rate correctly.
+        """
+        self.assertEqual(extract_bargaining_price_offer("আমি আশি করে দিব"), 80)
+        self.assertEqual(extract_bargaining_price_offer("৮০ টাকা করে দেওয়া যাবে?"), 80)
+        self.assertEqual(extract_bargaining_price_offer("৭০ টাকা দেওয়া যাবে না?"), 70)
+        self.assertEqual(extract_bargaining_price_offer("৮০ করে রাখেন"), 80)
+        self.assertEqual(extract_bargaining_price_offer("৮২ টাকা রাখেন"), 82)
+        self.assertEqual(extract_bargaining_price_offer("৮২ টাকা করে দেওয়া যাবে?"), 82)
+        self.assertEqual(extract_bargaining_price_offer("৮২ টাকা ফাইনাল করেন"), 82)
+
+        # Pure quantity should not be extracted as price offer
+        self.assertIsNone(extract_bargaining_price_offer("১০০ পিস বানাবো"))
+
+    def test_09_known_quantity_protected_against_bargaining(self):
+        """
+        Verify that once order quantity is confirmed as 100 pcs,
+        subsequent price offers ('আমি আশি করে দিব') do not overwrite known_quantity to 80.
+        """
+        sender_id = "8801999999999"
+        set_conversation_order_quantity(sender_id, 100, workspace_id=1)
+
+        history = [
+            {"sender": "customer", "content": "১০০ পিস আইডি কার্ড বানাবো"},
+            {"sender": "bot", "content": "জি স্যার, আমাদের ৭ নম্বর প্যাকেজটি ১০০+ পিসের ক্ষেত্রে রেগুলার ৯১ টাকা।"},
+            {"sender": "bot", "content": "জি স্যার, যেহেতু আপনার ১০০ পিসের অর্ডার, তাই দামাদামির বিষয়টি মাথায় রেখে এই প্যাকেজটি কমিয়ে সর্বনিম্ন ৮২ টাকা পর্যন্ত রাখা সম্ভব। এই দামে কি অর্ডারটি চূড়ান্ত করব স্যার?"}
+        ]
+
+        # Customer offers: 'আমি আশি করে দিব'
+        ctx = analyze_conversation_history_context(history, "আমি আশি করে দিব", sender_id=sender_id, workspace_id=1)
+        self.assertEqual(ctx.get("known_quantity"), 100, "Known quantity must remain 100 pcs, NOT mutated to 80")
+
+        # Database quantity must also remain 100
+        saved_qty = get_conversation_order_quantity(sender_id, workspace_id=1)
+        self.assertEqual(saved_qty, 100, "DB quantity must remain 100 pcs")
+
+    def test_10_package_07_bargaining_rejects_below_82_tk(self):
+        """
+        Package 07 regular rate is 91 Tk, and minimum negotiation floor is 82 Tk.
+        When customer offers 80 Tk or 70 Tk, evaluate_id_card_workflow firmly rejects below 82 Tk
+        and never says '৮০ টাকা করেই চূড়ান্ত করে দিলাম' or confuses price with pieces.
+        """
+        sender_id = "8801888888888"
+        set_conversation_order_quantity(sender_id, 100, workspace_id=1)
+
+        history = [
+            {"sender": "customer", "content": "১০০ পিস বানাবো"},
+            {"sender": "bot", "content": "জি স্যার, আমাদের ৭ নম্বর প্যাকেজটি ১০০+ পিসের ক্ষেত্রে রেগুলার ৯১ টাকা করে রাখা যায়।"},
+            {"sender": "bot", "content": "জি স্যার, যেহেতু আপনার ১০০ পিসের অর্ডার, তাই দামাদামির বিষয়টি মাথায় রেখে এই প্যাকেজটি কমিয়ে সর্বনিম্ন ৮২ টাকা পর্যন্ত রাখা সম্ভব।"}
+        ]
+
+        # 1. Customer says: 'আমি আশি করে দিব'
+        res_80_word = evaluate_id_card_workflow(
+            message_text="আমি আশি করে দিব",
+            conversation_history=history,
+            customer_name="Customer",
+            workspace_id=1,
+            sender_id=sender_id
+        )
+        self.assertIsNotNone(res_80_word)
+        self.assertEqual(res_80_word["response_source"], "package_counter_offer_below_floor_rejected")
+        reply = res_80_word["reply_text"]
+        self.assertIn("৮০ টাকায় দেওয়া সম্ভব নয়", reply)
+        self.assertIn("সর্বনিম্ন ৮২ টাকা", reply)
+        self.assertIn("১০০ পিসের ক্ষেত্রে", reply)
+        self.assertNotIn("৮০ পিস", reply)
+        self.assertNotIn("৮০ টাকা করেই চূড়ান্ত করে দিলাম", reply)
+
+        # 2. Customer says: '৮০ টাকা করে দেওয়া যাবে?'
+        res_80_tk = evaluate_id_card_workflow(
+            message_text="৮০ টাকা করে দেওয়া যাবে?",
+            conversation_history=history,
+            customer_name="Customer",
+            workspace_id=1,
+            sender_id=sender_id
+        )
+        self.assertIsNotNone(res_80_tk)
+        self.assertIn("৮০ টাকায় দেওয়া সম্ভব নয়", res_80_tk["reply_text"])
+        self.assertIn("সর্বনিম্ন ৮২ টাকা", res_80_tk["reply_text"])
+        self.assertNotIn("৮০ পিস", res_80_tk["reply_text"])
+
+        # 3. Customer says: '৭০ টাকা দেওয়া যাবে না?'
+        res_70_tk = evaluate_id_card_workflow(
+            message_text="৭০ টাকা দেওয়া যাবে না?",
+            conversation_history=history,
+            customer_name="Customer",
+            workspace_id=1,
+            sender_id=sender_id
+        )
+        self.assertIsNotNone(res_70_tk)
+        self.assertIn("৭০ টাকায় দেওয়া সম্ভব নয়", res_70_tk["reply_text"])
+        self.assertIn("সর্বনিম্ন ৮২ টাকা", res_70_tk["reply_text"])
+        self.assertNotIn("৭০ পিস", res_70_tk["reply_text"])
+
+    def test_11_package_07_bargaining_accepts_82_tk(self):
+        """
+        When customer offers 82 Tk (the floor price), evaluate_id_card_workflow accepts 82 Tk
+        and asks for institution name, address, and mobile number.
+        """
+        sender_id = "8801777777777"
+        set_conversation_order_quantity(sender_id, 100, workspace_id=1)
+
+        history = [
+            {"sender": "customer", "content": "১০০ পিস বানাবো"},
+            {"sender": "bot", "content": "জি স্যার, আমাদের ৭ নম্বর প্যাকেজটি ১০০+ পিসের ক্ষেত্রে রেগুলার ৯১ টাকা করে রাখা যায়।"},
+            {"sender": "bot", "content": "সর্বনিম্ন ৮২ টাকা পর্যন্ত রাখা সম্ভব।"}
+        ]
+
+        res_82 = evaluate_id_card_workflow(
+            message_text="৮২ টাকা করে দেওয়া যাবে?",
+            conversation_history=history,
+            customer_name="Customer",
+            workspace_id=1,
+            sender_id=sender_id
+        )
+        self.assertIsNotNone(res_82)
+        self.assertEqual(res_82["response_source"], "package_counter_offer_floor_accepted")
+        reply = res_82["reply_text"]
+        self.assertIn("৮২ টাকা দরেই চূড়ান্ত করে দিচ্ছি", reply)
+        self.assertIn("প্রতিষ্ঠানের নাম", reply)
+        self.assertIn("পূর্ণাঙ্গ ঠিকানা", reply)
+        self.assertIn("মোবাইল নম্বর", reply)
 
 if __name__ == "__main__":
     unittest.main()
