@@ -270,7 +270,17 @@ def compute_media_fingerprint(media_url: str) -> Tuple[str, Optional[Path]]:
         settings.STATIC_DIR / media_url.replace("/static/", "").lstrip("/"),
         settings.BASE_DIR / media_url.lstrip("/"),
         settings.UPLOADS_DIR / filename,
-        settings.BASE_DIR / "static" / "uploads" / filename
+        settings.UPLOADS_DIR / "package" / filename,
+        settings.UPLOADS_DIR / "pakage" / filename,
+        settings.UPLOADS_DIR / "id_card" / filename,
+        settings.UPLOADS_DIR / "fita" / filename,
+        settings.UPLOADS_DIR / "cover" / filename,
+        settings.BASE_DIR / "static" / "uploads" / filename,
+        settings.BASE_DIR / "static" / "uploads" / "package" / filename,
+        settings.BASE_DIR / "static" / "uploads" / "pakage" / filename,
+        settings.BASE_DIR / "static" / "uploads" / "id_card" / filename,
+        settings.BASE_DIR / "static" / "uploads" / "fita" / filename,
+        settings.BASE_DIR / "static" / "uploads" / "cover" / filename
     ]
     for p in candidate_paths:
         if p.exists() and p.is_file():
@@ -911,7 +921,9 @@ async def process_facebook_batch(batch: PendingBatch):
     base_server_url = get_setting("server_domain", "https://rs-ai-agent.onrender.com").rstrip("/")
     
     # Guard: Strictly verify customer consent before delivering images
-    has_photo_consent = has_customer_consented_or_requested_photos(
+    resp_source = str(ai_result.get("response_source") or "").lower()
+    is_workflow_dispatch = any(k in resp_source for k in ["dispatch", "sample", "package", "component"])
+    has_photo_consent = is_workflow_dispatch or has_customer_consented_or_requested_photos(
         user_msg=combined_text,
         conversation_history=history
     )

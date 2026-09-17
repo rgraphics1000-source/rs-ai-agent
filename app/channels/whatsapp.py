@@ -647,16 +647,25 @@ def send_whatsapp_image_detailed(to_number: str, image_url: str, caption: str = 
     # Check if local file exists on disk with comprehensive path candidates
     local_file_path = None
     clean_rel = str(image_url).lstrip("/").replace("\\", "/")
+    filename = os.path.basename(clean_rel)
     candidate_paths = [
+        str(settings.BASE_DIR / clean_rel),
+        str(settings.STATIC_DIR / clean_rel),
+        str(settings.UPLOADS_DIR / filename),
+        str(settings.UPLOADS_DIR / "package" / filename),
+        str(settings.UPLOADS_DIR / "pakage" / filename),
+        str(settings.UPLOADS_DIR / "id_card" / filename),
+        str(settings.UPLOADS_DIR / "fita" / filename),
+        str(settings.UPLOADS_DIR / "cover" / filename),
         clean_rel,
         f"static/{clean_rel}" if not clean_rel.startswith("static/") else clean_rel,
         str(image_url)[1:] if str(image_url).startswith("/") else str(image_url),
-        os.path.join("static", "uploads", os.path.basename(clean_rel)),
-        os.path.join("static", "uploads", "package", os.path.basename(clean_rel)),
-        os.path.join("static", "uploads", "pakage", os.path.basename(clean_rel)),
-        os.path.join("static", "uploads", "id_card", os.path.basename(clean_rel)),
-        os.path.join("static", "uploads", "fita", os.path.basename(clean_rel)),
-        os.path.join("static", "uploads", "cover", os.path.basename(clean_rel)),
+        os.path.join("static", "uploads", filename),
+        os.path.join("static", "uploads", "package", filename),
+        os.path.join("static", "uploads", "pakage", filename),
+        os.path.join("static", "uploads", "id_card", filename),
+        os.path.join("static", "uploads", "fita", filename),
+        os.path.join("static", "uploads", "cover", filename),
     ]
     for cp in candidate_paths:
         if os.path.exists(cp) and os.path.isfile(cp):
@@ -1022,7 +1031,9 @@ async def process_whatsapp_batch(batch: PendingBatch):
             print(f"[WhatsApp Send] Delivery FAILED for {masked_sender}. AI message was NOT recorded as sent.")
 
     # Guard: Strictly verify customer consent before delivering images
-    has_photo_consent = has_customer_consented_or_requested_photos(
+    resp_source = str(ai_result.get("response_source") or "").lower()
+    is_workflow_dispatch = any(k in resp_source for k in ["dispatch", "sample", "package", "component"])
+    has_photo_consent = is_workflow_dispatch or has_customer_consented_or_requested_photos(
         user_msg=combined_text,
         conversation_history=history
     )
