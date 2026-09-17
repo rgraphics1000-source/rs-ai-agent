@@ -8,6 +8,7 @@ def get_all_conversations(workspace_id: Optional[int] = None, page_id: str = Non
     if not workspace_id and not page_id:
         return []
 
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -37,14 +38,20 @@ def get_all_conversations(workspace_id: Optional[int] = None, page_id: str = Non
         query += " ORDER BY c.updated_at DESC LIMIT 150"
         cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
-        conn.close()
         return [dict(r) for r in rows]
     except Exception as e:
         print(f"[Omnichat Get All Error]: {e}")
         return []
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 def get_conversation_messages(conversation_id: int) -> list:
     """Returns all messages for a specific conversation."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -56,11 +63,16 @@ def get_conversation_messages(conversation_id: int) -> list:
             ORDER BY id ASC
         """, (conversation_id,))
         rows = cursor.fetchall()
-        conn.close()
         return [dict(r) for r in rows]
     except Exception as e:
         print(f"[Omnichat Get Messages Error]: {e}")
         return []
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 def send_whatsapp_media(to_number: str, media_url: str, phone_id: str = None, page_id: str = None) -> bool:
     """Sends image attachment via WhatsApp using specific account."""

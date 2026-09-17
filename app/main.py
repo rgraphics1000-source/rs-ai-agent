@@ -730,7 +730,7 @@ async def api_send_saved_media(request: Request):
 # ==========================================
 @app.get("/api/conversations")
 @app.get("/api/omnichat/conversations")
-async def api_get_all_conversations(
+def api_get_all_conversations(
     workspace_id: Optional[int] = Query(None),
     page_id: Optional[str] = Query(None),
     channel: Optional[str] = Query(None)
@@ -739,7 +739,7 @@ async def api_get_all_conversations(
     return {"success": True, "conversations": convs}
 
 @app.get("/api/omnichat/messages/{conversation_id}")
-async def api_get_conv_messages(conversation_id: int):
+def api_get_conv_messages(conversation_id: int):
     messages = get_conversation_messages(conversation_id)
     return {"success": True, "messages": messages}
 
@@ -1298,7 +1298,7 @@ async def api_clear_sample_comment_logs():
 
 # Dedicated Muted / Blacklisted Contacts Endpoints
 @app.get("/api/muted-contacts")
-async def api_get_muted_contacts():
+def api_get_muted_contacts():
     contacts = get_muted_contacts_detailed()
     raw_numbers = get_muted_numbers()
     return {"success": True, "contacts": contacts, "numbers": raw_numbers}
