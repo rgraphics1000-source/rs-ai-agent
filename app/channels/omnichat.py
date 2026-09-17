@@ -225,7 +225,7 @@ def record_conversation_message(
         if conn:
             conn.close()
 
-def get_conversation_history(channel: str = "all", sender_id: str = "", limit: int = 8, page_id: str = "", workspace_id: int = 1) -> list:
+def get_conversation_history(channel: str = "all", sender_id: str = "", limit: int = 50, page_id: str = "", workspace_id: int = 1) -> list:
     """Fetches recent conversation messages for Gemini AI context scoped strictly to workspace."""
     # Handle single string positional argument as sender_id for convenience
     if sender_id == "" and channel:

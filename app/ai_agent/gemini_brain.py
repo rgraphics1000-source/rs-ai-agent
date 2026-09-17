@@ -10,7 +10,8 @@ from google.genai import types
 from app.config import settings
 from app.database import (
     get_db_connection, get_setting, set_setting, get_all_settings, 
-    get_active_training_rules, get_saved_media
+    get_active_training_rules, get_saved_media,
+    get_conversation_order_quantity, set_conversation_order_quantity
 )
 from app.ai_agent.voice_engine import generate_bangla_voice
 from app.ai_agent.order_engine import extract_phone_number, create_order
@@ -510,7 +511,7 @@ def extract_order_quantity_number(text: str) -> Optional[int]:
 
     return None
 
-def analyze_conversation_history_context(conversation_history: list = None, current_message: str = "") -> dict:
+def analyze_conversation_history_context(conversation_history: list = None, current_message: str = "", sender_id: str = None, workspace_id: int = 1) -> dict:
     """
     Comprehensive Context & Memory Extractor for conversational continuity:
     - Extracts known order quantity (e.g. 100 pcs) from customer, bot, or admin turns across entire history
@@ -537,10 +538,18 @@ def analyze_conversation_history_context(conversation_history: list = None, curr
         "history_summary_text": ""
     }
 
+    # 0. Check persistent database memory for known quantity
+    if sender_id:
+        db_qty = get_conversation_order_quantity(sender_id, workspace_id=workspace_id)
+        if db_qty and db_qty >= 1:
+            context["known_quantity"] = db_qty
+
     if not conversation_history:
         curr_qty = extract_order_quantity_number(current_message)
         if curr_qty and curr_qty >= 1:
             context["known_quantity"] = curr_qty
+            if sender_id:
+                set_conversation_order_quantity(sender_id, curr_qty, workspace_id=workspace_id)
         return context
 
     summary_lines = []
@@ -601,6 +610,8 @@ def analyze_conversation_history_context(conversation_history: list = None, curr
             if q_val and q_val >= 1:
                 context["known_quantity"] = q_val
                 summary_lines.append(f"• কাস্টমার পরিমাণ জানিয়েছেন: {q_val} পিস")
+                if sender_id:
+                    set_conversation_order_quantity(sender_id, q_val, workspace_id=workspace_id)
 
             pkg_num = detect_specific_package_number(c_low)
             if pkg_num is not None:
@@ -610,6 +621,8 @@ def analyze_conversation_history_context(conversation_history: list = None, curr
     curr_qty = extract_order_quantity_number(current_message)
     if curr_qty and curr_qty >= 1:
         context["known_quantity"] = curr_qty
+        if sender_id:
+            set_conversation_order_quantity(sender_id, curr_qty, workspace_id=workspace_id)
 
     context["history_summary_text"] = "\n".join(summary_lines)
     return context
@@ -831,10 +844,10 @@ def build_initial_component_sample_sequence(customer_name: str = "Customer", wor
         "text": f"আমাদের কাজের কোয়ালিটি ও সম্মানিত কাস্টমারদের রিভিউ দেখতে আমাদের ফেসবুক পেজের এই পোস্টটি দেখতে পারেন:\n{REVIEW_FACEBOOK_POST_URL}"
     })
 
-    # 5. Concluding follow-up text
+    # 5. Concluding follow-up text: Offer ready packages without asking sample feedback
     seq.append({
         "type": "text",
-        "text": f"এগুলো আমাদের তৈরি করা কার্ড, প্রিন্ট করা ফিতা ও বিভিন্ন মডেলের কভারের স্যাম্পল। আপনার প্রতিষ্ঠানের জন্য স্যাম্পলগুলো কেমন লাগলো জানাবেন {honorific}।"
+        "text": f"এগুলো আমাদের তৈরি করা কার্ড, প্রিন্ট করা ফিতা ও বিভিন্ন মডেলের কভারের স্যাম্পল। আমাদের কার্ড, ফিতা এবং কভার মিলিয়ে কিছু আকর্ষণীয় রেডি প্যাকেজ করা আছে (যার মধ্যে রেগুলার পাইকারি রেট দেওয়া আছে)। আমি কি আমাদের রেডি প্যাকেজগুলোর ছবি ও বিস্তারিত পাঠাবো {honorific}?"
     })
         
     return seq
@@ -843,17 +856,22 @@ def build_ready_package_sequence(quantity: int = None, customer_name: str = "Cus
     """
     Returns the ready package sample sequence (Package 01 to 07 in strict serial order):
     1. Package photos (7 photos in strict 1..7 order)
-    2. Voice note (Special offer) if quantity >= 80 or unspecified
-    3. Tier explanation text based on quantity.
+    2. Voice note (Special offer) ONLY if quantity >= 100 or unspecified
+    3. Concluding prompt strictly asking which package they like (never asking quantity).
     """
     honorific = detect_customer_gender_title(customer_name)
     seq = []
+
+    bn_map = {"0": "০", "1": "১", "2": "২", "3": "৩", "4": "৪", "5": "৫", "6": "৬", "7": "৭", "8": "৮", "9": "৯"}
+    def to_bn(n):
+        return "".join(bn_map.get(c, c) for c in str(n))
 
     pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
     if pkg_imgs:
         seq.append({"type": "images", "category": "package", "urls": pkg_imgs})
 
-    if quantity is None or quantity >= 80:
+    # Voice note on 100+ order (or unspecified)
+    if quantity is None or quantity >= 100:
         seq.append({
             "type": "voice",
             "url": VOICE_PACKAGE_SPECIAL_OFFER,
@@ -864,22 +882,22 @@ def build_ready_package_sequence(quantity: int = None, customer_name: str = "Cus
         if 30 <= quantity < 50:
             seq.append({
                 "type": "text",
-                "text": f"আমাদের প্যাকেজগুলোর রেট ১০০+ অর্ডারের ক্ষেত্রে প্রযোজ্য। আপনাদের যেহেতু ১০০ এর কম ({quantity} পিস), তাই প্রতি প্যাকেজে ১০ টাকা করে বেশি হবে। আপনার কোন প্যাকেজটি পছন্দ জানাবেন {honorific}।"
+                "text": f"আমাদের প্যাকেজগুলোর রেট ১০০+ অর্ডারের ক্ষেত্রে প্রযোজ্য। আপনাদের যেহেতু ১০০ এর কম ({to_bn(quantity)} পিস), তাই প্রতি প্যাকেজে ১০ টাকা করে বেশি হবে। আপনার কোন প্যাকেজটি পছন্দ হয়েছে, বলুন {honorific}।"
             })
-        elif 50 <= quantity < 80:
+        elif 50 <= quantity < 100:
             seq.append({
                 "type": "text",
-                "text": f"প্যাকেজের ছবিতে উল্লেখিত রেগুলার মূল্যে আমরা আপনার কাজটি নিখুঁতভাবে তৈরি করে দেব। আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+                "text": f"প্যাকেজের ছবিতে উল্লেখিত রেগুলার মূল্যে আমরা আপনার কাজটি নিখুঁতভাবে তৈরি করে দেব। আপনার কোন প্যাকেজটি পছন্দ হয়েছে, বলুন {honorific}।"
             })
         else:
             seq.append({
                 "type": "text",
-                "text": f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+                "text": f"আপনার কোন প্যাকেজটি পছন্দ হয়েছে, বলুন {honorific}।"
             })
     else:
         seq.append({
             "type": "text",
-            "text": f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+            "text": f"আপনার কোন প্যাকেজটি পছন্দ হয়েছে, বলুন {honorific}।"
         })
 
     return seq
@@ -1133,7 +1151,8 @@ def evaluate_id_card_workflow(
     message_text: str = "",
     conversation_history: list = None,
     customer_name: str = "Customer",
-    workspace_id: int = 1
+    workspace_id: int = 1,
+    sender_id: str = None
 ) -> Optional[dict]:
     """
     Strictly evaluates ID Card Inquiry, MOQ restriction (30 pcs), Review Link, Packages, and Phased Sample Delivery.
@@ -1150,14 +1169,20 @@ def evaluate_id_card_workflow(
 
 
     # 1. Advanced Full-Thread History & Context Analysis
-    hist_ctx = analyze_conversation_history_context(conversation_history, msg)
+    hist_ctx = analyze_conversation_history_context(conversation_history, msg, sender_id=sender_id, workspace_id=workspace_id)
     known_qty = hist_ctx.get("known_quantity")
+    if known_qty is None and sender_id:
+        known_qty = get_conversation_order_quantity(sender_id, workspace_id=workspace_id)
+
     samples_already_sent = hist_ctx.get("samples_already_sent") or hist_ctx.get("packages_already_sent")
     packages_already_sent = hist_ctx.get("packages_already_sent")
     owner_messages = hist_ctx.get("owner_messages", [])
     last_owner_msg = hist_ctx.get("last_owner_instruction", "")
 
     qty = extract_order_quantity_number(msg)
+    if qty is not None and qty >= 1 and sender_id:
+        set_conversation_order_quantity(sender_id, qty, workspace_id=workspace_id)
+
     effective_qty = qty if qty is not None else known_qty
 
     bn_map = {"0": "০", "1": "১", "2": "২", "3": "৩", "4": "৪", "5": "৫", "6": "৬", "7": "৭", "8": "৮", "9": "৯"}
@@ -1186,7 +1211,7 @@ def evaluate_id_card_workflow(
     ])
     
     # 0.05 Greeting repetition guard: If message is pure greeting and bot already greeted or asked quantity
-    clean_greeting = re.sub(r'[^\w\s]', '', msg).strip().lower()
+    clean_greeting = re.sub(r'[\!\?.,:;\-_~`\'"()\[\]{}।]', '', msg).strip().lower()
     is_pure_greeting_msg = clean_greeting in [
         "hi", "hello", "hey", "hii", "hiii", "helloo", "helo",
         "হাই", "হ্যালো", "সালাম", "আসসালামু আলাইকুম", "আসসালামু", "সালামু আলাইকুম",
@@ -1198,6 +1223,16 @@ def evaluate_id_card_workflow(
             for m in (conversation_history or [])[-4:]
             if str(m.get("sender") or m.get("sender_type") or m.get("role") or "").lower() in ("bot", "assistant", "ai")
         ):
+            if effective_qty:
+                return {
+                    "reply_text": f"জি {honorific}, আপনার {to_bn(effective_qty)} পিস অর্ডারের বিষয়ে বলুন, কীভাবে সহযোগিতা করতে পারি?",
+                    "media_sequence": [],
+                    "matched_images": [],
+                    "voice_url": "",
+                    "video_url": "",
+                    "order_created": None,
+                    "response_source": "id_card_greeting_known_qty_followup"
+                }
             return {
                 "reply_text": f"জি {honorific}, আপনার প্রতিষ্ঠানের জন্য কত পিস আইডি কার্ড বানাবেন জানাবেন প্লিজ?",
                 "media_sequence": [],
@@ -1558,12 +1593,19 @@ def evaluate_id_card_workflow(
         "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "আচ্ছা", "দিতে পারেন", "পাঠাতে পারেন", 
         "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দাও", "পাঠিয়ে দিন", "পাঠিয়ে দেন",
         "হুম পাঠান", "জি পাঠান", "জি দিন", "জি দেন", "হ্যাঁ দিন", "হ্যাঁ পাঠান", "হ্যা পাঠান", "হ্যা দিন",
-        "দিলে ভালো হয়", "দিলে ভালো", "দেখতে চাই", "yes", "sure", "ok", "okay", "send", "show", "ha", "ji", "achha"
+        "ঠিক আছে", "ঠিক আছে পাঠান", "ঠিক আছে দিন", "হ্যাঁ ঠিক আছে", "হ্যাঁ ঠিক আছে পাঠান",
+        "দিলে ভালো হয়", "দিলে ভালো", "দেখতে চাই", "ভালো", "সুন্দর", "অনেক সুন্দর",
+        "ভালো লাগলো", "ভালো লাগছে", "পছন্দ হয়েছে", "পছন্দ হইছে",
+        "yes", "sure", "ok", "okay", "send", "show", "ha", "ji", "achha"
     ]
     is_agreeing = any(k == msg or msg.startswith(k + " ") or msg.endswith(" " + k) or f" {k} " in f" {msg} " for k in agreement_keywords)
 
-    # Case C1: Ready Packages Request or Agreement after permission prompt
-    is_agreeing_to_ready_packages = bot_prompted_ready_packages and is_agreeing
+    # Case C1: Ready Packages Request or Agreement after permission prompt OR after component samples were sent
+    is_agreeing_to_ready_packages = (bot_prompted_ready_packages and is_agreeing) or (
+        (samples_already_sent and not packages_already_sent) and (
+            is_agreeing or any(k in msg for k in ["ভালো", "সুন্দর", "পাঠান", "দেখান", "দিন", "দেন", "ঠিক আছে"])
+        )
+    )
     is_direct_ready_package_request = any(k in msg for k in [
         "রেডি প্যাকেজ", "রেডি প্যাকেজের ছবি", "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
         "সব প্যাকেজ", "সব প্যাকেজের ছবি", "প্যাকেজগুলো পাঠান", "প্যাকেজগুলো দেখান"
@@ -2145,7 +2187,8 @@ async def process_customer_message(
             message_text=message_text,
             conversation_history=conversation_history,
             customer_name=customer_name,
-            workspace_id=ws_id
+            workspace_id=ws_id,
+            sender_id=sender_id
         )
         if id_flow_res:
             return id_flow_res
@@ -2240,8 +2283,11 @@ async def process_customer_message(
         ]
 
         # --- ADVANCED REAL-TIME CONTEXT & MEMORY TRACKING ---
-        hist_ctx = analyze_conversation_history_context(conversation_history, message_text)
+        hist_ctx = analyze_conversation_history_context(conversation_history, message_text, sender_id=sender_id, workspace_id=ws_id)
         known_qty_in_history = hist_ctx.get("known_quantity")
+        if known_qty_in_history is None and sender_id:
+            known_qty_in_history = get_conversation_order_quantity(sender_id, workspace_id=ws_id)
+
         samples_already_sent_in_history = hist_ctx.get("samples_already_sent") or hist_ctx.get("packages_already_sent")
         owner_msgs = hist_ctx.get("owner_messages", [])
         last_owner_msg = hist_ctx.get("last_owner_instruction", "")
@@ -2261,8 +2307,8 @@ async def process_customer_message(
         
         if known_qty_in_history:
             realtime_memory_guard += (
-                f"• কাস্টমারের পরিমাণ (KNOWN QUANTITY): {known_qty_in_history} পিস।\n"
-                f"  ⚠️ কঠোর নিষেধ: কাস্টমারকে ভুলেও আর 'কত পিস বানাবেন?', 'কোয়ান্টিটি কত?' ইত্যাদি প্রশ্ন করবে না! সরাসরি {known_qty_in_history} পিসের মোট হিসাব, প্যাকেজ, ডিজাইন বা পরবর্তী ধাপ নিয়ে কথা বলো।\n"
+                f"• কাস্টমারের অর্ডার পরিমাণ পূর্বেই নিশ্চিত (KNOWN QUANTITY): {known_qty_in_history} পিস।\n"
+                f"  ⚠️🚨 চূড়ান্ত কঠোর নিষেধ: কাস্টমার ইতিপূর্বে জানিয়ে দিয়েছেন উনি {known_qty_in_history} পিস বানাবেন। ভুলেও আর কখনো 'কত পিস বানাবেন?', 'কত পিস আইডি কার্ড করতে চান?', 'বা কত পিস করতে চান?', 'কোয়ান্টিটি কত?' ইত্যাদি প্রশ্ন করবে না! এই প্রশ্ন দ্বিতীয়বার করলে কাস্টমার চূড়ান্ত বিরক্ত হবে। সরাসরি {known_qty_in_history} পিসের মোট বাজেট, প্যাকেজ পছন্দ (কোন প্যাকেজটি পছন্দ হয়েছে বলুন), দরদাম বা অর্ডার চূড়ান্ত করার বিষয়ে কথা বলো।\n"
             )
         
         if samples_already_sent_in_history:
@@ -2449,10 +2495,22 @@ async def process_customer_message(
         clean_reply = re.sub(r'ভাইয়া/আপু', honorific, clean_reply)
         clean_reply = re.sub(r'স্যার/ম্যাম', honorific, clean_reply)
 
-        # NEVER REPEAT QUESTIONS: If quantity is already known, remove repetitive quantity questions
+        # NEVER REPEAT QUESTIONS: If quantity is already known, aggressively remove any repetitive quantity questions
         if known_qty_in_history:
-            clean_reply = re.sub(r'(আপনার\s+)?(প্রতিষ্ঠানের\s+জন্য\s+)?(মোট\s+)?কত\s+পিস[^\n।!?]*[।!?]?', '', clean_reply).strip()
-            clean_reply = re.sub(r'কোয়ান্টিটি\s+কত[^\n।!?]*[।!?]?', '', clean_reply).strip()
+            patterns_to_strip = [
+                r'(?:,\s*|বা\s+|এবং\s+)?(?:আপনার\s+)?(?:প্রতিষ্ঠানের\s+জন্য\s+)?(?:মোট\s+)?কত\s*(?:পিস|টি|টা|গুলো|কপি|কোয়ান্টিটি)[^\n।!?]*[।!?]?',
+                r'(?:,\s*|বা\s+|এবং\s+)?(?:আপনার\s+)?(?:প্রতিষ্ঠানের\s+জন্য\s+)?(?:মোট\s+)?কত\s*পিস\s*(?:আইডি\s*কার্ড\s*)?(?:করতে|বানাতে)\s*চান[^\n।!?]*[।!?]?',
+                r'কোয়ান্টিটি\s+কত[^\n।!?]*[।!?]?',
+                r'(?:আপনার\s+)?(?:প্রতিষ্ঠানের\s+জন্য\s+)?পরিমাণ\s+কত[^\n।!?]*[।!?]?'
+            ]
+            for p in patterns_to_strip:
+                clean_reply = re.sub(p, '', clean_reply, flags=re.IGNORECASE).strip()
+            # Clean up dangling conjunctions or trailing dangling words
+            clean_reply = re.sub(r'[\s,]+(?:বা|এবং|অথবা)\s*$', '।', clean_reply).strip()
+            clean_reply = re.sub(r'[\s,]+(?:বা|এবং|অথবা)\s*([।!?])', r'\1', clean_reply).strip()
+            clean_reply = re.sub(r'(কোন\s+প্যাকেজটি\s+পছন্দ\s+হয়)\s*([।!?]?)$', rf'\1 জানাবেন {honorific}।', clean_reply).strip()
+            if clean_reply and not any(clean_reply.endswith(p) for p in ['।', '!', '?', '.']):
+                clean_reply += '।'
 
         # EXTREME BREVITY: If sending images, keep text reply ultra-short and clean
         if matched_images:

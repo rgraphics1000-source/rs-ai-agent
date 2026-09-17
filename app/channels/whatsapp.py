@@ -23,12 +23,13 @@ from app.database import (
     ensure_whatsapp_account_consistency, get_active_training_rules,
     get_all_faqs, get_all_products, is_webhook_event_processed,
     mark_webhook_event_processed, record_outbound_ai_message,
-    is_outbound_ai_message, claim_webhook_event, is_own_whatsapp_number
+    is_outbound_ai_message, claim_webhook_event, is_own_whatsapp_number,
+    set_conversation_order_quantity
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.ai_agent.gemini_brain import (
     process_customer_message, detect_customer_gender_title,
-    has_customer_consented_or_requested_photos
+    has_customer_consented_or_requested_photos, extract_order_quantity_number
 )
 
 GRAPH_API_URL = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}"
@@ -937,8 +938,14 @@ async def process_whatsapp_batch(batch: PendingBatch):
         print(f"[AI_BLOCKED] reason=admin_takeover workspace_id={workspace_id} sender_id={masked_sender}")
         return
 
-    # Fetch conversation history scoped strictly to Workspace
-    history = get_conversation_history("whatsapp", sender_phone, limit=12, page_id=page_id, workspace_id=workspace_id)
+    # Save order quantity permanently to conversation record if customer mentions quantity
+    if combined_text:
+        extracted_qty = extract_order_quantity_number(combined_text)
+        if extracted_qty and extracted_qty >= 1:
+            set_conversation_order_quantity(sender_phone, extracted_qty, workspace_id=workspace_id)
+
+    # Fetch conversation history scoped strictly to Workspace (increased to 50 turns so media batches don't evict context)
+    history = get_conversation_history("whatsapp", sender_phone, limit=50, page_id=page_id, workspace_id=workspace_id)
 
     # Load workspace specific data and log
     training_rules = get_active_training_rules(workspace_id=workspace_id)
@@ -1100,13 +1107,13 @@ async def process_whatsapp_batch(batch: PendingBatch):
                 is_package_images = any("package" in str(p).lower() or "pakage" in str(p).lower() or "pkg" in str(p).lower() or "wa000" in str(p).lower() or "wa00" in str(p).lower() for p in matched_images)
                 
                 if is_package_images:
-                    followup_msg = f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+                    followup_msg = f"আপনার কোন প্যাকেজটি পছন্দ হয়েছে বলুন {honorific}।"
                 elif any("cover" in str(p).lower() for p in matched_images):
                     followup_msg = f"কভারের কোন ডিজাইনটি আপনার পছন্দ জানাবেন {honorific}।"
                 elif any("fita" in str(p).lower() or "ribbon" in str(p).lower() for p in matched_images):
                     followup_msg = f"ফিতার কোন ডিজাইনটি আপনার পছন্দ জানাবেন {honorific}।"
                 else:
-                    followup_msg = f"স্যাম্পলগুলো কেমন লাগলো জানাবেন {honorific}।"
+                    followup_msg = f"আমাদের কার্ড, ফিতা এবং কভার মিলিয়ে কিছু আকর্ষণীয় রেডি প্যাকেজ করা আছে। আমি কি আমাদের রেডি প্যাকেজগুলোর ছবি ও বিস্তারিত পাঠাবো {honorific}?"
 
                 await asyncio.sleep(0.4)
                 send_whatsapp_message(

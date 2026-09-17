@@ -573,7 +573,8 @@ def init_db():
         ("customer_turn_version", "INTEGER DEFAULT 1"),
         ("last_responded_turn_version", "INTEGER DEFAULT 0"),
         ("is_generating", "INTEGER DEFAULT 0"),
-        ("generation_lock_at", "TIMESTAMP")
+        ("generation_lock_at", "TIMESTAMP"),
+        ("order_quantity", "INTEGER")
     ]
     for col_name, col_type in conv_cols:
         try:
@@ -1931,6 +1932,87 @@ def is_conversation_ai_active(sender_id: str = None, conversation_id: int = None
             pass
 
     return True
+
+def set_conversation_order_quantity(sender_id: str, quantity: int, workspace_id: int = 1):
+    """Saves known order quantity to conversation record to permanently prevent asking quantity again."""
+    if not sender_id or quantity is None or quantity <= 0:
+        return
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ws_id = int(workspace_id or 1)
+        clean_s = "".join(c for c in str(sender_id or "") if c.isdigit())
+        last10 = clean_s[-10:] if len(clean_s) >= 10 else clean_s
+        if last10:
+            cursor.execute("""
+                UPDATE conversations 
+                SET order_quantity = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE (sender_id = ? OR sender_id LIKE ? OR sender_id LIKE ?)
+                  AND (workspace_id = ? OR workspace_id IS NULL)
+            """, (quantity, str(sender_id), f"%{last10}%", f"%{clean_s}%", ws_id))
+        else:
+            cursor.execute("""
+                UPDATE conversations 
+                SET order_quantity = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE sender_id = ? AND workspace_id = ?
+            """, (quantity, str(sender_id), ws_id))
+
+        if cursor.rowcount == 0 and sender_id:
+            cursor.execute("""
+                INSERT INTO conversations (
+                    workspace_id, channel, sender_id, customer_name, last_message, order_quantity
+                ) VALUES (?, 'whatsapp', ?, 'Customer', '', ?)
+            """, (ws_id, str(sender_id), quantity))
+        conn.commit()
+    except Exception as e:
+        print(f"[DB set_conversation_order_quantity Error]: {e}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+def get_conversation_order_quantity(sender_id: str, workspace_id: int = 1) -> Optional[int]:
+    """Retrieves persisted order quantity for this conversation."""
+    if not sender_id:
+        return None
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ws_id = int(workspace_id or 1)
+        clean_s = "".join(c for c in str(sender_id or "") if c.isdigit())
+        last10 = clean_s[-10:] if len(clean_s) >= 10 else clean_s
+        if last10:
+            cursor.execute("""
+                SELECT order_quantity FROM conversations 
+                WHERE (sender_id = ? OR sender_id LIKE ? OR sender_id LIKE ?)
+                  AND (workspace_id = ? OR workspace_id IS NULL)
+                  AND order_quantity IS NOT NULL AND order_quantity > 0
+                ORDER BY id DESC LIMIT 1
+            """, (str(sender_id), f"%{last10}%", f"%{clean_s}%", ws_id))
+        else:
+            cursor.execute("""
+                SELECT order_quantity FROM conversations 
+                WHERE sender_id = ? AND workspace_id = ?
+                  AND order_quantity IS NOT NULL AND order_quantity > 0
+                ORDER BY id DESC LIMIT 1
+            """, (str(sender_id), ws_id))
+        row = cursor.fetchone()
+        if row and row["order_quantity"]:
+            return int(row["order_quantity"])
+        return None
+    except Exception as e:
+        print(f"[DB get_conversation_order_quantity Error]: {e}")
+        return None
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 # ============================================================
 # MULTI-PAGE & MULTI-WHATSAPP ARCHITECTURE DATABASE HELPERS

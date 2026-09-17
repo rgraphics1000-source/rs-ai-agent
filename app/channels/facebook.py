@@ -21,13 +21,14 @@ from app.database import (
     ensure_facebook_page_consistency,
     is_webhook_event_processed, mark_webhook_event_processed,
     claim_media_delivery, update_media_delivery_status,
-    record_outbound_ai_message, is_outbound_ai_message, claim_webhook_event
+    record_outbound_ai_message, is_outbound_ai_message, claim_webhook_event,
+    set_conversation_order_quantity
 )
 from app.channels.omnichat import record_conversation_message, get_conversation_history
 from app.channels.debouncer import message_debouncer, PendingBatch
 from app.ai_agent.gemini_brain import (
     process_customer_message, detect_customer_gender_title,
-    has_customer_consented_or_requested_photos
+    has_customer_consented_or_requested_photos, extract_order_quantity_number
 )
 
 GRAPH_API_URL = "https://graph.facebook.com/v19.0"
@@ -864,8 +865,14 @@ async def process_facebook_batch(batch: PendingBatch):
         print(f"[AI_BLOCKED] reason=admin_takeover workspace_id={workspace_id} sender_id={sender_id}")
         return
 
-    # Fetch conversation history scoped strictly to this Workspace
-    history = get_conversation_history("facebook", sender_id, limit=12, page_id=page_id, workspace_id=workspace_id)
+    # Save order quantity permanently to conversation record if customer mentions quantity
+    if combined_text:
+        extracted_qty = extract_order_quantity_number(combined_text)
+        if extracted_qty and extracted_qty >= 1:
+            set_conversation_order_quantity(sender_id, extracted_qty, workspace_id=workspace_id)
+
+    # Fetch conversation history scoped strictly to this Workspace (increased to 50 turns so media batches don't evict context)
+    history = get_conversation_history("facebook", sender_id, limit=50, page_id=page_id, workspace_id=workspace_id)
 
     # Process with Gemini AI Brain with Workspace-isolated context & full image list
     ai_result = await process_customer_message(
@@ -998,13 +1005,13 @@ async def process_facebook_batch(batch: PendingBatch):
             is_package_images = any("package" in str(p).lower() or "pakage" in str(p).lower() or "pkg" in str(p).lower() or "wa000" in str(p).lower() or "wa00" in str(p).lower() for p in matched_images)
             
             if is_package_images:
-                fb_followup = f"আপনার কোন প্যাকেজটি পছন্দ হয় জানাবেন {honorific}।"
+                fb_followup = f"আপনার কোন প্যাকেজটি পছন্দ হয়েছে বলুন {honorific}।"
             elif any("cover" in str(p).lower() for p in matched_images):
                 fb_followup = f"কভারের কোন ডিজাইনটি আপনার পছন্দ জানাবেন {honorific}।"
             elif any("fita" in str(p).lower() or "ribbon" in str(p).lower() for p in matched_images):
                 fb_followup = f"ফিতার কোন ডিজাইনটি আপনার পছন্দ জানাবেন {honorific}।"
             else:
-                fb_followup = f"স্যাম্পলগুলো কেমন লাগলো জানাবেন {honorific}।"
+                fb_followup = f"আমাদের কার্ড, ফিতা এবং কভার মিলিয়ে কিছু আকর্ষণীয় রেডি প্যাকেজ করা আছে। আমি কি আমাদের রেডি প্যাকেজগুলোর ছবি ও বিস্তারিত পাঠাবো {honorific}?"
 
             await asyncio.sleep(0.4)
             send_fb_text_message(
