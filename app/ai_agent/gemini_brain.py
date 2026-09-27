@@ -1824,7 +1824,7 @@ def evaluate_id_card_workflow(
     # Case B: Answering quantity
     is_asking_question = any(k in msg for k in ["?", "কত", "কেন", "কি", "কী", "দাম", "চার্জ", "সময়", "কেমন", "ডেলিভারি", "কোথায়"])
     is_answering_quantity = (
-        qty is not None and not is_standalone_pkg_num and not is_asking_question and (
+        qty is not None and not is_standalone_pkg_num and not is_asking_question and not any(k in msg for k in ["প্যাকেজ", "পেকেজ", "ছবি", "স্যাম্পল", "পিক", "ফটো"]) and (
             bot_asked_quantity or 
             any(k in msg for k in ["পিস", "টা", "টি", "pcs", "কপি", "বানাবো", "বানাতে চাই"]) or
             (re.fullmatch(r'\d{1,5}', msg.strip()) and not (packages_already_sent or bot_asked_package_selection))
@@ -1885,18 +1885,49 @@ def evaluate_id_card_workflow(
     is_agreeing = any(k == msg or msg.startswith(k + " ") or msg.endswith(" " + k) or f" {k} " in f" {msg} " for k in agreement_keywords)
 
     # Case C1: Ready Packages Request or Agreement after permission prompt OR after component samples were sent
+    has_pkg_keyword = any(k in msg for k in ["প্যাকেজ", "পেকেজ", "package", "pkg", "রেডি প্যাকেজ", "কম্বো"])
+    has_pkg_photo_or_action = any(k in msg for k in [
+        "ছবি", "স্যাম্পল", "সাম্পল", "পিক", "পিকচার", "ফটো", "photo", "pic", "picture", "sample", "image",
+        "পাঠান", "দেখান", "দিন", "দেন", "দাও", "দেও", "পাঠাও", "দেখাও", "দেখতে চাই", "চাই",
+        "দেখতে চাচ্ছি", "দেখবো", "দেখি", "পাঠাবেন", "দিবেন", "সেন্ড", "send", "show",
+        "সব", "গুলো", "গুলা", "তালিকা", "ডিটেইলস", "লিস্ট", "রেডি"
+    ])
+    is_pkg_refusal = any(k in msg for k in ["প্যাকেজ না", "পেকেজ না", "লাগবে না", "দরকার নেই", "দরকার নাই", "চাই না", "নেব না", "নিব না"])
+    is_single_pkg_bargaining = bool(
+        pkg_in_msg is not None and any(k in msg for k in ["এটি", "এটা", "এইটা", "এই প্যাকেজ", "পছন্দ", "নিব", "নেব", "ফাইনাল", "কনফার্ম", "অর্ডার"])
+        and not any(k in msg for k in ["ছবি", "স্যাম্পল", "ফটো", "পিক", "পাঠান", "দেখান", "দিন", "দেন"])
+    )
+    # Detect price/bargaining intent to prevent Case C1 from swallowing price inquiries
+    is_price_or_bargaining_intent = any(k in msg for k in [
+        "কত রাখা", "কত পরবে", "কত পড়বে", "কত হবে", "দাম কত", "কত দাম", "রেট কত", "খরচ কত", "প্রাইস কত",
+        "কম রাখা", "কম হবে", "কমানো যাবে", "ডিসকাউন্ট", "ছাড়", "কমাইয়া", "কমিয়ে",
+        "কত রাখবেন", "কত রাখতে পারবেন", "কত তে দিবেন", "কততে দিবেন", "লাস্ট প্রাইস", "সর্বনিম্ন কত", "ফিক্সড কত",
+        "একদাম কত", "কত রাখা সম্ভব", "কত রাখা পসিবল"
+    ])
+    has_quoted_package_reply = "[কাস্টমার পূর্ববর্তী" in msg
+    # If customer is replying to a quoted package image with price intent OR asking "এটি?" / "এটা কত" → skip C1, let D1 handle it
+    is_pkg_price_inquiry_context = (
+        is_price_or_bargaining_intent or
+        (has_quoted_package_reply and any(k in msg for k in ["এটি", "এটা", "এইটা", "?", "কত", "দাম", "রেট"]))
+    )
+
     is_agreeing_to_ready_packages = (bot_prompted_ready_packages and is_agreeing) or (
         (samples_already_sent and not packages_already_sent) and (
             is_agreeing or any(k in msg for k in ["ভালো", "সুন্দর", "পাঠান", "দেখান", "দিন", "দেন", "ঠিক আছে"])
         )
     )
-    is_direct_ready_package_request = any(k in msg for k in [
-        "রেডি প্যাকেজ", "রেডি প্যাকেজের ছবি", "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
-        "সব প্যাকেজ", "সব প্যাকেজের ছবি", "প্যাকেজগুলো পাঠান", "প্যাকেজগুলো দেখান",
-        "প্যাকেজ দেন", "প্যাকেজ দিন", "প্যাকেজগুলো দেন", "প্যাকেজগুলো দিন", "প্যাকেজ দাও",
-        "প্যাকেজের ছবি দেন", "প্যাকেজের ছবি দিন", "প্যাকেজগুলোর ছবি দেন", "প্যাকেজগুলোর ছবি দিন",
-        "প্যাকেজ দেখতে চাই", "প্যাকেজ দেখাও", "প্যাকেজ ছবি দেন", "প্যাকেজ ছবি দিন", "প্যাকেজ পাঠান প্লিজ"
-    ]) and not any(k in msg for k in ["প্যাকেজ না", "পেকেজ না", "এটি", "এটা", "এইটা", "এই প্যাকেজ", "পছন্দ"])
+    is_direct_ready_package_request = (
+        (has_pkg_keyword and has_pkg_photo_or_action and not is_pkg_refusal and not is_single_pkg_bargaining and not is_pkg_price_inquiry_context)
+        or any(k in msg for k in [
+            "রেডি প্যাকেজ", "রেডি প্যাকেজের ছবি", "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজের তালিকা",
+            "সব প্যাকেজ", "সব প্যাকেজের ছবি", "প্যাকেজগুলো পাঠান", "প্যাকেজগুলো দেখান", "প্যাকেজ গুলো পাঠান", "প্যাকেজ গুলো দেখান",
+            "প্যাকেজ দেন", "প্যাকেজ দিন", "প্যাকেজগুলো দেন", "প্যাকেজগুলো দিন", "প্যাকেজ গুলো দেন", "প্যাকেজ গুলো দিন", "প্যাকেজ দাও",
+            "প্যাকেজের ছবি দেন", "প্যাকেজের ছবি দিন", "প্যাকেজগুলোর ছবি দেন", "প্যাকেজগুলোর ছবি দিন",
+            "প্যাকেজ গুলোর ছবি দেন", "প্যাকেজ গুলোর ছবি দিন", "প্যাকেজ গুলোর ছবি পাঠান", "প্যাকেজ গুলোর ছবি দেখান",
+            "প্যাকেজ গুলোর ছবি", "প্যাকেজ এর ছবি", "প্যাকেজের ছবিগুলো", "প্যাকেজগুলোর ছবি", "প্যাকেজ স্যাম্পল", "প্যাকেজের স্যাম্পল",
+            "প্যাকেজ দেখতে চাই", "প্যাকেজ দেখতে চাচ্ছি", "প্যাকেজ দেখাও", "প্যাকেজ ছবি দেন", "প্যাকেজ ছবি দিন", "প্যাকেজ পাঠান প্লিজ"
+        ])
+    ) and not is_pkg_refusal and not is_pkg_price_inquiry_context
 
     if is_agreeing_to_ready_packages or is_direct_ready_package_request:
         ready_seq = build_ready_package_sequence(quantity=effective_qty, customer_name=customer_name, workspace_id=workspace_id)
@@ -1911,11 +1942,20 @@ def evaluate_id_card_workflow(
             "response_source": "ready_package_dispatch"
         }
 
-    # Case C2: Price Inquiry for ID Card Packages ONLY when specifically asking for package prices
-    is_asking_id_card_packages = any(k in msg for k in [
-        "প্যাকেজের দাম কত", "প্যাকেজের দাম", "প্যাকেজের রেট", "প্যাকেজগুলোর দাম সহ", "কার্ড ফিতা কভার প্যাকেজ", "প্যাকেজ কত",
-        "দাম সহ প্যাকেজ", "প্যাকেজ রেট", "দাম সহ দিন", "কোনটার দাম কত", "দাম সহ"
-    ]) and not any(k in msg for k in ["বানাবো", "বানাব", "বানাতে চাই", "অর্ডার করব", "অর্ডার করবো"])
+    # Case C2: Price Inquiry for ID Card Packages ONLY when specifically asking for package prices WITHOUT asking for photos
+    is_asking_id_card_packages = (
+        any(k in msg for k in [
+            "প্যাকেজের দাম কত", "প্যাকেজের দাম", "প্যাকেজের রেট", "প্যাকেজগুলোর দাম সহ", "কার্ড ফিতা কভার প্যাকেজ", "প্যাকেজ কত",
+            "দাম সহ প্যাকেজ", "প্যাকেজ রেট", "দাম সহ দিন", "কোনটার দাম কত", "দাম সহ"
+        ])
+        and not any(k in msg for k in ["বানাবো", "বানাব", "বানাতে চাই", "অর্ডার করব", "অর্ডার করবো"])
+        and not any(k in msg for k in [
+            "ছবি দেখান", "ছবি পাঠান", "ছবি দিন", "ছবি দেন", "ছবি দাও", "ছবি দেখতে চাই",
+            "স্যাম্পল দেখান", "স্যাম্পল পাঠান", "স্যাম্পল দিন", "স্যাম্পল দেন", "স্যাম্পল দেখতে চাই",
+            "পিক দেখান", "পিক পাঠান", "ফটো দেখান", "ফটো পাঠান",
+            "প্যাকেজের ছবি", "প্যাকেজ দেখান", "প্যাকেজ পাঠান"
+        ])
+    )
 
     if is_asking_id_card_packages:
         return {
@@ -2173,6 +2213,15 @@ def has_customer_consented_or_requested_photos(user_msg: str, conversation_histo
         "সব ছবি", "সবগুলো ছবি", "সব প্যাকেজ", "সবগুলো প্যাকেজ", "প্যাকেজের ছবি", "রেডি প্যাকেজের ছবি",
         "প্যাকেজ দেখান", "প্যাকেজ পাঠান", "প্যাকেজ দেন", "প্যাকেজ দিন", "প্যাকেজ দাও", "প্যাকেজ দেও",
         "প্যাকেজগুলো পাঠান", "প্যাকেজগুলো দেখান", "রেডি প্যাকেজ দিন", "রেডি প্যাকেজের ছবি দিন",
+        "প্যাকেজ গুলোর ছবি", "প্যাকেজগুলোর ছবি", "প্যাকেজ এর ছবি", "প্যাকেজের ছবিগুলো",
+        "প্যাকেজের ছবি পাঠান", "প্যাকেজের ছবি দেখান", "প্যাকেজের ছবি দিন", "প্যাকেজের ছবি দেন",
+        "প্যাকেজ গুলোর ছবি পাঠান", "প্যাকেজ গুলোর ছবি দেখান", "প্যাকেজ গুলোর ছবি দিন", "প্যাকেজ গুলোর ছবি দেন",
+        "প্যাকেজগুলোর ছবি পাঠান", "প্যাকেজগুলোর ছবি দেখান", "প্যাকেজগুলোর ছবি দিন", "প্যাকেজগুলোর ছবি দেন",
+        "প্যাকেজ গুলোর স্যাম্পল", "প্যাকেজগুলোর স্যাম্পল", "প্যাকেজের স্যাম্পল", "প্যাকেজ স্যাম্পল", "প্যাকেজ ছবি",
+        "প্যাকেজ এর ছবি পাঠান", "প্যাকেজ এর ছবি দেখান", "রেডি প্যাকেজের ছবি পাঠান", "রেডি প্যাকেজ দেখান",
+        "রেডি প্যাকেজ পাঠান", "সব প্যাকেজের ছবি পাঠান", "সব প্যাকেজ দেখান", "সব প্যাকেজ পাঠান",
+        "স্যাম্পল গুলোর ছবি", "স্যাম্পলগুলোর ছবি", "স্যাম্পল এর ছবি", "স্যাম্পলের ছবি",
+        "প্যাকেজের রেট কত ছবি দেন", "প্যাকেজের রেট কত ছবি দিন", "দাম সহ প্যাকেজের ছবি দেন", "দাম সহ প্যাকেজের ছবি দিন",
         "সবচেয়ে প্রিমিয়াম প্যাকেজের ছবি", "টপ কোয়ালিটির প্যাকেজ দেখান", "সেরা প্যাকেজ দেখতে চাই",
         "কম বাজেটের প্যাকেজ দেখতে চাই", "লো বাজেট প্যাকেজ দেখান", "সবচেয়ে ভালো মানের প্যাকেজ কোনটা",
         "সবচেয়ে দামি প্যাকেজ কোনটা", "যার বাজেট একবারে কম তার জন্য কোন প্যাকেজ", "সবচেয়ে কম খরচের প্যাকেজ কোনটা",
@@ -2187,6 +2236,21 @@ def has_customer_consented_or_requested_photos(user_msg: str, conversation_histo
     if any(ep in msg for ep in explicit_photo_phrases):
         return True
 
+    # Check semantic combinations for package requests:
+    has_pkg = any(k in msg for k in [
+        "প্যাকেজ", "পেকেজ", "রেডি প্যাকেজ", "সব প্যাকেজ", "package", "pkg", "কম্বো",
+        "প্যাকেজগুলো", "প্যাকেজ গুলোর", "প্যাকেজগুলোর", "প্যাকেজের", "প্যাকেজগুলি"
+    ])
+    has_photo_or_sample = any(k in msg for k in [
+        "ছবি", "স্যাম্পল", "সাম্পল", "পিক", "পিকচার", "ফটো", "photo", "pic", "picture", "sample", "image"
+    ])
+    has_action_request = any(k in msg for k in [
+        "দেখান", "পাঠান", "দিন", "দেন", "দাও", "দেও", "পাঠাও", "দেখাও", "দেখতে চাই", "চাই",
+        "দিয়েন", "দিয়েন", "দিবেন", "পাঠাবেন", "সেন্ড", "send", "show", "দিলে ভালো", "দিলে ভালো হয়", "দেখবো", "দেখি"
+    ])
+    if has_pkg and (has_photo_or_sample or has_action_request):
+        return True
+
     # Check combinations: (ছবি/স্যাম্পল/পিক/ফটো) + (দেখান/পাঠান/দিন/দেন/দাও/দেও/চাই/দেখতে চাই/পাঠাবেন/দিবেন/send/show/আসেনি/পাইনি)
     photo_terms = ["ছবি", "স্যাম্পল", "সাম্পল", "পিক", "পিকচার", "ফটো", "photo", "pic", "picture", "sample"]
     req_terms = [
@@ -2195,6 +2259,10 @@ def has_customer_consented_or_requested_photos(user_msg: str, conversation_histo
         "আসেনি", "আসে নাই", "পাইনি", "পায়নি", "পাই নাই", "পায় নাই", "দেননি", "দেওনি", "পাঠাননি", "পাঠাওনি", "কোথায়", "কই"
     ]
     if any(pt in msg for pt in photo_terms) and any(rt in msg for rt in req_terms):
+        return True
+
+    # If message contains 2 or more distinct photo/sample terms (e.g. "স্যাম্পল গুলোর ছবি")
+    if sum(1 for pt in ["ছবি", "স্যাম্পল", "পিক", "ফটো"] if pt in msg) >= 2:
         return True
 
     # Specific package with viewing verb (e.g. "প্যাকেজ ৩ দেখান", "প্যাকেজ ২ এর ছবি")
@@ -2282,7 +2350,10 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
     user_has_cover = any(k in msg for k in ["কভার", "হোল্ডার", "holder", "cover", "কভারগুলো", "কভারগুলা", "কভারের", "কভারগুলোর"])
     user_has_fita = any(k in msg for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita", "ফিতার গুলো", "ফিতাগুলো", "ফিতাগুলা", "ফিতার"])
     user_has_id = any(k in msg for k in ["আইডি", "কার্ড", "id card", "card", "পিভিসি", "pvc", "কার্ডগুলো", "কার্ডগুলা", "কার্ডের", "কার্ডগুলোর"])
-    user_has_pkg = any(k in msg for k in ["প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ", "সব প্যাকেজ"])
+    user_has_pkg = any(k in msg for k in [
+        "প্যাকেজ", "কম্বো", "package", "combo", "পেকেজ", "সব প্যাকেজ",
+        "প্যাকেজগুলো", "প্যাকেজ গুলোর", "প্যাকেজগুলোর", "প্যাকেজের", "রেডি প্যাকেজ"
+    ])
 
     bot_has_cover = any(k in b_reply_low for k in ["কভার", "হোল্ডার", "holder", "cover"])
     bot_has_fita = any(k in b_reply_low for k in ["ফিতা", "রিবন", "ল্যানিয়ার্ড", "ribbon", "lanyard", "fita"])
@@ -2327,6 +2398,10 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
                 sent_fnames.add(os.path.basename(clean_u).lower())
 
     unseen_images = filter_unseen_images(selected_images, sent_fnames, sent_urls)
+    # If customer explicitly requested package images and all were filtered out by deduplication,
+    # fallback to selected_images so customer is never left empty-handed when asking for package photos
+    if not unseen_images and (user_has_pkg or specific_pkg_num is not None):
+        unseen_images = selected_images
 
     if req_count and req_count > 0:
         return unseen_images[:req_count]
