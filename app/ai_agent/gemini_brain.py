@@ -949,8 +949,8 @@ def build_ready_package_sequence(quantity: int = None, customer_name: str = "Cus
     if pkg_imgs:
         seq.append({"type": "images", "category": "package", "urls": pkg_imgs})
 
-    # Voice note on 100+ order (or unspecified)
-    if quantity is None or quantity >= 100:
+    # Voice note ONLY for 100+ piece orders (not for unknown quantity or under 100)
+    if quantity is not None and quantity >= 100:
         seq.append({
             "type": "voice",
             "url": VOICE_PACKAGE_SPECIAL_OFFER,

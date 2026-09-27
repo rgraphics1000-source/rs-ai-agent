@@ -85,10 +85,10 @@ class TestQuantityRepetitionAndPackageVoiceFlow(unittest.TestCase):
 
     def test_03_ready_packages_100_plus_includes_voice_note(self):
         """
-        Orders of 100 or 100+ pcs (or unspecified) MUST include the special offer voice note
+        Orders of 100 or 100+ pcs MUST include the special offer voice note
         and end with 'আপনার কোন প্যাকেজটি পছন্দ হয়েছে, বলুন স্যার।'
         """
-        for q in [100, 150, 500, None]:
+        for q in [100, 150, 500]:
             seq = build_ready_package_sequence(quantity=q, customer_name="Customer", workspace_id=1)
             voice_items = [s for s in seq if s.get("type") == "voice"]
             self.assertEqual(len(voice_items), 1, f"Voice note expected for quantity={q}")
@@ -101,10 +101,10 @@ class TestQuantityRepetitionAndPackageVoiceFlow(unittest.TestCase):
 
     def test_04_ready_packages_under_100_excludes_voice_note(self):
         """
-        Orders of less than 100 pcs (e.g. 30, 45, 75, 90) must NOT include the voice note.
+        Orders of less than 100 pcs (e.g. 30, 45, 75, 90) or unspecified/None must NOT include the voice note.
         Must still ask which package they like without re-asking quantity.
         """
-        for q in [35, 40, 60, 80, 95]:
+        for q in [35, 40, 60, 80, 95, None]:
             seq = build_ready_package_sequence(quantity=q, customer_name="Customer", workspace_id=1)
             voice_items = [s for s in seq if s.get("type") == "voice"]
             self.assertEqual(len(voice_items), 0, f"Voice note must NOT be included for quantity={q}")

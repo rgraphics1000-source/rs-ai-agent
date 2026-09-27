@@ -899,7 +899,8 @@ async def api_resolve_tenant_workspace(
     clean_email = (email or "").strip().lower()
     
     # RS Graphics Master Account check
-    is_master = (
+    # CRITICAL: If a specific branch tenant_id is provided, it must NEVER be routed to Master Workspace 1!
+    is_master = not clean_tenant and (
         clean_lic == "RSC-NIKASH-TSXB-2894-6302-920Q" or
         "rs graphics" in clean_shop.lower() or
         "আর এস গ্রাফিক্স" in clean_shop or
@@ -915,12 +916,12 @@ async def api_resolve_tenant_workspace(
             "workspace_name": "RS Graphics (আরএস গ্রাফিক্স)"
         }
     
-    # For any other client account, resolve or create an isolated workspace
+    # For any other client account or isolated branch shop, resolve or create an isolated workspace
     slug = None
-    if clean_lic and clean_lic != "NKSH-UNREGISTERED":
+    if clean_tenant:
+        slug = f"tenant_{clean_tenant.lower().replace(' ', '_')}"
+    elif clean_lic and clean_lic != "NKSH-UNREGISTERED":
         slug = f"lic_{clean_lic.lower().replace(' ', '_')}"
-    elif tenant_id:
-        slug = f"tenant_{tenant_id.lower().replace(' ', '_')}"
     elif clean_email:
         slug = f"user_{clean_email.replace('@', '_at_').replace('.', '_')}"
     elif clean_shop:
