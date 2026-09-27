@@ -458,6 +458,37 @@ class TestIdCardWorkflowAndSampleSequence(unittest.IsolatedAsyncioTestCase):
         self.assertIn("৪৮৭৫ টাকা", res["reply_text"])
         self.assertIn("ডিজাইন বা লোগো", res["reply_text"])
 
+    def test_20_customer_reply_ji_or_missing_photo_complaint_dispatches_samples(self):
+        """
+        Verify that customer replies like 'জী', 'জী।', 'কোথায়?', 'আবার পাঠান'
+        reliably dispatch component sample photos and pass photo consent checks.
+        """
+        from app.ai_agent.gemini_brain import has_customer_consented_or_requested_photos
+
+        history = [
+            {"sender": "user", "content": "আসসালামু য়ালাইকুম"},
+            {"sender": "bot", "content": "ওয়ালাইকুমুস সালাম স্যার। আপনার প্রতিষ্ঠানের জন্য কত পিস আইডি কার্ড বানাবেন জানাবেন প্লিজ?"},
+            {"sender": "user", "content": "৬০"},
+            {"sender": "bot", "content": "৬০ পিস অর্ডারের জন্য আমাদের প্যাকেজের নির্ধারিত রেগুলার পাইকারি রেট প্রযোজ্য হবে। আমি কি আমাদের কার্ড, ফিতা ও কভারের স্যাম্পল ছবিগুলো পাঠাবো স্যার?"}
+        ]
+
+        test_inputs = ["জী", "জী।", "কোথায়?", "কোথায়?", "আবার পাঠান"]
+        for inp in test_inputs:
+            res = evaluate_id_card_workflow(
+                message_text=inp,
+                conversation_history=history,
+                customer_name="Customer",
+                workspace_id=1
+            )
+            self.assertIsNotNone(res, f"Failed to handle input: {inp}")
+            self.assertEqual(res["response_source"], "initial_component_samples_dispatch", f"Wrong source for: {inp}")
+            self.assertGreaterEqual(len(res["matched_images"]), 20, f"No images returned for: {inp}")
+            self.assertGreaterEqual(len(res["media_sequence"]), 1, f"No media sequence for: {inp}")
+
+            consent = has_customer_consented_or_requested_photos(inp, conversation_history=history)
+            self.assertTrue(consent, f"Consent should be True for: {inp}")
+
 if __name__ == "__main__":
     unittest.main()
+
 

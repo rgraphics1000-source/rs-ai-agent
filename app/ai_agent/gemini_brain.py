@@ -1366,20 +1366,37 @@ def evaluate_id_card_workflow(
     def to_bn(n):
         return "".join(bn_map.get(c, c) for c in str(n))
     
-        # 0.02 Check if customer is complaining about missing photos or asking to resend
-    is_missing_photos_complaint = any(k in msg for k in [
+    # 0.02 Check if customer is complaining about missing photos or asking to resend
+    clean_msg = re.sub(r'[\!\?.,:;\-_~`\'"()\[\]{}।]', '', msg).strip()
+    is_missing_photos_complaint = (
+        any(k in msg for k in [
+            "কোথায় ছবি", "কোথায় ছবি", "ছবি কোথায়", "ছবি কই", "কই ছবি", "কোথায় স্যাম্পল", "কোথায় স্যাম্পল",
+        "আবার পাঠান", "আবার দিন", "আবার দেন", "আবার দেখান", "আবার পাঠাও", "আবার সেন্ড", "আবার সেন্ড করুন", "আবার সেন্ড করেন",
+        "আরেকবার পাঠান", "আরেকবার দিন", "আরেকবার দেন", "পুনরায় পাঠান", "পুনরায় পাঠান",
+        "ছবি তো এলো না", "ছবি তো এল না", "ছবি তো পেলাম না", "ছবি পাই নি", "ছবি আসে নি",
+        "ছবি আসলো না", "ছবি আসল না", "ছবি তো আসলো না", "ছবি তো আসল না",
+        "কিছুই তো আসেনি", "কিছু তো আসেনি", "কিছু আসেনি", "কিছু পাই নি", "কিছু পাইনি",
         "ছবি তো আসেনি", "ছবি আসেনি", "ছবি আসে নাই", "ছবি পাই নাই", "ছবি পাইনি", "ছবি পাই নেই",
-        "ছবি দেননি", "ছবি দেওনি", "ছবি পাঠাননি", "ছবি পাঠাওনি", "ছবি কোথায়", "ছবি কই",
-        "স্যাম্পল আসেনি", "স্যাম্পল তো আসেনি", "স্যাম্পল পাই নাই", "স্যাম্পল পাইনি",
-        "প্যাকেজ আসেনি", "প্যাকেজের ছবি আসেনি", "প্যাকেজের ছবি তো আসেনি", "প্যাকেজের ছবি পাই নাই", "প্যাকেজের ছবি পাইনি"
-    ])
+            "ছবি দেননি", "ছবি দেওনি", "ছবি পাঠাননি", "ছবি পাঠাওনি", "ছবি কোথায়", "ছবি কই",
+            "স্যাম্পল আসেনি", "স্যাম্পল তো আসেনি", "স্যাম্পল পাই নাই", "স্যাম্পল পাইনি",
+            "প্যাকেজ আসেনি", "প্যাকেজের ছবি আসেনি", "প্যাকেজের ছবি তো আসেনি", "প্যাকেজের ছবি পাই নাই", "প্যাকেজের ছবি পাইনি",
+            "কোথায় ছবি", "কোথায় ছবি", "কই ছবি", "কোথায় স্যাম্পল", "কোথায় স্যাম্পল",
+            "আবার পাঠান", "আবার দিন", "আবার দেন", "আবার দেখান", "আবার পাঠাও", "আবার সেন্ড", "আবার সেন্ড করুন", "আবার সেন্ড করেন",
+            "আরেকবার পাঠান", "আরেকবার দিন", "আরেকবার দেন", "পুনরায় পাঠান", "পুনরায় পাঠান",
+            "ছবি তো এলো না", "ছবি তো এল না", "ছবি তো পেলাম না", "ছবি পাই নি", "ছবি আসে নি",
+            "ছবি আসলো না", "ছবি আসল না", "ছবি তো আসলো না", "ছবি তো আসল না",
+            "কিছুই তো আসেনি", "কিছু তো আসেনি", "কিছু আসেনি", "কিছু পাই নি", "কিছু পাইনি"
+        ])
+        or (
+            clean_msg in ["কোথায়", "কোথায়", "কই", "কোথায় ছবি", "কোথায় ছবি", "কই ছবি", "ছবি কোথায়", "ছবি কই", "স্যাম্পল কোথায়", "স্যাম্পল কই"]
+            and not any(k in msg for k in ["দোকান", "অফিস", "ঠিকানা", "লোকেশন", "বাসা", "শপ", "বাড়ি", "বাড়ি", "কোথায় অবস্থিত"])
+        )
+    )
     if is_missing_photos_complaint:
         has_pkg_context = (
-            bot_prompted_ready_packages or packages_already_sent or
-            any("প্যাকেজ" in str(h.get("content") or "") for h in (conversation_history or [])[-6:]) or
-            any("প্যাকেজ" in str(h.get("text") or "") for h in (conversation_history or [])[-6:])
-        )
-        if has_pkg_context or "প্যাকেজ" in msg:
+            bot_prompted_ready_packages or packages_already_sent or "প্যাকেজ" in msg
+        ) and not bot_prompted_sample_permission
+        if has_pkg_context or ("প্যাকেজ" in msg and not bot_prompted_sample_permission):
             ready_seq = build_ready_package_sequence(quantity=effective_qty, customer_name=customer_name, workspace_id=workspace_id)
             pkg_imgs = get_package_sample_images(workspace_id=workspace_id)
             return {
@@ -1873,16 +1890,18 @@ def evaluate_id_card_workflow(
         }
 
     agreement_keywords = [
-        "হ্যাঁ", "হ্যা", "জি", "হুম", "পাঠান", "দেখান", "দিন", "দেন", "পাঠাও", "দেখাও", 
+        "হ্যাঁ", "হ্যা", "জি", "জী", "হুম", "হুমম", "পাঠান", "দেখান", "দিন", "দেন", "পাঠাও", "দেখাও", 
         "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "আচ্ছা", "দিতে পারেন", "পাঠাতে পারেন", 
         "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দাও", "পাঠিয়ে দিন", "পাঠিয়ে দেন",
-        "হুম পাঠান", "জি পাঠান", "জি দিন", "জি দেন", "হ্যাঁ দিন", "হ্যাঁ পাঠান", "হ্যা পাঠান", "হ্যা দিন",
+        "হুম পাঠান", "জি পাঠান", "জী পাঠান", "জি দিন", "জী দিন", "জি দেন", "জী দেন", "জি দেখান", "জী দেখান",
+        "জি স্যার", "জী স্যার", "জি ভাই", "জী ভাই", "জি ভাইয়া", "জী ভাইয়া", "জি ভাইয়া",
+        "হ্যাঁ দিন", "হ্যাঁ পাঠান", "হ্যা পাঠান", "হ্যা দিন", "হ্যাঁ দেন", "হ্যাঁ দেখান",
         "ঠিক আছে", "ঠিক আছে পাঠান", "ঠিক আছে দিন", "হ্যাঁ ঠিক আছে", "হ্যাঁ ঠিক আছে পাঠান",
         "দিলে ভালো হয়", "দিলে ভালো", "দেখতে চাই", "ভালো", "সুন্দর", "অনেক সুন্দর",
         "ভালো লাগলো", "ভালো লাগছে", "পছন্দ হয়েছে", "পছন্দ হইছে",
         "yes", "sure", "ok", "okay", "send", "show", "ha", "ji", "achha"
     ]
-    is_agreeing = any(k == msg or msg.startswith(k + " ") or msg.endswith(" " + k) or f" {k} " in f" {msg} " for k in agreement_keywords)
+    is_agreeing = any(k == msg or k == clean_msg or msg.startswith(k + " ") or msg.endswith(" " + k) or f" {k} " in f" {msg} " or f" {k} " in f" {clean_msg} " for k in agreement_keywords)
 
     # Case C1: Ready Packages Request or Agreement after permission prompt OR after component samples were sent
     has_pkg_keyword = any(k in msg for k in ["প্যাকেজ", "পেকেজ", "package", "pkg", "রেডি প্যাকেজ", "কম্বো"])
@@ -2236,6 +2255,11 @@ def has_customer_consented_or_requested_photos(user_msg: str, conversation_histo
     if any(ep in msg for ep in explicit_photo_phrases):
         return True
 
+    clean_msg_c = re.sub(r'[\!\?.,:;\-_~`\'"()\[\]{}।]', '', msg).strip()
+    if clean_msg_c in ["কোথায়", "কোথায়", "কই", "কোথায় ছবি", "কোথায় ছবি", "কই ছবি", "ছবি কোথায়", "ছবি কই", "স্যাম্পল কোথায়", "স্যাম্পল কই"]:
+        if not any(k in msg for k in ["দোকান", "অফিস", "ঠিকানা", "লোকেশন", "বাসা", "শপ", "বাড়ি", "বাড়ি", "কোথায় অবস্থিত"]):
+            return True
+
     # Check semantic combinations for package requests:
     has_pkg = any(k in msg for k in [
         "প্যাকেজ", "পেকেজ", "রেডি প্যাকেজ", "সব প্যাকেজ", "package", "pkg", "কম্বো",
@@ -2272,16 +2296,17 @@ def has_customer_consented_or_requested_photos(user_msg: str, conversation_histo
 
     # 4. Check affirmative agreement following agent's photo offer
     agreement_keywords = [
-        "হ্যাঁ", "হ্যা", "জি", "হুম", "পাঠান", "দেখান", "দিন", "দেন", "দাও", "দেও", "পাঠাও", "দেখাও",
+        "হ্যাঁ", "হ্যা", "জি", "জী", "হুম", "হুমম", "পাঠান", "দেখান", "দিন", "দেন", "দাও", "দেও", "পাঠাও", "দেখাও",
         "ঠিক আছে", "ঠিক আছে পাঠান", "ঠিক আছে দিন", "ঠিক আছে দেন", "ঠিক আছে দাও", "ঠিক আছে দেখান",
         "আচ্ছা দিন", "আচ্ছা পাঠান", "আচ্ছা দেন", "আচ্ছা দেখান", "আচ্ছা", "দিতে পারেন", "পাঠাতে পারেন",
         "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দাও", "পাঠিয়ে দিন", "পাঠিয়ে দেন", "পাঠিয়ে দাও",
-        "হুম পাঠান", "হুম দিন", "হুম দেন", "হুম দেখান", "জি পাঠান", "জি দিন", "জি দেন", "জি দেখান",
+        "হুম পাঠান", "হুম দিন", "হুম দেন", "হুম দেখান", "জি পাঠান", "জী পাঠান", "জি দিন", "জী দিন", "জি দেন", "জী দেন", "জি দেখান", "জী দেখান",
+        "জি স্যার", "জী স্যার", "জি ভাই", "জী ভাই", "জি ভাইয়া", "জী ভাইয়া", "জি ভাইয়া",
         "হ্যাঁ দিন", "হ্যাঁ পাঠান", "হ্যা পাঠান", "হ্যা দিন", "হ্যাঁ দেন", "হ্যাঁ দেখান",
         "দিলে ভালো হয়", "দিলে ভালো", "দেখতে চাই", "yes", "sure", "ok", "okay", "send", "show",
         "ha", "ji", "achha", "yep", "yeah", "সেন্ড করুন", "সেন্ড করেন", "পাঠান প্লিজ", "দিন প্লিজ", "দেখান প্লিজ"
     ]
-    is_agreeing = any(ak == msg or msg.startswith(ak + " ") or msg.endswith(" " + ak) or f" {ak} " in f" {msg} " for ak in agreement_keywords)
+    is_agreeing = any(ak == msg or ak == clean_msg_c or msg.startswith(ak + " ") or msg.endswith(" " + ak) or f" {ak} " in f" {msg} " or f" {ak} " in f" {clean_msg_c} " for ak in agreement_keywords)
 
     if is_agreeing and conversation_history:
         # Check the last bot turn to ensure agreement is responding to an actual photo offer
@@ -2377,6 +2402,8 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
                 selected_images = get_fita_sample_images(workspace_id=workspace_id)
             elif bot_has_id and not (bot_has_cover or bot_has_fita or bot_has_pkg):
                 selected_images = get_id_card_sample_images(workspace_id=workspace_id)
+            elif any(k in msg for k in ["স্যাম্পল", "সাম্পল", "কাজের", "কাজ"]) and not (user_has_pkg or bot_has_pkg):
+                selected_images = get_id_card_sample_images(workspace_id=workspace_id) + get_fita_sample_images(workspace_id=workspace_id) + get_cover_sample_images(workspace_id=workspace_id)
             else:
                 selected_images = get_package_sample_images(workspace_id=workspace_id)
 
@@ -2398,9 +2425,10 @@ def detect_sample_photos_to_send(user_msg: str, conversation_history: list = Non
                 sent_fnames.add(os.path.basename(clean_u).lower())
 
     unseen_images = filter_unseen_images(selected_images, sent_fnames, sent_urls)
-    # If customer explicitly requested package images and all were filtered out by deduplication,
-    # fallback to selected_images so customer is never left empty-handed when asking for package photos
-    if not unseen_images and (user_has_pkg or specific_pkg_num is not None):
+    # If customer explicitly requested photos or samples and all were filtered out by deduplication,
+    # fallback to selected_images so customer is never left empty-handed
+    user_is_explicitly_asking_photos = any(k in msg for k in ["ছবি", "স্যাম্পল", "পিক", "ফটো", "আবার", "পাঠান", "দেখান", "দিন", "দেন"])
+    if not unseen_images and (user_has_pkg or specific_pkg_num is not None or user_is_explicitly_asking_photos):
         unseen_images = selected_images
 
     if req_count and req_count > 0:
