@@ -159,13 +159,24 @@ def record_conversation_message(
                 """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
                 current_turn_version = row["customer_turn_version"] or 1
             elif is_customer_msg:
-                cursor.execute("""
-                    UPDATE conversations 
-                    SET last_message = ?, customer_name = ?, page_id = COALESCE(NULLIF(?, ''), page_id),
-                        customer_turn_version = COALESCE(customer_turn_version, 1) + 1,
-                        updated_at = CURRENT_TIMESTAMP 
-                    WHERE id = ?
-                """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
+                from app.database import is_muted_number
+                if is_muted_number(str(sender_id)):
+                    cursor.execute("""
+                        UPDATE conversations 
+                        SET last_message = ?, customer_name = ?, page_id = COALESCE(NULLIF(?, ''), page_id),
+                            admin_takeover = 1, human_takeover = 1, ai_enabled = 0,
+                            customer_turn_version = COALESCE(customer_turn_version, 1) + 1,
+                            updated_at = CURRENT_TIMESTAMP 
+                        WHERE id = ?
+                    """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
+                else:
+                    cursor.execute("""
+                        UPDATE conversations 
+                        SET last_message = ?, customer_name = ?, page_id = COALESCE(NULLIF(?, ''), page_id),
+                            customer_turn_version = COALESCE(customer_turn_version, 1) + 1,
+                            updated_at = CURRENT_TIMESTAMP 
+                        WHERE id = ?
+                    """, (preview_text, cust_name, str(page_id) if page_id else None, conv_id))
                 current_turn_version = (row["customer_turn_version"] or 1) + 1
             else:
                 cursor.execute("""
@@ -186,13 +197,24 @@ def record_conversation_message(
                 """, (ws_id, channel, sender_id, customer_name, preview_text, str(page_id) if page_id else ""))
                 current_turn_version = 1
             elif is_customer_msg:
-                cursor.execute("""
-                    INSERT INTO conversations (
-                        workspace_id, channel, sender_id, customer_name, last_message, page_id,
-                        customer_turn_version, last_responded_turn_version
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, 1, 0)
-                """, (ws_id, channel, sender_id, customer_name, preview_text, str(page_id) if page_id else ""))
+                from app.database import is_muted_number
+                if is_muted_number(str(sender_id)):
+                    cursor.execute("""
+                        INSERT INTO conversations (
+                            workspace_id, channel, sender_id, customer_name, last_message, page_id,
+                            admin_takeover, human_takeover, ai_enabled, takeover_at, takeover_by, takeover_reason, conversation_version,
+                            customer_turn_version, last_responded_turn_version
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, 1, 1, 0, CURRENT_TIMESTAMP, 'admin_ui', 'muted_contact', 1, 1, 0)
+                    """, (ws_id, channel, sender_id, customer_name, preview_text, str(page_id) if page_id else ""))
+                else:
+                    cursor.execute("""
+                        INSERT INTO conversations (
+                            workspace_id, channel, sender_id, customer_name, last_message, page_id,
+                            customer_turn_version, last_responded_turn_version
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, 1, 0)
+                    """, (ws_id, channel, sender_id, customer_name, preview_text, str(page_id) if page_id else ""))
                 current_turn_version = 1
             else:
                 cursor.execute("""

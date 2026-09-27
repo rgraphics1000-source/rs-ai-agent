@@ -76,6 +76,101 @@ class TestMutedContacts(unittest.TestCase):
         finally:
             remove_muted_number(fb_cust)
 
+    def test_05_api_toggle_chat_ai_without_status(self):
+        """Tests POST /api/omnichat/toggle-ai toggling AI state without explicit status parameter (matching frontend UI)."""
+        from app.database import get_db_connection
+        test_sender = "8801999998888"
+        try:
+            # 1. Create a fresh conversation
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO conversations (workspace_id, channel, sender_id, customer_name, human_takeover, admin_takeover, ai_enabled)
+                VALUES (1, 'whatsapp', ?, 'Test Customer Toggle', 0, 0, 1)
+            """, (test_sender,))
+            cid = cursor.lastrowid
+            conn.commit()
+            conn.close()
+
+            # Ensure AI is currently active
+            self.assertTrue(is_conversation_ai_active(sender_id=test_sender, workspace_id=1))
+
+            # 2. Toggle AI (admin clicks block/pause button -> sends only conversation_id)
+            resp = self.client.post("/api/omnichat/toggle-ai", json={"conversation_id": cid})
+            self.assertEqual(resp.status_code, 200)
+            data = resp.json()
+            self.assertTrue(data.get("success"))
+            self.assertEqual(data.get("human_takeover"), 1)
+            self.assertTrue(data.get("blocked"))
+
+            # Verify AI is now strictly SILENT / BLOCKED
+            self.assertFalse(is_conversation_ai_active(sender_id=test_sender, workspace_id=1))
+
+            # 3. Toggle AI again (admin clicks resume button -> sends only conversation_id)
+            resp2 = self.client.post("/api/omnichat/toggle-ai", json={"conversation_id": cid})
+            self.assertEqual(resp2.status_code, 200)
+            data2 = resp2.json()
+            self.assertTrue(data2.get("success"))
+            self.assertEqual(data2.get("human_takeover"), 0)
+            self.assertFalse(data2.get("blocked"))
+
+            # Verify AI is active again
+            self.assertTrue(is_conversation_ai_active(sender_id=test_sender, workspace_id=1))
+            print("✓ Test 5 Passed: Omnichat AI Toggle correctly inverts state and blocks AI replies without status parameter.")
+        finally:
+            remove_muted_number(test_sender)
+            try:
+                conn = get_db_connection()
+                conn.cursor().execute("DELETE FROM conversations WHERE sender_id = ?", (test_sender,))
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
+
+    def test_06_debouncer_drops_and_cancels_when_customer_blocked(self):
+        """Tests that when a customer is blocked, Debouncer drops incoming messages and cancels active batches."""
+        import asyncio
+        from app.channels.debouncer import message_debouncer
+
+        test_sender = "8801888887777"
+        remove_muted_number(test_sender)
+
+        async def run_check():
+            # 1. Initially allowed
+            enqueued = await message_debouncer.add_message(
+                channel="whatsapp",
+                workspace_id=1,
+                sender_id=test_sender,
+                customer_name="Debounce Test Cust",
+                msg_id="test_msg_001",
+                text="Hello AI"
+            )
+            self.assertTrue(enqueued)
+
+            # 2. Block customer via add_muted_number
+            add_muted_number(test_sender)
+
+            # Verify batch was cancelled by add_muted_number
+            key = message_debouncer._get_key("whatsapp", 1, test_sender)
+            self.assertNotIn(key, message_debouncer._batches)
+
+            # 3. Subsequent message attempts are strictly rejected at the debouncer gate
+            enqueued_after_block = await message_debouncer.add_message(
+                channel="whatsapp",
+                workspace_id=1,
+                sender_id=test_sender,
+                customer_name="Debounce Test Cust",
+                msg_id="test_msg_002",
+                text="Are you still there?"
+            )
+            self.assertFalse(enqueued_after_block)
+
+        try:
+            asyncio.run(run_check())
+            print("✓ Test 6 Passed: Debouncer immediately cancels in-flight batch and rejects messages when customer is blocked.")
+        finally:
+            remove_muted_number(test_sender)
+
 
 if __name__ == "__main__":
     unittest.main()

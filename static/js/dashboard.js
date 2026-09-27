@@ -1515,8 +1515,19 @@ async function toggleActiveChatAI() {
         });
         const data = await res.json();
         if (data.success) {
-            const isPaused = data.human_takeover === 1;
-            showToast(isPaused ? "এই কাস্টমারের জন্য এআই সাময়িকভাবে বন্ধ করা হয়েছে (Owner Mode)" : "এই কাস্টমারের জন্য এআই স্বয়ংক্রিয় উত্তর পুনরায় চালু করা হয়েছে (AI Active)", "info");
+            const isPaused = (data.human_takeover === 1 || data.blocked === true);
+            showToast(isPaused ? "এই কাস্টমারের জন্য এআই সাময়িকভাবে বন্ধ করা হয়েছে (AI Blocked / Owner Mode)" : "এই কাস্টমারের জন্য এআই স্বয়ংক্রিয় উত্তর পুনরায় চালু করা হয়েছে (AI Active)", "info");
+            
+            // Instantly update active conversation in memory & UI header
+            if (typeof activeConversationsList !== 'undefined' && Array.isArray(activeConversationsList)) {
+                const targetConv = activeConversationsList.find(c => c.id === activeConversationId);
+                if (targetConv) {
+                    targetConv.human_takeover = isPaused ? 1 : 0;
+                    targetConv.admin_takeover = isPaused ? 1 : 0;
+                    targetConv.ai_enabled = isPaused ? 0 : 1;
+                    updateOmnichatHeader(targetConv);
+                }
+            }
             loadOmnichatConversations();
         }
     } catch (e) {

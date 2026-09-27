@@ -32,7 +32,8 @@ from app.database import (
     get_all_workspaces, get_workspace, save_workspace, delete_workspace,
     get_faqs, create_faq, delete_faq, ensure_whatsapp_account_consistency,
     ensure_facebook_page_consistency, enable_conversation_ai, set_admin_takeover,
-    get_conversation_state, is_conversation_ai_active
+    get_conversation_state, is_conversation_ai_active, is_muted_number,
+    add_muted_number, remove_muted_number
 )
 from app.ai_agent.gemini_brain import process_customer_message
 from app.ai_agent.voice_engine import generate_bangla_voice, list_available_voices
@@ -805,17 +806,52 @@ async def api_toggle_chat_ai(request: Request):
     data = await request.json()
     cid = data.get("conversation_id")
     phone = data.get("phone") or data.get("sender_id") or ""
-    status = data.get("status") # 1 for block (takeover), 0 for unblock (ai active)
+    status = data.get("status") # 1 for block (takeover), 0 for unblock (ai active), None for toggle
     workspace_id = data.get("workspace_id", 1)
-    human_takeover = 1 if status == 1 else 0
+    target_block = False
+    human_takeover = 0
 
     try:
         conn = get_db_connection()
         c = conn.cursor()
-        
-        # 1. Update by conversation_id if available
+        conv = None
         if cid:
-            if status == 1:
+            c.execute("SELECT id, sender_id, channel, workspace_id, human_takeover, admin_takeover, ai_enabled FROM conversations WHERE id = ?", (cid,))
+            conv = c.fetchone()
+        elif phone:
+            clean_p = "".join(ch for ch in str(phone) if ch.isdigit())
+            last10_p = clean_p[-10:] if len(clean_p) >= 10 else clean_p
+            if last10_p and len(clean_p) >= 8:
+                c.execute("SELECT id, sender_id, channel, workspace_id, human_takeover, admin_takeover, ai_enabled FROM conversations WHERE sender_id LIKE ? OR sender_id = ? ORDER BY id DESC LIMIT 1", (f"%{last10_p}%", str(phone)))
+            else:
+                c.execute("SELECT id, sender_id, channel, workspace_id, human_takeover, admin_takeover, ai_enabled FROM conversations WHERE sender_id = ? ORDER BY id DESC LIMIT 1", (str(phone),))
+            conv = c.fetchone()
+
+        resolved_sender = (conv["sender_id"] if conv else None) or phone or ""
+        resolved_channel = (conv["channel"] if conv else None) or "whatsapp"
+        resolved_ws_id = (conv["workspace_id"] if conv else None) or workspace_id or 1
+
+        # If status was not provided explicitly (like toggle button in UI), determine current state and invert
+        if status is None:
+            is_currently_blocked = False
+            if conv:
+                is_currently_blocked = bool(
+                    conv["human_takeover"] == 1 or 
+                    conv["admin_takeover"] == 1 or 
+                    conv["ai_enabled"] == 0
+                )
+            if not is_currently_blocked and resolved_sender:
+                is_currently_blocked = is_muted_number(resolved_sender)
+            
+            # Flip: if currently blocked, unblock (status=0); if currently active, block (status=1)
+            status = 0 if is_currently_blocked else 1
+
+        target_block = (int(status) == 1)
+        human_takeover = 1 if target_block else 0
+
+        if target_block:
+            # 1. Update conversations by CID
+            if cid:
                 c.execute("""
                     UPDATE conversations 
                     SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
@@ -824,7 +860,50 @@ async def api_toggle_chat_ai(request: Request):
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """, (cid,))
-            elif status == 0:
+            
+            # 2. Update conversations by sender_id / phone
+            if resolved_sender:
+                clean_digits = "".join([ch for ch in str(resolved_sender) if ch.isdigit()])
+                last10 = clean_digits[-10:] if len(clean_digits) >= 10 else clean_digits
+                if last10 and len(clean_digits) >= 8:
+                    c.execute("""
+                        UPDATE conversations 
+                        SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
+                            takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_ui', takeover_reason = 'manual_block',
+                            conversation_version = COALESCE(conversation_version, 1) + 1,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE sender_id LIKE ? OR sender_id = ?
+                    """, (f"%{last10}%", str(resolved_sender)))
+                else:
+                    c.execute("""
+                        UPDATE conversations 
+                        SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
+                            takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_ui', takeover_reason = 'manual_block',
+                            conversation_version = COALESCE(conversation_version, 1) + 1,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE sender_id = ?
+                    """, (str(resolved_sender),))
+                
+            conn.commit()
+            conn.close()
+            conn = None
+
+            # Add to persistent muted numbers after closing conn
+            if resolved_sender:
+                add_muted_number(str(resolved_sender))
+
+            # 3. Cancel any in-flight/debouncing batches immediately
+            try:
+                from app.channels.debouncer import message_debouncer
+                if resolved_sender:
+                    message_debouncer.cancel_sender_batches(str(resolved_sender))
+                    message_debouncer.cancel_batch(resolved_channel, resolved_ws_id, str(resolved_sender))
+            except Exception as eb:
+                print(f"[api_toggle_chat_ai debouncer cancel error]: {eb}")
+
+        else: # Unblock / Resume AI
+            # 1. Update conversations by CID
+            if cid:
                 c.execute("""
                     UPDATE conversations 
                     SET human_takeover = 0, admin_takeover = 0, ai_enabled = 1,
@@ -834,25 +913,11 @@ async def api_toggle_chat_ai(request: Request):
                     WHERE id = ?
                 """, (cid,))
 
-        # 2. Update by phone / sender_id if available
-        if phone:
-            clean_digits = "".join([ch for ch in str(phone) if ch.isdigit()])
-            last10 = clean_digits[-10:] if len(clean_digits) >= 10 else clean_digits
-            
-            if status == 1:
-                add_muted_number(phone)
-                if last10:
-                    c.execute("""
-                        UPDATE conversations 
-                        SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
-                            takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_ui', takeover_reason = 'manual_block',
-                            conversation_version = COALESCE(conversation_version, 1) + 1,
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE sender_id LIKE ? OR sender_id = ?
-                    """, (f"%{last10}%", str(phone)))
-            elif status == 0:
-                remove_muted_number(phone)
-                if last10:
+            # 2. Update conversations by sender_id / phone
+            if resolved_sender:
+                clean_digits = "".join([ch for ch in str(resolved_sender) if ch.isdigit()])
+                last10 = clean_digits[-10:] if len(clean_digits) >= 10 else clean_digits
+                if last10 and len(clean_digits) >= 8:
                     c.execute("""
                         UPDATE conversations 
                         SET human_takeover = 0, admin_takeover = 0, ai_enabled = 1,
@@ -860,14 +925,40 @@ async def api_toggle_chat_ai(request: Request):
                             conversation_version = COALESCE(conversation_version, 1) + 1,
                             updated_at = CURRENT_TIMESTAMP
                         WHERE sender_id LIKE ? OR sender_id = ?
-                    """, (f"%{last10}%", str(phone)))
+                    """, (f"%{last10}%", str(resolved_sender)))
+                else:
+                    c.execute("""
+                        UPDATE conversations 
+                        SET human_takeover = 0, admin_takeover = 0, ai_enabled = 1,
+                            takeover_at = NULL, takeover_by = NULL, takeover_reason = NULL,
+                            conversation_version = COALESCE(conversation_version, 1) + 1,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE sender_id = ?
+                    """, (str(resolved_sender),))
 
-        conn.commit()
-        conn.close()
+            conn.commit()
+            conn.close()
+            conn = None
+
+            # Remove from persistent muted numbers after closing conn
+            if resolved_sender:
+                remove_muted_number(str(resolved_sender))
+
     except Exception as e:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
         print(f"[api_toggle_chat_ai Error]: {e}")
 
-    return {"success": True, "human_takeover": human_takeover, "blocked": bool(status == 1)}
+    return {
+        "success": True, 
+        "human_takeover": human_takeover, 
+        "admin_takeover": bool(status == 1),
+        "ai_enabled": bool(status == 0),
+        "blocked": bool(status == 1)
+    }
 
 @app.post("/api/omnichat/enable-ai")
 @app.post("/api/conversations/enable-ai")

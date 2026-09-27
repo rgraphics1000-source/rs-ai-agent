@@ -101,7 +101,11 @@ class MessageDebouncer:
         key = self._get_key(channel, workspace_id, sender_id)
         now = time.time()
 
-        # Check Admin Takeover State immediately BEFORE batching
+        # Check Admin Takeover State & Zero-Reply Guard immediately BEFORE batching
+        if not is_conversation_ai_active(sender_id=sender_id, workspace_id=workspace_id):
+            print(f"[AI_GUARD] customer={sender_id} workspace_id={workspace_id} action=SKIP_AI_RESPONSE reason=is_conversation_ai_active_false")
+            return False
+
         state = get_conversation_state(sender_id=sender_id, workspace_id=workspace_id)
         if state.get("admin_takeover") or not state.get("ai_enabled") or state.get("human_takeover", 0) == 1:
             print(f"[AI_GUARD] customer={sender_id} workspace_id={workspace_id} admin_takeover=true action=SKIP_AI_RESPONSE reason=takeover_active")
@@ -223,7 +227,12 @@ class MessageDebouncer:
                 batch.status = "PROCESSING"
                 batch.is_processing = True
 
-            # Re-verify Takeover & Version State at Finalization
+            # Re-verify Zero-Reply Safety Guard & Version State at Finalization
+            if not is_conversation_ai_active(sender_id=batch.sender_id, workspace_id=batch.workspace_id):
+                batch.status = "CANCELLED"
+                print(f"[BATCH_CANCELLED_ADMIN_TAKEOVER] key={key} batch_id={batch.batch_id} action=discarded_due_to_is_conversation_ai_active_false")
+                return
+
             state = get_conversation_state(sender_id=batch.sender_id, workspace_id=batch.workspace_id)
             if state.get("admin_takeover") or not state.get("ai_enabled") or state.get("human_takeover", 0) == 1:
                 batch.status = "CANCELLED"
@@ -374,6 +383,41 @@ class MessageDebouncer:
                     batch.timer_task.cancel()
                 self._batches.pop(key, None)
         print(f"[WORKSPACE_BATCHES_CANCELLED] workspace_id={workspace_id} count={len(keys_to_cancel)}")
+
+    def cancel_sender_batches(self, sender_id: str):
+        """Immediately cancels and discards any pending AI response batches matching sender_id across all channels/workspaces."""
+        if not sender_id:
+            return
+        s_raw = str(sender_id).strip()
+        clean_s = "".join(c for c in s_raw if c.isdigit())
+        last10 = clean_s[-10:] if len(clean_s) >= 10 else clean_s
+
+        keys = list(self._batches.keys())
+        cancelled_count = 0
+        for key in keys:
+            batch = self._batches.get(key)
+            if not batch:
+                continue
+            batch_sender = str(batch.sender_id or "").strip()
+            match = False
+            if batch_sender == s_raw:
+                match = True
+            elif clean_s and len(clean_s) >= 8:
+                b_clean = "".join(c for c in batch_sender if c.isdigit())
+                b_last10 = b_clean[-10:] if len(b_clean) >= 10 else b_clean
+                if (b_clean and b_clean == clean_s) or (last10 and b_last10 and last10 == b_last10):
+                    match = True
+            
+            if match:
+                batch.is_cancelled = True
+                batch.status = "CANCELLED"
+                if batch.timer_task and not batch.timer_task.done():
+                    batch.timer_task.cancel()
+                self._batches.pop(key, None)
+                cancelled_count += 1
+                print(f"[BATCH_CANCELLED_ADMIN_TAKEOVER] key={key} batch_id={batch.batch_id} sender={sender_id} reason=cancelled_by_sender_block")
+        if cancelled_count > 0:
+            print(f"[SENDER_BATCHES_CANCELLED] sender={sender_id} count={cancelled_count}")
 
 
 # Global debouncer instance

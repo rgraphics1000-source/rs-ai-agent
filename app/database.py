@@ -1448,11 +1448,11 @@ def get_muted_numbers() -> list:
     raw = get_setting("blacklisted_ai_numbers", "")
     items = [x.strip() for x in raw.replace("\n", ",").split(",") if x.strip()] if raw else []
     
-    # Also fetch any active conversations where human_takeover == 1
+    # Also fetch any active conversations where human_takeover == 1 or admin_takeover == 1 or ai_enabled == 0
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT sender_id FROM conversations WHERE human_takeover = 1")
+        cursor.execute("SELECT sender_id FROM conversations WHERE human_takeover = 1 OR admin_takeover = 1 OR ai_enabled = 0")
         for row in cursor.fetchall():
             s_id = row["sender_id"]
             if s_id and s_id not in items:
@@ -1482,6 +1482,9 @@ def add_muted_number(phone: str) -> list:
     # Check if already present under any format
     already_present = False
     for existing in current:
+        if str(existing).strip() == phone:
+            already_present = True
+            break
         c_exist = "".join([c for c in str(existing) if c.isdigit()])
         e_last10 = c_exist[-10:] if len(c_exist) >= 10 else c_exist
         if clean_target and c_exist and (clean_target == c_exist or (target_last10 and target_last10 == e_last10)):
@@ -1495,14 +1498,33 @@ def add_muted_number(phone: str) -> list:
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        if target_last10:
-            cursor.execute("UPDATE conversations SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE sender_id LIKE ?", (f"%{target_last10}%",))
+        if target_last10 and len(clean_target) >= 8:
+            cursor.execute("""
+                UPDATE conversations 
+                SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
+                    takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_ui', takeover_reason = 'manual_block',
+                    updated_at = CURRENT_TIMESTAMP 
+                WHERE sender_id LIKE ? OR sender_id = ?
+            """, (f"%{target_last10}%", phone))
         else:
-            cursor.execute("UPDATE conversations SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE sender_id = ?", (phone,))
+            cursor.execute("""
+                UPDATE conversations 
+                SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
+                    takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_ui', takeover_reason = 'manual_block',
+                    updated_at = CURRENT_TIMESTAMP 
+                WHERE sender_id = ?
+            """, (phone,))
         conn.commit()
         conn.close()
     except Exception:
         pass
+
+    try:
+        from app.channels.debouncer import message_debouncer
+        message_debouncer.cancel_sender_batches(phone)
+    except Exception:
+        pass
+
     return current
 
 def remove_muted_number(phone: str) -> list:
@@ -1512,7 +1534,7 @@ def remove_muted_number(phone: str) -> list:
     target_last10 = clean_target[-10:] if len(clean_target) >= 10 else clean_target
     
     def is_match(x):
-        if x == phone:
+        if str(x).strip() == phone:
             return True
         c_x = "".join([c for c in str(x) if c.isdigit()])
         x_last10 = c_x[-10:] if len(c_x) >= 10 else c_x
@@ -1526,10 +1548,22 @@ def remove_muted_number(phone: str) -> list:
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        if target_last10:
-            cursor.execute("UPDATE conversations SET human_takeover = 0, admin_takeover = 0, ai_enabled = 1, updated_at = CURRENT_TIMESTAMP WHERE sender_id LIKE ?", (f"%{target_last10}%",))
+        if target_last10 and len(clean_target) >= 8:
+            cursor.execute("""
+                UPDATE conversations 
+                SET human_takeover = 0, admin_takeover = 0, ai_enabled = 1,
+                    takeover_at = NULL, takeover_by = NULL, takeover_reason = NULL,
+                    updated_at = CURRENT_TIMESTAMP 
+                WHERE sender_id LIKE ? OR sender_id = ?
+            """, (f"%{target_last10}%", phone))
         else:
-            cursor.execute("UPDATE conversations SET human_takeover = 0, admin_takeover = 0, ai_enabled = 1, updated_at = CURRENT_TIMESTAMP WHERE sender_id = ?", (phone,))
+            cursor.execute("""
+                UPDATE conversations 
+                SET human_takeover = 0, admin_takeover = 0, ai_enabled = 1,
+                    takeover_at = NULL, takeover_by = NULL, takeover_reason = NULL,
+                    updated_at = CURRENT_TIMESTAMP 
+                WHERE sender_id = ?
+            """, (phone,))
         conn.commit()
         conn.close()
     except Exception:
@@ -1537,19 +1571,55 @@ def remove_muted_number(phone: str) -> list:
     return updated
 
 def is_muted_number(phone: str) -> bool:
-    """Checks if a phone number or sender ID is in the muted/blacklisted AI numbers list."""
+    """Checks if a phone number or sender ID is in the muted/blacklisted AI numbers list or has human takeover in DB."""
     if not phone:
         return False
-    clean_target = "".join([c for c in str(phone) if c.isdigit()])
-    if not clean_target:
+    s_raw = str(phone).strip()
+    if not s_raw:
         return False
-    target_last10 = clean_target[-10:] if len(clean_target) >= 10 else clean_target
+    
     current = get_muted_numbers()
+    # 1. Exact string match (supports Facebook PSID, usernames, custom IDs)
     for existing in current:
-        c_exist = "".join([c for c in str(existing) if c.isdigit()])
-        e_last10 = c_exist[-10:] if len(c_exist) >= 10 else c_exist
-        if clean_target and c_exist and (clean_target == c_exist or (target_last10 and target_last10 == e_last10)):
+        if s_raw == str(existing).strip():
             return True
+
+    # 2. Digit-based / last 10 digit comparison
+    clean_target = "".join([c for c in s_raw if c.isdigit()])
+    if clean_target:
+        target_last10 = clean_target[-10:] if len(clean_target) >= 10 else clean_target
+        for existing in current:
+            c_exist = "".join([c for c in str(existing) if c.isdigit()])
+            e_last10 = c_exist[-10:] if len(c_exist) >= 10 else c_exist
+            if clean_target and c_exist and (clean_target == c_exist or (target_last10 and target_last10 == e_last10)):
+                return True
+
+    # 3. Direct DB Check on conversations table
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if clean_target and len(clean_target) >= 8:
+            target_last10 = clean_target[-10:] if len(clean_target) >= 10 else clean_target
+            cursor.execute("""
+                SELECT 1 FROM conversations 
+                WHERE (human_takeover = 1 OR admin_takeover = 1 OR ai_enabled = 0)
+                  AND (sender_id = ? OR sender_id LIKE ? OR sender_id LIKE ?)
+                LIMIT 1
+            """, (s_raw, f"%{target_last10}%", f"%{clean_target}%"))
+        else:
+            cursor.execute("""
+                SELECT 1 FROM conversations 
+                WHERE (human_takeover = 1 OR admin_takeover = 1 OR ai_enabled = 0)
+                  AND sender_id = ?
+                LIMIT 1
+            """, (s_raw,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return True
+    except Exception:
+        pass
+
     return False
 
 def get_muted_contacts_detailed() -> list:
@@ -1607,30 +1677,12 @@ def get_conversation_state(sender_id: str = None, conversation_id: int = None, w
         return default_state
 
     # 2. Check Blacklisted / Muted Phone Numbers
-    blacklisted = get_setting("blacklisted_ai_numbers", "")
-    if blacklisted and sender_id:
-        s_raw = str(sender_id).strip()
-        clean_sender = "".join([c for c in s_raw if c.isdigit()])
-        sender_last10 = clean_sender[-10:] if len(clean_sender) >= 10 else ""
-        for bl in blacklisted.replace(",", "\n").split("\n"):
-            bl_item = bl.strip()
-            if not bl_item:
-                continue
-            if s_raw == bl_item:
-                default_state["ai_enabled"] = False
-                default_state["admin_takeover"] = True
-                default_state["human_takeover"] = 1
-                default_state["takeover_reason"] = "blacklisted_number"
-                return default_state
-            bl_clean = "".join([c for c in bl_item if c.isdigit()])
-            bl_last10 = bl_clean[-10:] if len(bl_clean) >= 10 else ""
-            if len(clean_sender) >= 8 and len(bl_clean) >= 8:
-                if clean_sender == bl_clean or (sender_last10 and bl_last10 and sender_last10 == bl_last10):
-                    default_state["ai_enabled"] = False
-                    default_state["admin_takeover"] = True
-                    default_state["human_takeover"] = 1
-                    default_state["takeover_reason"] = "blacklisted_number"
-                    return default_state
+    is_muted = bool(sender_id and is_muted_number(str(sender_id)))
+    if is_muted and not conversation_id:
+        default_state["ai_enabled"] = False
+        default_state["admin_takeover"] = True
+        default_state["human_takeover"] = 1
+        default_state["takeover_reason"] = "muted_or_blacklisted"
 
     # 3. Query DB conversation record
     try:
@@ -1650,7 +1702,7 @@ def get_conversation_state(sender_id: str = None, conversation_id: int = None, w
             ws_id = int(workspace_id or 1)
             clean_s = "".join(c for c in str(sender_id or "") if c.isdigit())
             last10 = clean_s[-10:] if len(clean_s) >= 10 else clean_s
-            if last10:
+            if last10 and len(clean_s) >= 8:
                 cursor.execute("""
                     SELECT id, sender_id, workspace_id, human_takeover,
                            COALESCE(admin_takeover, human_takeover, 0) as admin_takeover,
@@ -1669,11 +1721,11 @@ def get_conversation_state(sender_id: str = None, conversation_id: int = None, w
                            COALESCE(ai_enabled, CASE WHEN human_takeover = 1 THEN 0 ELSE 1 END) as ai_enabled,
                            COALESCE(conversation_version, 1) as conversation_version,
                            takeover_at, takeover_by, takeover_reason
-                    FROM conversations WHERE sender_id = ? AND workspace_id = ?
+                    FROM conversations WHERE sender_id = ? AND (workspace_id = ? OR workspace_id IS NULL)
                     ORDER BY id DESC LIMIT 1
                 """, (str(sender_id), ws_id))
             row = cursor.fetchone()
-            if not row and last10:
+            if not row and last10 and len(clean_s) >= 8:
                 cursor.execute("""
                     SELECT id, sender_id, workspace_id, human_takeover,
                            COALESCE(admin_takeover, human_takeover, 0) as admin_takeover,
@@ -1693,13 +1745,18 @@ def get_conversation_state(sender_id: str = None, conversation_id: int = None, w
         
         if row:
             row_dict = dict(row)
+            conv_sender = row_dict.get("sender_id") or sender_id
+            if conv_sender and not is_muted and is_muted_number(str(conv_sender)):
+                is_muted = True
+
             is_takeover = bool(
+                is_muted or
                 row_dict.get("admin_takeover", 0) == 1 or 
                 row_dict.get("human_takeover", 0) == 1 or 
                 row_dict.get("ai_enabled", 1) == 0
             )
             default_state["id"] = row_dict.get("id")
-            default_state["sender_id"] = row_dict.get("sender_id") or sender_id
+            default_state["sender_id"] = conv_sender
             default_state["workspace_id"] = row_dict.get("workspace_id") or workspace_id
             default_state["admin_takeover"] = is_takeover
             default_state["ai_enabled"] = not is_takeover
@@ -1707,7 +1764,7 @@ def get_conversation_state(sender_id: str = None, conversation_id: int = None, w
             default_state["conversation_version"] = int(row_dict.get("conversation_version") or 1)
             default_state["takeover_at"] = row_dict.get("takeover_at")
             default_state["takeover_by"] = row_dict.get("takeover_by")
-            default_state["takeover_reason"] = row_dict.get("takeover_reason")
+            default_state["takeover_reason"] = row_dict.get("takeover_reason") or ("muted_or_blacklisted" if is_muted else None)
     except Exception as e:
         print(f"[DB get_conversation_state Error]: {e}")
 
