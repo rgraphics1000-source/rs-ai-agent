@@ -1640,10 +1640,36 @@ async def api_get_diagnostics_facebook():
     is_real = len(clean_tok) > 30 and not clean_tok.startswith("EAATest") and not clean_tok.startswith("EAA_")
     
     meta_val = None
+    me_val = None
+    perm_val = None
     if is_real:
         try:
+            # Query /me to discover the exact Identity (Page ID / User ID) associated with this token
+            r_me = requests.get(
+                "https://graph.facebook.com/v19.0/me",
+                headers={"Authorization": f"Bearer {clean_tok}"},
+                params={"fields": "id,name,category,link"},
+                timeout=5
+            )
+            me_val = {"status_code": r_me.status_code, "data": r_me.json()}
+        except Exception as ex_me:
+            me_val = {"error": str(ex_me)}
+
+        try:
+            # Query /me/permissions to see granted scopes
+            r_perm = requests.get(
+                "https://graph.facebook.com/v19.0/me/permissions",
+                headers={"Authorization": f"Bearer {clean_tok}"},
+                timeout=5
+            )
+            perm_val = {"status_code": r_perm.status_code, "data": r_perm.json()}
+        except Exception as ex_p:
+            perm_val = {"error": str(ex_p)}
+
+        configured_page_id = str(get_setting("fb_page_id") or "61593566426980")
+        try:
             r = requests.get(
-                f"https://graph.facebook.com/v19.0/105116472071659",
+                f"https://graph.facebook.com/v19.0/{configured_page_id}",
                 headers={"Authorization": f"Bearer {clean_tok}"},
                 params={"fields": "id,name,category,link"},
                 timeout=5
@@ -1657,7 +1683,8 @@ async def api_get_diagnostics_facebook():
 
     return {
         "workspace_id": 1,
-        "page_id": "105116472071659",
+        "configured_page_id": str(get_setting("fb_page_id") or "61593566426980"),
+        "page_id": page.get("page_id", "61593566426980") if page else "61593566426980",
         "page_name": page.get("page_name", "RS Graphics (আরএস গ্রাফিক্স)") if page else "RS Graphics (আরএস গ্রাফিক্স)",
         "token_present": bool(clean_tok),
         "token_prefix": token_prefix,
@@ -1665,9 +1692,10 @@ async def api_get_diagnostics_facebook():
         "token_length": token_len,
         "is_real_token": is_real,
         "meta_graph_version": "v19.0",
-        "endpoint_url": "https://graph.facebook.com/v19.0/me/messages",
         "ready_for_send": bool(meta_val and meta_val.get("valid")),
-        "meta_validation": meta_val
+        "meta_validation": meta_val,
+        "me_identity": me_val,
+        "permissions": perm_val
     }
 
 @app.get("/api/diagnostics")
