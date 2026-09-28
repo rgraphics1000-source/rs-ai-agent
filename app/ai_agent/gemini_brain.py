@@ -2728,7 +2728,11 @@ async def process_customer_message(
         ]
 
         # --- ADVANCED REAL-TIME CONTEXT & MEMORY TRACKING ---
-        hist_ctx = analyze_conversation_history_context(conversation_history, message_text, sender_id=sender_id, workspace_id=ws_id)
+        clean_history = [
+            m for m in (conversation_history or [])
+            if not any(ph in str(m.get("content") or "").lower() for ph in ["[ai is silent", "owner has taken over", "ai will stay silent"])
+        ]
+        hist_ctx = analyze_conversation_history_context(clean_history, message_text, sender_id=sender_id, workspace_id=ws_id)
         known_qty_in_history = hist_ctx.get("known_quantity")
         if known_qty_in_history is None and sender_id:
             known_qty_in_history = get_conversation_order_quantity(sender_id, workspace_id=ws_id)
@@ -2819,6 +2823,11 @@ async def process_customer_message(
                 continue
 
         raw_text = response.text if response and response.text else generate_smart_fallback_reply(message_text, customer_name, workspace_id=ws_id, page_id=page_id)
+
+        # Intercept hallucinated silence meta-responses or owner takeover strings
+        if any(ph in raw_text.lower() for ph in ["[ai is silent", "owner has taken over", "ai will stay silent"]):
+            print(f"[Gemini Silence Intercepted]: Generated silence meta-text '{raw_text[:40]}'. Falling back to smart sales reply.")
+            raw_text = generate_smart_fallback_reply(message_text, customer_name, workspace_id=ws_id, page_id=page_id)
 
         # Parse order json block if present
         order_created = None

@@ -910,6 +910,12 @@ async def process_facebook_batch(batch: PendingBatch):
 
     reply_text = ai_result.get("reply_text", "")
     if reply_text:
+        # Filter out meta-silence or owner takeover hallucinatory responses
+        c_low = reply_text.lower()
+        if any(ph in c_low for ph in ["[ai is silent", "owner has taken over", "ai will stay silent"]):
+            print(f"[Facebook Messenger Silence Guard]: Suppressed meta-silence reply '{reply_text}'")
+            return
+
         print(f"[Facebook Messenger Replying on Workspace {workspace_id}]: '{reply_text[:60]}...' to {sender_id}")
         send_ok = send_fb_text_message(sender_id, reply_text, page_token=page_token, page_id=page_id)
         if send_ok:
