@@ -612,26 +612,27 @@ def reply_to_fb_comment(comment_id: str, message: str, page_token: str = None, p
     ok, _ = reply_to_fb_comment_detailed(comment_id, message, page_token=page_token, page_id=page_id)
     return ok
 
-async def scan_and_reply_to_recent_facebook_comments(page_id: str = "105116472071659", page_token: str = None, workspace_id: int = 1) -> Dict[str, Any]:
+async def scan_and_reply_to_recent_facebook_comments(page_id: str = None, page_token: str = None, workspace_id: int = 1) -> Dict[str, Any]:
     """
     Actively scans recent posts and comments on the Facebook Page via Meta Graph API.
     Identifies any unreplied customer comments and immediately reacts, replies publicly,
     and sends private DM if inquiry.
     Guarantees 100% reply delivery even if Meta webhooks are delayed or dropped!
     """
-    token = page_token or get_fb_token(page_id)
+    pid = page_id or get_setting("fb_page_id") or os.getenv("FB_PAGE_ID") or settings.FB_PAGE_ID or "61593566426980"
+    token = page_token or get_fb_token(pid)
     if not token or str(token).startswith("EAA_TEST"):
-        token = get_setting("fb_page_access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN") or settings.FB_PAGE_ACCESS_TOKEN or get_fb_token(page_id)
+        token = get_setting("fb_page_access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN") or settings.FB_PAGE_ACCESS_TOKEN or get_fb_token(pid)
 
     clean_token = str(token or "").strip().strip('"').strip("'")
     if clean_token.lower().startswith("bearer "):
         clean_token = clean_token[7:].strip()
 
-    if not clean_token or not page_id:
+    if not clean_token or not pid:
         return {"success": False, "error": "Missing token or page_id"}
 
     graph_version = getattr(settings, "META_GRAPH_VERSION", "v19.0") or "v19.0"
-    url = f"https://graph.facebook.com/{graph_version}/{page_id}/feed"
+    url = f"https://graph.facebook.com/{graph_version}/{pid}/feed"
     params = {
         "fields": "id,message,created_time,comments.limit(25){id,message,from,created_time,comments.limit(10){id,from}}",
         "limit": 5,

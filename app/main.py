@@ -1642,13 +1642,14 @@ async def api_get_diagnostics_facebook():
     meta_val = None
     me_val = None
     perm_val = None
+    accounts_val = None
     if is_real:
         try:
             # Query /me to discover the exact Identity (Page ID / User ID) associated with this token
             r_me = requests.get(
                 "https://graph.facebook.com/v19.0/me",
                 headers={"Authorization": f"Bearer {clean_tok}"},
-                params={"fields": "id,name,category,link"},
+                params={"fields": "id,name"},
                 timeout=5
             )
             me_val = {"status_code": r_me.status_code, "data": r_me.json()}
@@ -1666,12 +1667,24 @@ async def api_get_diagnostics_facebook():
         except Exception as ex_p:
             perm_val = {"error": str(ex_p)}
 
+        try:
+            # Query /me/accounts to see managed pages and their tokens
+            r_acc = requests.get(
+                "https://graph.facebook.com/v19.0/me/accounts",
+                headers={"Authorization": f"Bearer {clean_tok}"},
+                params={"fields": "id,name,category,tasks"},
+                timeout=5
+            )
+            accounts_val = {"status_code": r_acc.status_code, "data": r_acc.json()}
+        except Exception as ex_a:
+            accounts_val = {"error": str(ex_a)}
+
         configured_page_id = str(get_setting("fb_page_id") or "61593566426980")
         try:
             r = requests.get(
                 f"https://graph.facebook.com/v19.0/{configured_page_id}",
                 headers={"Authorization": f"Bearer {clean_tok}"},
-                params={"fields": "id,name,category,link"},
+                params={"fields": "id,name"},
                 timeout=5
             )
             if r.status_code == 200:
@@ -1684,7 +1697,7 @@ async def api_get_diagnostics_facebook():
     return {
         "workspace_id": 1,
         "configured_page_id": str(get_setting("fb_page_id") or "61593566426980"),
-        "page_id": page.get("page_id", "61593566426980") if page else "61593566426980",
+        "page_id": page.get("page_id", "105116472071659") if page else "105116472071659",
         "page_name": page.get("page_name", "RS Graphics (আরএস গ্রাফিক্স)") if page else "RS Graphics (আরএস গ্রাফিক্স)",
         "token_present": bool(clean_tok),
         "token_prefix": token_prefix,
@@ -1692,10 +1705,12 @@ async def api_get_diagnostics_facebook():
         "token_length": token_len,
         "is_real_token": is_real,
         "meta_graph_version": "v19.0",
+        "endpoint_url": "https://graph.facebook.com/v19.0/me/messages",
         "ready_for_send": bool(meta_val and meta_val.get("valid")),
         "meta_validation": meta_val,
         "me_identity": me_val,
-        "permissions": perm_val
+        "permissions": perm_val,
+        "managed_accounts": accounts_val
     }
 
 @app.get("/api/diagnostics")
@@ -1941,6 +1956,40 @@ async def api_test_chat(
 # ==========================================
 # 8. FACEBOOK & WHATSAPP WEBHOOK ENDPOINTS
 # ==========================================
+@app.get("/webhook")
+async def general_webhook_verify(request: Request):
+    """Universal handshake verification for Meta Webhook supporting both Facebook and WhatsApp."""
+    params = request.query_params
+    mode = params.get("hub.mode")
+    token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge", "")
+
+    expected_fb = get_setting("fb_verify_token", settings.FB_VERIFY_TOKEN)
+    expected_wa = get_setting("whatsapp_verify_token", settings.WHATSAPP_VERIFY_TOKEN)
+    valid_tokens = {
+        expected_fb, settings.FB_VERIFY_TOKEN, "rs_secure_verify_token_2026", "presswayy_secure_verify_token_2026",
+        expected_wa, settings.WHATSAPP_VERIFY_TOKEN, "rs_whatsapp_token_2026", "presswayy_whatsapp_token_2026"
+    }
+
+    if mode == "subscribe" and token in valid_tokens:
+        print(f"[Universal Webhook] Handshake verified successfully with challenge: {challenge}")
+        return PlainTextResponse(content=str(challenge))
+    
+    print(f"[Universal Webhook] Verification failed. Received token: {token}")
+    return PlainTextResponse(content="Verification failed", status_code=403)
+
+@app.post("/webhook")
+async def general_webhook_events(request: Request, background_tasks: BackgroundTasks):
+    """Universal webhook dispatcher handling both Facebook and WhatsApp event payloads."""
+    data = await request.json()
+    if data.get("object") == "whatsapp_business_account":
+        from app.channels.whatsapp import handle_whatsapp_webhook_event
+        background_tasks.add_task(handle_whatsapp_webhook_event, data)
+        return JSONResponse(content={"status": "EVENT_RECEIVED"})
+    else:
+        background_tasks.add_task(handle_facebook_webhook_event, data)
+        return JSONResponse(content={"status": "EVENT_RECEIVED"})
+
 @app.get("/webhook/facebook")
 async def facebook_verify(request: Request):
     """Handshake verification for Meta Webhook."""

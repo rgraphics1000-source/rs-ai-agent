@@ -1586,26 +1586,27 @@ def is_muted_number(phone: str) -> bool:
 
     # 2. Digit-based / last 10 digit comparison
     clean_target = "".join([c for c in s_raw if c.isdigit()])
-    if clean_target:
-        target_last10 = clean_target[-10:] if len(clean_target) >= 10 else clean_target
+    if len(clean_target) >= 10:
+        target_last10 = clean_target[-10:]
         for existing in current:
             c_exist = "".join([c for c in str(existing) if c.isdigit()])
-            e_last10 = c_exist[-10:] if len(c_exist) >= 10 else c_exist
-            if clean_target and c_exist and (clean_target == c_exist or (target_last10 and target_last10 == e_last10)):
-                return True
+            if len(c_exist) >= 10:
+                e_last10 = c_exist[-10:]
+                if target_last10 == e_last10:
+                    return True
 
     # 3. Direct DB Check on conversations table
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        if clean_target and len(clean_target) >= 8:
-            target_last10 = clean_target[-10:] if len(clean_target) >= 10 else clean_target
+        if len(clean_target) >= 10:
+            target_last10 = clean_target[-10:]
             cursor.execute("""
                 SELECT 1 FROM conversations 
                 WHERE (human_takeover = 1 OR admin_takeover = 1 OR ai_enabled = 0)
-                  AND (sender_id = ? OR sender_id LIKE ? OR sender_id LIKE ?)
+                  AND (sender_id = ? OR sender_id LIKE ?)
                 LIMIT 1
-            """, (s_raw, f"%{target_last10}%", f"%{clean_target}%"))
+            """, (s_raw, f"%{target_last10}"))
         else:
             cursor.execute("""
                 SELECT 1 FROM conversations 
@@ -1953,7 +1954,8 @@ def is_conversation_ai_active(sender_id: str = None, conversation_id: int = None
             conn = get_db_connection()
             cursor = conn.cursor()
             clean_s = "".join(c for c in str(sender_id or "") if c.isdigit())
-            last10 = clean_s[-10:] if len(clean_s) >= 10 else clean_s
+            has_10_digits = len(clean_s) >= 10
+            last10 = clean_s[-10:] if has_10_digits else None
 
             if conversation_id:
                 cursor.execute("""
@@ -1966,9 +1968,9 @@ def is_conversation_ai_active(sender_id: str = None, conversation_id: int = None
                     SELECT m.sender_type, m.sender_role, m.direction 
                     FROM messages m
                     JOIN conversations c ON m.conversation_id = c.id
-                    WHERE (c.sender_id = ? OR c.sender_id LIKE ? OR c.sender_id LIKE ?)
+                    WHERE (c.sender_id = ? OR c.sender_id LIKE ?)
                     ORDER BY m.id DESC LIMIT 1
-                """, (str(sender_id), f"%{last10}%", f"%{clean_s}%"))
+                """, (str(sender_id), f"%{last10}"))
             else:
                 cursor.execute("""
                     SELECT m.sender_type, m.sender_role, m.direction 
