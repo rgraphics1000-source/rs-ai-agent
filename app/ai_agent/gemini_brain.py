@@ -192,6 +192,11 @@ def build_system_instruction(customer_name: str = "", workspace_id: int = 1, pag
    - কাস্টমার যদি আমাদের শপের ঠিকানা, লোকেশন বা অফিস/দোকান কোথায় জানতে চায় (যেমন: "আপনাদের ঠিকানা কি?", "আপনাদের ঠিকানা কোথায়?", "লোকেশন কোথায়?", "অফিস কোথায়?", "দোকান কোথায়?", "কোথায় অবস্থিত?", "address", "location"):
      সরাসরি ও স্পষ্টভাবে বলবে: "জি {honorific}, আমাদের ঠিকানা: কালিয়াকৈর কাঁচাবাজার, আকরান, বিরুলিয়া, সাভার, ঢাকা।"
 
+০.৬. চাবির রিং, ক্রেস্ট, মগ ও অন্যান্য কাস্টমাইজড প্রোডাক্ট (Other Custom Products Rule):
+   - কাস্টমার যদি চাবির রিং (Keyring), ক্রেস্ট (Crest), মগ (Mug), ব্যানার বা ভিজিটিং কার্ড সম্পর্কে জানতে চায় (যেমন: "চাবির রিং ও বানান নাকি?", "চাবির রিং বানান কি?", "কী রিং তৈরি করেন?", "মগ প্রিন্ট করেন?"):
+     সরাসরি ও ইতিবাচকভাবে বলবে: "জি {honorific}, আমরা বিভিন্ন ধরনের প্রিমিয়াম কোয়ালিটির কাস্টমাইজড চাবির রিংও (Keyring) তৈরি করে থাকি। আপনার প্রতিষ্ঠানের নাম বা লোগো দিয়ে কত পিস প্রয়োজন জানাবেন প্লিজ?"
+     (কাস্টমার অন্য পণ্য জানতে চাইলে ভুলেও আইডি কার্ড বা প্যাকেজ ৭-এর দাম নিয়ে কথা বলবে না)।
+
 ১. সর্বনিম্ন অর্ডারের পরিমাণ (MOQ - Minimum 30 Pcs):
    - আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস (30 pcs)।
    - কাস্টমার যদি ৩০ পিসের কম বলে (যেমন: ৫, ১০, ১৫, ২০, ২৫ পিস ইত্যাদি)—তাহলে নম্রভাবে বলতে হবে: "দুঃখিত {honorific}, আমাদের সর্বনিম্ন অর্ডারের পরিমাণ হলো ৩০ পিস। ৩০ পিস বা তার বেশি হলে আমরা আইডি কার্ডের অর্ডার নিচ্ছি।"
@@ -1534,6 +1539,110 @@ def evaluate_id_card_workflow(
             "response_source": "shop_address_inquiry"
         }
 
+    # Check Delivery Charge / Courier Inquiry
+    is_asking_delivery = (
+        any(k in msg for k in [
+            "ডেলিভারি চার্জ কত", "ডেলিভারি কত", "ডেলিভারি খরচ কত", "ডেলিভারি ফি কত", "কুরিয়ার চার্জ কত", "কুরিয়ার খরচ কত",
+            "ডেলিভারি চার্জ", "কুরিয়ার চার্জ", "ডেলিভারি খরচ", "কুরিয়ার খরচ", "হোম ডেলিভারি", "কুরিয়ারে পাঠান", "ডেলিভারি দেন কি", "কুরিয়ারে পাঠাবেন"
+        ]) or 
+        (any(k in msg for k in ["ডেলিভারি", "কুরিয়ার", "courier", "delivery"]) and any(q in msg for q in ["কত", "কতো", "চার্জ", "ফি", "খরচ", "কিভাবে", "কীভাবে", "হবে", "করেন"]))
+    ) and not any(k in msg for k in ["প্যাকেজ", "পেকেজ"])
+    if is_asking_delivery:
+        return {
+            "reply_text": f"জি {honorific}, ডেলিভারি চার্জ ঢাকার ভেতরে ৮০ টাকা এবং ঢাকার বাইরে ১৩০ টাকা (কুরিয়ার সার্ভিসের মাধ্যমে সারা বাংলাদেশে ডেলিভারি দেওয়া হয়)।",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "delivery_charge_inquiry"
+        }
+
+    # Check Production Time / Delivery Duration Inquiry
+    is_asking_timeline = (
+        any(k in msg for k in [
+            "কতদিন লাগবে", "কয়দিন লাগবে", "কবে পাব", "কখন পাব", "কত সময় লাগবে", "সময় কত লাগবে", "দেরি হবে",
+            "কতদিন সময় লাগবে", "কয়দিন সময় লাগবে", "কবে ডেলিভারি", "কখন ডেলিভারি"
+        ]) or 
+        (any(k in msg for k in ["সময়", "কতদিন", "কয়দিন", "কবে", "duration", "time"]) and any(q in msg for q in ["লাগবে", "পাব", "দিবেন", "হবে", "প্রয়োজন"]))
+    ) and not any(k in msg for k in ["প্যাকেজ", "পেকেজ"])
+    if is_asking_timeline:
+        return {
+            "reply_text": f"জি {honorific}, তথ্য দেওয়ার পর ডিজাইন ও প্রস্তুত করতে ৫ থেকে ৬ দিন সময় লাগবে। এরপর কুরিয়ারের মাধ্যমে ২৪ থেকে ৪৮ ঘণ্টার মধ্যে ডেলিভারি পেয়ে যাবেন {honorific}।",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "production_timeline_inquiry"
+        }
+
+    # Check Other Custom Products Inquiry (Keyrings, Crests, Mugs, Banners, Visiting Cards)
+    has_keyring = any(k in msg for k in ["চাবির রিং", "চাবি রিং", "কী রিং", "কি রিং", "কী-রিং", "কি-রিং", "কীচেন", "কিচেন", "keyring", "key-ring", "key ring", "keychain"])
+    if has_keyring:
+        is_asking_rate = any(k in msg for k in ["দাম", "রেট", "খরচ", "প্রাইস", "কত", "কতো"])
+        if is_asking_rate:
+            reply_text = f"জি {honorific}, আমরা বিভিন্ন ধরনের প্রিমিয়াম কোয়ালিটির মেটাল ও এক্রিলিক কাস্টমাইজড চাবির রিং তৈরি করে থাকি। অর্ডারের পরিমাণ ও সাইজের ওপর ভিত্তি করে মূল্য নির্ধারিত হয়। আপনার প্রতিষ্ঠানের জন্য মোট কত পিস চাবির রিং প্রয়োজন জানাবেন {honorific}?"
+        else:
+            reply_text = f"জি {honorific}, আমরা প্রতিষ্ঠানের নাম ও লোগো খোদাই/প্রিন্টসহ প্রিমিয়াম কোয়ালিটির কাস্টমাইজড চাবির রিংও (Keyring) তৈরি করে থাকি। আপনার কত পিস চাবির রিং প্রয়োজন জানাবেন {honorific}?"
+        return {
+            "reply_text": reply_text,
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "custom_keyring_inquiry"
+        }
+
+    has_crest = any(k in msg for k in ["ক্রেস্ট", "crest", "মেডেল", "medal", "সম্মাননা স্মারক"])
+    if has_crest:
+        return {
+            "reply_text": f"জি {honorific}, আমরা মেটাল, ক্রিস্টাল ও কাঠের আকর্ষণীয় ডিজাইনের কাস্টমাইজড ক্রেস্ট ও মেডেলও তৈরি করে থাকি। আপনার কত পিস ক্রেস্ট প্রয়োজন জানাবেন {honorific}?",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "custom_crest_inquiry"
+        }
+
+    has_mug = any(k in msg for k in ["মগ", "mug", "কাস্টমাইজড মগ"])
+    if has_mug:
+        return {
+            "reply_text": f"জি {honorific}, আমরা ছবি ও লোগো প্রিন্টসহ প্রিমিয়াম কোয়ালিটির সিরামিক মগও তৈরি করে থাকি। আপনার কত পিস মগ প্রয়োজন জানাবেন {honorific}?",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "custom_mug_inquiry"
+        }
+
+    has_banner = any(k in msg for k in ["ব্যানার", "banner", "পোস্টার", "poster", "ফেস্টুন"])
+    if has_banner:
+        return {
+            "reply_text": f"জি {honorific}, আমরা হাই-কোয়ালিটি পিভিসি ডিজিটাল ব্যানার, ফেস্টুন ও পোস্টার প্রিন্ট করে থাকি। আপনার ব্যানারের সাইজ ও বিবরণ জানাবেন {honorific}?",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "custom_banner_inquiry"
+        }
+
+    has_visiting_card = any(k in msg for k in ["ভিজিটিং কার্ড", "visiting card", "বিজনেস কার্ড", "business card"])
+    if has_visiting_card:
+        return {
+            "reply_text": f"জি {honorific}, আমরা ম্যাট ও গ্লসি লেমিনেশনসহ প্রিমিয়াম কোয়ালিটির ভিজিটিং কার্ড প্রিন্ট করে থাকি। আপনার কত বক্স/পিস ভিজিটিং কার্ড প্রয়োজন জানাবেন {honorific}?",
+            "media_sequence": [],
+            "matched_images": [],
+            "voice_url": "",
+            "video_url": "",
+            "order_created": None,
+            "response_source": "custom_visiting_card_inquiry"
+        }
+
     # Check if customer is asking about an individual item's price (ribbon, card, cover)
     is_package_photo_quoted = any(k in msg for k in ["package", "wa0002", "wa0003", "wa0006", "wa0057", "wa0023", "wa0045", "wa0081", "প্যাকেজ"])
     is_asking_photo = any(k in msg for k in ["ছবি", "স্যাম্পল", "পিক", "ফটো", "দেখান", "পাঠান"])
@@ -2058,27 +2167,42 @@ def evaluate_id_card_workflow(
     # Case D1: Customer asks about price / discount / bargaining on a quoted or specific package (e.g., "এটা কত রাখা যাবে", "এটি কত রাখা যায়", "এটি?")
     msg_no_tags = re.sub(r'\[কাস্টমার পূর্ববর্তী.*?\]', '', msg).strip()
 
-    is_asking_pkg_price_or_discount = any(k in msg for k in [
-        "কত রাখা যাবে", "কত রাখবেন", "কত রাখবেন ভাই", "কত রাখা যায়", "কত রাখা যাই", "কত রাখা যায়", 
-        "কত পরবে", "কত পড়বে", "কত পরবে ভাই", "কত পড়বে ভাই", "কত হবে", "কত হবে ভাই", "কত রাখা সম্ভভ", "কত রাখা সম্ভব",
-        "দাম কত", "কত দাম", "রেট কত", "খরচ কত", "প্রাইস কত", "একদাম কত", "লাস্ট প্রাইস", "সর্বনিম্ন কত", "ফিক্সড কত",
-        "কম রাখা যাবে", "কম রাখা যাবে কি", "কম রাখা যায়", "কম রাখা যায়", "কম হবে", "কম হবে কি", 
-        "কিছু কমানো যাবে", "কমানো যাবে", "ডিসকাউন্ট", "ছাড়", "কমাইয়া রাখেন", "কমিয়ে রাখেন", "কমাইয়া রাখা",
-        "কত রাখবেন বলেন", "কত রাখতে পারবেন", "কত রাখা পসিবল", "কত তে দিবেন", "কততে দিবেন"
-    ]) or (
-        ("কত" in msg or "দাম" in msg or "রেট" in msg or "প্রাইস" in msg or "কম" in msg) and 
-        ("রাখা" in msg or "রাখবেন" in msg or "যাবে" in msg or "যায়" in msg or "যায়" in msg or "হবে" in msg or "পড়বে" in msg or "পরবে" in msg or "দিবেন" in msg or "দেওয়া" in msg or "দেয়া" in msg or "সম্ভব" in msg)
-    ) or (
-        # Question mark or brief inquiry on a package (e.g. "এটি?", "এটা?", "এটি", "এটি কত", "দাম?")
-        ("?" in msg or "কত" in msg or "দাম" in msg or msg_no_tags in ["এটি", "এটি?", "এটা", "এটা?", "এইটা", "এইটা?", "এটি কত", "এটি কত?", "এটা কত", "এটা কত?"]) and
-        not any(k in msg for k in ["নিব", "নেব", "দেন", "দিন", "ফাইনাল", "কনফার্ম", "অর্ডার", "বানাব", "করব", "পছন্দ হয়েছে", "পছন্দ হইছে"])
+    is_non_pkg_inquiry = any(k in msg for k in [
+        "চাবির রিং", "চাবি রিং", "কী রিং", "কি রিং", "কী-রিং", "কি-রিং", "কীচেন", "কিচেন", "keyring", "keychain",
+        "মগ", "ক্রেস্ট", "মেডেল", "টি শার্ট", "টি-শার্ট", "টিশার্ট", "ব্যানার", "পোস্টার", "স্টিকার", "সিল", "ভিজিটিং কার্ড",
+        "ডেলিভারি", "কুরিয়ার", "ঠিকানা", "লোকেশন", "অফিস", "দোকান", "কোথায়", "কোথায়",
+        "সময়", "কতদিন", "কয়দিন", "বিকাশ", "নগদ", "অ্যাডভান্স", "অগ্রিম",
+        "বানান নাকি", "বানান কি", "করেন নাকি", "করেন কি", "আছে নাকি", "আছে কি"
+    ])
+
+    is_asking_pkg_price_or_discount = (not is_non_pkg_inquiry) and (
+        any(k in msg for k in [
+            "কত রাখা যাবে", "কত রাখবেন", "কত রাখবেন ভাই", "কত রাখা যায়", "কত রাখা যাই", "কত রাখা যায়", 
+            "কত পরবে", "কত পড়বে", "কত পরবে ভাই", "কত পড়বে ভাই", "কত হবে", "কত হবে ভাই", "কত রাখা সম্ভভ", "কত রাখা সম্ভব",
+            "দাম কত", "কত দাম", "রেট কত", "খরচ কত", "প্রাইস কত", "একদাম কত", "লাস্ট প্রাইস", "সর্বনিম্ন কত", "ফিক্সড কত",
+            "কম রাখা যাবে", "কম রাখা যাবে কি", "কম রাখা যায়", "কম রাখা dynamics", "কম হবে", "কম হবে কি", 
+            "কিছু কমানো যাবে", "কমানো যাবে", "ডিসকাউন্ট", "ছাড়", "কমাইয়া রাখেন", "কমিয়ে রাখেন", "কমাইয়া রাখা",
+            "কত রাখবেন বলেন", "কত রাখতে পারবেন", "কত রাখা পসিবল", "কত তে দিবেন", "কততে দিবেন"
+        ]) or (
+            ("কত" in msg or "দাম" in msg or "রেট" in msg or "প্রাইস" in msg or "কম" in msg) and 
+            ("রাখা" in msg or "রাখবেন" in msg or "যাবে" in msg or "যায়" in msg or "যায়" in msg or "হবে" in msg or "পড়বে" in msg or "পরবে" in msg or "দিবেন" in msg or "দেওয়া" in msg or "দেয়া" in msg or "সম্ভব" in msg)
+        ) or (
+            # Brief inquiry on a package (e.g. "এটি?", "এটা?", "এটি", "এটি কত", "দাম?")
+            (
+                msg_no_tags in ["এটি", "এটি?", "এটা", "এটা?", "এইটা", "এইটা?", "এটি কত", "এটি কত?", "এটা কত", "এটা কত?", "দাম কত", "দাম কত?", "দাম?", "রেট কত", "রেট কত?", "রেট?", "কত?", "খরচ কত", "খরচ কত?"] or
+                re.fullmatch(r'^(?:এটি|এটা|এইটা|দাম|রেট|কত|খরচ)[\s\?？]*$', msg_no_tags)
+            ) and
+            not any(k in msg for k in ["নিব", "নেব", "দেন", "দিন", "ফাইনাল", "কনফার্ম", "অর্ডার", "বানাব", "করব", "পছন্দ হয়েছে", "পছন্দ হইছে"])
+        )
     )
 
-    is_package_quoted_or_mentioned = any(k in msg for k in [
-        "[কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন:", "প্যাকেজের রিপ্লাই", "package", "wa0002", "wa0003",
-        "wa0006", "wa0057", "wa0023", "wa0045", "wa0081", "প্যাকেজ", "পেকেজ",
-        "এটি", "এটা", "এইটা", "এই প্যাকেজ", "এই প্যাকেজটি", "এই প্যাকেজটা", "এই ছবি", "এই ছবিটি"
-    ]) or any(k in last_bot_msg for k in ["কোন প্যাকেজ", "প্যাকেজটি পছন্দ", "প্যাকেজের ছবি", "প্যাকেজ পছন্দ", "প্যাকেজগুলো পাঠানো হলো", "পছন্দ হয় জানাবেন", "পছন্দ হয়েছে", "কোন প্রোডাক্ট বা প্যাকেজটি", "কোন প্রোডাক্ট বা প্যাকেজ", "প্যাকেজটি নিয়ে", "প্রোডাক্ট বা প্যাকেজ", "উপযুক্ত"])
+    is_package_quoted_or_mentioned = (not is_non_pkg_inquiry) and (
+        any(k in msg for k in [
+            "[কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন:", "প্যাকেজের রিপ্লাই", "package", "wa0002", "wa0003",
+            "wa0006", "wa0057", "wa0023", "wa0045", "wa0081", "প্যাকেজ", "পেকেজ",
+            "এটি", "এটা", "এইটা", "এই প্যাকেজ", "এই প্যাকেজটি", "এই প্যাকেজটা", "এই ছবি", "এই ছবিটি"
+        ]) or any(k in last_bot_msg for k in ["কোন প্যাকেজ", "প্যাকেজটি পছন্দ", "প্যাকেজের ছবি", "প্যাকেজ পছন্দ", "প্যাকেজগুলো পাঠানো হলো", "পছন্দ হয় জানাবেন", "পছন্দ হয়েছে", "কোন প্রোডাক্ট বা প্যাকেজটি", "কোন প্রোডাক্ট বা প্যাকেজ", "প্যাকেজটি নিয়ে", "প্রোডাক্ট বা প্যাকেজ", "উপযুক্ত"])
+    )
 
     if is_asking_pkg_price_or_discount and is_package_quoted_or_mentioned and not is_refusing:
         # Detect exact package using dedicated helper
@@ -2112,7 +2236,7 @@ def evaluate_id_card_workflow(
 
     # Case D1.5: Customer proposes a specific price / per-piece rate (e.g., "আমি আশি করে দিব", "৮০ টাকা করে দেওয়া যাবে?", "৭০ টাকা দেওয়া যাবে না?")
     proposed_price = extract_bargaining_price_offer(msg)
-    if proposed_price is not None and not is_refusing:
+    if proposed_price is not None and not is_refusing and not is_non_pkg_inquiry:
         pkg_info = detect_quoted_or_mentioned_package(msg)
         if pkg_info.get("pkg_num") == 7 and hist_ctx.get("chosen_package"):
             chosen_p = hist_ctx["chosen_package"]
@@ -2609,6 +2733,14 @@ def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", worksp
         # Shop address inquiry fallback
         if any(k in msg for k in ["ঠিকানা", "লোকেশন", "কোথায় অবস্থিত", "কোথায় অবস্থিত", "অফিস কোথায়", "দোকান কোথায়", "address", "location"]):
             return f"জি {honorific}, আমাদের ঠিকানা: কালিয়াকৈর কাঁচাবাজার, আকরান, বিরুলিয়া, সাভার, ঢাকা।"
+
+        # Other custom products fallback
+        if any(k in msg for k in ["চাবির রিং", "চাবি রিং", "কী রিং", "কি রিং", "কীচেন", "কিচেন", "keyring"]):
+            return f"জি {honorific}, আমরা বিভিন্ন ধরনের প্রিমিয়াম কোয়ালিটির কাস্টমাইজড চাবির রিংও (Keyring) তৈরি করে থাকি। আপনার কত পিস চাবির রিং প্রয়োজন জানাবেন {honorific}?"
+        if any(k in msg for k in ["মগ", "mug"]):
+            return f"জি {honorific}, আমরা ছবি ও লোগো প্রিন্টসহ প্রিমিয়াম কোয়ালিটির সিরামিক মগ তৈরি করে থাকি। আপনার কত পিস মগ প্রয়োজন জানাবেন {honorific}?"
+        if any(k in msg for k in ["ক্রেস্ট", "crest", "মেডেল"]):
+            return f"জি {honorific}, আমরা বিভিন্ন ধরনের আকর্ষণীয় ডিজাইনের কাস্টমাইজড ক্রেস্ট ও মেডেল তৈরি করে থাকি। আপনার কত পিস ক্রেস্ট প্রয়োজন জানাবেন {honorific}?"
 
         # Specific item price queries in fallback
         if "t-014" in msg or "t014" in msg:

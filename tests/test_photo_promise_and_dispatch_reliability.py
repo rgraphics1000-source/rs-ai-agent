@@ -219,6 +219,67 @@ class TestPhotoPromiseAndDispatchReliability(unittest.IsolatedAsyncioTestCase):
         photos_price = detect_sample_photos_to_send("ফিতা কতো কর", bot_reply=elaborate_reply, workspace_id=1)
         self.assertEqual(photos_price, [])
 
+    def test_12_keyring_query_does_not_trigger_package_7_quote(self):
+        """
+        When bot prompted for package selection ('আপনার কোন প্যাকেজটি পছন্দ হয়েছে, বলুন স্যার।'),
+        and customer asks 'চাবির রিং ও বানান নাকি?', the bot must NOT misinterpret this as Package 7 selection
+        or bargaining inquiry. It must accurately answer about customized keyrings.
+        """
+        history = [
+            {"sender": "bot", "content": "আপনার কোন প্যাকেজটি পছন্দ হয়েছে, বলুন স্যার।"}
+        ]
+        res = evaluate_id_card_workflow(
+            message_text="চাবির রিং ও বানান নাকি?",
+            conversation_history=history,
+            customer_name="Customer",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "custom_keyring_inquiry")
+        self.assertNotIn("৭ নম্বর প্যাকেজ", res["reply_text"])
+        self.assertNotIn("৯১ টাকা", res["reply_text"])
+        self.assertIn("চাবির রিং", res["reply_text"])
+
+    def test_13_delivery_query_does_not_trigger_package_7_quote(self):
+        """
+        Customer asking 'ডেলিভারি চার্জ কত?' after package prompt must receive delivery fee details,
+        NOT Package 7 quote.
+        """
+        history = [
+            {"sender": "bot", "content": "আপনার কোন প্যাকেজটি পছন্দ হয়েছে, বলুন স্যার।"}
+        ]
+        res = evaluate_id_card_workflow(
+            message_text="ডেলিভারি চার্জ কত?",
+            conversation_history=history,
+            customer_name="Customer",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "delivery_charge_inquiry")
+        self.assertNotIn("৭ নম্বর প্যাকেজ", res["reply_text"])
+        self.assertIn("৮০ টাকা", res["reply_text"])
+        self.assertIn("১৩০ টাকা", res["reply_text"])
+
+    def test_14_production_timeline_query_does_not_trigger_package_7_quote(self):
+        """
+        Customer asking 'কতদিন সময় লাগবে?' after package prompt must receive timeline details,
+        NOT Package 7 quote.
+        """
+        history = [
+            {"sender": "bot", "content": "আপনার কোন প্যাকেজটি পছন্দ হয়েছে, বলুন স্যার।"}
+        ]
+        res = evaluate_id_card_workflow(
+            message_text="কতদিন সময় লাগবে?",
+            conversation_history=history,
+            customer_name="Customer",
+            workspace_id=1
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response_source"], "production_timeline_inquiry")
+        self.assertNotIn("৭ নম্বর প্যাকেজ", res["reply_text"])
+        self.assertIn("৫ থেকে ৬ দিন", res["reply_text"])
+
 
 if __name__ == "__main__":
     unittest.main()
+
