@@ -1035,19 +1035,45 @@ async def process_whatsapp_batch(batch: PendingBatch):
     bot_reply_low = str(ai_result.get("reply_text") or "").lower()
     is_workflow_dispatch = any(k in resp_source for k in ["dispatch", "sample", "package", "component"])
     is_voice_turn = bool(audio_bytes) or ("ভয়েস" in (combined_text or "")) or ("ভয়েস" in (combined_text or "")) or not (combined_text or "").strip()
-    bot_promising_images = is_voice_turn and any(k in bot_reply_low for k in [
-        "ছবিগুলো নিচে দেওয়া হলো", "ছবি নিচে দেওয়া হলো", "ছবিগুলো দেওয়া হলো", "ছবি দেওয়া হলো",
-        "ছবিগুলো পাঠিয়ে দিচ্ছি", "ছবি পাঠিয়ে দিচ্ছি", "ছবিগুলো পাঠানো হলো", "ছবি পাঠানো হলো",
-        "স্যাম্পল দেওয়া হলো", "স্যাম্পল পাঠানো হলো", "রেডি প্যাকেজের ছবি", "প্যাকেজের ছবি",
-        "৭টি রেডি প্যাকেজ"
-    ])
+    bot_promising_images = (
+        any(k in bot_reply_low for k in [
+            "অবশ্যই দিচ্ছি", "দিচ্ছি", "পাঠিয়ে দিচ্ছি", "পাঠিয়ে দিচ্ছি", "পাঠাচ্ছি",
+            "নিচে দেওয়া হলো", "নিচে দেওয়া হল", "নিচে দেওয়া হলো", "নিচে দেওয়া হল",
+            "নিচে পাঠানো হলো", "নিচে পাঠানো হল", "নিচে দেওয়া", "নিচে দেওয়া", "নিচে পাঠানো",
+            "দেওয়া হলো", "দেওয়া হলো", "পাঠানো হলো", "পাঠানো হল", "দেওয়া হল", "দেওয়া হল",
+            "স্যাম্পল দেওয়া", "স্যাম্পল দেওয়া", "স্যাম্পল পাঠানো",
+            "রেডি প্যাকেজের ছবি", "প্যাকেজের ছবি", "প্যাকেজগুলোর ছবি", "প্যাকেজ গুলোর ছবি",
+            "৭টি রেডি প্যাকেজের ছবি", "৭টি রেডি প্যাকেজ", "রেডি প্যাকেজ"
+        ]) or (
+            any(p in bot_reply_low for p in ["ছবি", "স্যাম্পল", "প্যাকেজ", "প্যাকেজগুলোর", "প্যাকেজের"]) and
+            any(v in bot_reply_low for v in ["দেওয়া হলো", "দেওয়া হলো", "পাঠানো হলো", "পাঠানো হল", "দেওয়া হল", "দেওয়া হল", "দিচ্ছি", "পাঠাচ্ছি", "নিচে"])
+        )
+    )
+    combined_low = (combined_text or "").lower()
+    is_refusal = any(rk in combined_low for rk in ["না", "লাগবে না", "দরকার নেই", "দরকার নাই", "চাই না", "নেব না", "নিব না", "stop", "no"])
+    customer_consented = has_customer_consented_or_requested_photos(
+        user_msg=combined_text,
+        conversation_history=history
+    )
+    is_pure_price_query = (
+        not customer_consented and not is_voice_turn and (
+            any(k in combined_low for k in [
+                "দাম কত", "দাম কতো", "খরচ কত", "খরচ কতো", "রেট কত", "রেট কতো", "প্রাইস কত", "প্রাইস কতো",
+                "কত করে", "কতো করে", "কত কর", "কতো কর", "কত পড়বে", "কত পরবে", "কতো পড়বে", "কতো পরবে",
+                "কত রাখা", "কতো রাখা", "কত হবে", "কতো হবে"
+            ]) or (
+                any(item in combined_low for item in ["ফিতা", "কার্ড", "কভার", "আইডি", "রিবন", "ল্যানিয়ার্ড", "হোল্ডার"]) and
+                any(q in combined_low for q in ["কত", "কতো", "দাম", "রেট", "খরচ", "প্রাইস", "মূল্য", "কর"]) and
+                not any(p in combined_low for p in ["ছবি", "স্যাম্পল", "পিক", "ফটো", "পাঠান", "দেখান"])
+            )
+        )
+    )
     has_photo_consent = (
-        is_workflow_dispatch or
-        bot_promising_images or
-        bool(audio_bytes) or
-        has_customer_consented_or_requested_photos(
-            user_msg=combined_text,
-            conversation_history=history
+        not is_refusal and not is_pure_price_query and (
+            is_workflow_dispatch or
+            bot_promising_images or
+            bool(audio_bytes) or
+            customer_consented
         )
     )
 
