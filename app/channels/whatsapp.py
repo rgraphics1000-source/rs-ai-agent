@@ -1389,62 +1389,14 @@ async def handle_whatsapp_webhook_event(data: dict):
                             except Exception as dl_err:
                                 print(f"[WhatsApp Audio DL Error]: {dl_err}")
 
-                    # Check for Quoted / Contextual Replied Message (e.g. customer replies to a product photo)
+                    # Check for Quoted / Contextual Replied Message (e.g. customer replies to a product photo or text)
                     context_data = msg.get("context")
                     quoted_wa_id = context_data.get("id") if isinstance(context_data, dict) else None
                     if quoted_wa_id:
                         from app.database import resolve_quoted_message_media
                         quoted_info = resolve_quoted_message_media(quoted_wa_id, workspace_id=workspace_id)
                         quoted_url = quoted_info.get("media_url") or ""
-                        if not quoted_url:
-                            # Context fallback: check recent bot media sent in this conversation
-                            try:
-                                conn = get_db_connection()
-                                cursor = conn.cursor()
-                                cursor.execute("""
-                                    SELECT m.media_url, m.content
-                                    FROM messages m
-                                    JOIN conversations c ON m.conversation_id = c.id
-                                    WHERE (c.sender_id = ? OR c.sender_id LIKE ? OR c.sender_id LIKE ?)
-                                      AND c.workspace_id = ?
-                                      AND m.sender_type IN ('bot', 'admin', 'ai')
-                                      AND m.media_url IS NOT NULL AND m.media_url != ''
-                                    ORDER BY m.id DESC LIMIT 15
-                                """, (str(sender_phone), f"%{sender_phone[-10:] if len(sender_phone)>=10 else sender_phone}", f"%{sender_phone}%", int(workspace_id or 1)))
-                                bot_media_rows = cursor.fetchall()
-                                conn.close()
-                                if bot_media_rows:
-                                    # If customer mentioned a specific package in text (e.g. ৬, 5, 4, 3, 2, 1), pick matching candidate
-                                    m_text_low = (msg_text or "").lower()
-                                    target_code = None
-                                    if "wa0006" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৬", "৬ নম্বর", "৬"]): target_code = "wa0006"
-                                    elif "wa0045" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৫", "৫ নম্বর", "৫"]): target_code = "wa0045"
-                                    elif "wa0081" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৪", "৪ নম্বর", "৪"]): target_code = "wa0081"
-                                    elif "wa0023" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৩", "৩ নম্বর", "৩"]): target_code = "wa0023"
-                                    elif "wa0002" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ২", "২ নম্বর", "২"]): target_code = "wa0002"
-                                    elif "wa0003" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ১", "১ নম্বর", "১"]): target_code = "wa0003"
-                                    elif "wa0057" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৭", "৭ নম্বর", "৭", "মেটাল"]): target_code = "wa0057"
-
-                                    if target_code:
-                                        for bmr in bot_media_rows:
-                                            if target_code in (bmr["media_url"] or "").lower():
-                                                quoted_url = bmr["media_url"]
-                                                break
-
-                                    if not quoted_url:
-                                        # Prefer the latest package media if any
-                                        for bmr in bot_media_rows:
-                                            if "package" in (bmr["media_url"] or "").lower():
-                                                quoted_url = bmr["media_url"]
-                                                break
-                                    if not quoted_url:
-                                        quoted_url = bot_media_rows[0]["media_url"]
-                            except Exception as fb_err:
-                                print(f"[Quoted Fallback Error]: {fb_err}")
-
-                        # If user quoted a media message on WhatsApp and still unresolved, default to Package 7
-                        if not quoted_url:
-                            quoted_url = "/static/uploads/package/IMG-20260114-WA0057.jpg"
+                        quoted_text = (quoted_info.get("content") or "").strip()
 
                         if quoted_url:
                             quoted_fname = quoted_info.get("filename") or os.path.basename(quoted_url)
@@ -1452,6 +1404,63 @@ async def handle_whatsapp_webhook_event(data: dict):
                                 image_bytes = quoted_info.get("image_bytes")
                                 image_mime = quoted_info.get("image_mime", "image/jpeg")
                             msg_text = f"{msg_text} [কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: {quoted_url}]".strip()
+                        elif quoted_text:
+                            # Quoted message is a regular text message (e.g. Admin or Bot text)
+                            clean_q_text = re.sub(r'\[[^\]]*\]', '', quoted_text).strip()
+                            if clean_q_text:
+                                short_quote = clean_q_text[:100].replace('\n', ' ')
+                                msg_text = f"{msg_text} [কাস্টমার পূর্ববর্তী এই বার্তার রিপ্লাই দিয়েছেন: \"{short_quote}\"]".strip()
+                        else:
+                            # Quoted message ID not found in DB - only search recent media if customer is explicitly asking about an image or package
+                            m_text_low = (msg_text or "").lower()
+                            is_explicit_media_inquiry = any(k in m_text_low for k in [
+                                "এটি কত", "এটা কত", "এইটা কত", "এটি নিব", "এটা নিব", "এইটা নিব",
+                                "এটি দিন", "এটা দিন", "এই ছবি", "এই কার্ড", "প্যাকেজ"
+                            ])
+                            if is_explicit_media_inquiry:
+                                try:
+                                    conn = get_db_connection()
+                                    cursor = conn.cursor()
+                                    cursor.execute("""
+                                        SELECT m.media_url, m.content
+                                        FROM messages m
+                                        JOIN conversations c ON m.conversation_id = c.id
+                                        WHERE (c.sender_id = ? OR c.sender_id LIKE ? OR c.sender_id LIKE ?)
+                                          AND c.workspace_id = ?
+                                          AND m.sender_type IN ('bot', 'admin', 'ai')
+                                          AND m.media_url IS NOT NULL AND m.media_url != ''
+                                        ORDER BY m.id DESC LIMIT 15
+                                    """, (str(sender_phone), f"%{sender_phone[-10:] if len(sender_phone)>=10 else sender_phone}", f"%{sender_phone}%", int(workspace_id or 1)))
+                                    bot_media_rows = cursor.fetchall()
+                                    conn.close()
+                                    if bot_media_rows:
+                                        target_code = None
+                                        if "wa0006" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৬", "৬ নম্বর", "৬"]): target_code = "wa0006"
+                                        elif "wa0045" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৫", "৫ নম্বর", "৫"]): target_code = "wa0045"
+                                        elif "wa0081" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৪", "৪ নম্বর", "৪"]): target_code = "wa0081"
+                                        elif "wa0023" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৩", "৩ নম্বর", "৩"]): target_code = "wa0023"
+                                        elif "wa0002" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ২", "২ নম্বর", "২"]): target_code = "wa0002"
+                                        elif "wa0003" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ১", "১ নম্বর", "১"]): target_code = "wa0003"
+                                        elif "wa0057" in m_text_low or any(k in m_text_low for k in ["প্যাকেজ ৭", "৭ নম্বর", "৭", "মেটাল"]): target_code = "wa0057"
+
+                                        if target_code:
+                                            for bmr in bot_media_rows:
+                                                if target_code in (bmr["media_url"] or "").lower():
+                                                    quoted_url = bmr["media_url"]
+                                                    break
+
+                                        if not quoted_url:
+                                            for bmr in bot_media_rows:
+                                                if "package" in (bmr["media_url"] or "").lower():
+                                                    quoted_url = bmr["media_url"]
+                                                    break
+                                        if not quoted_url:
+                                            quoted_url = bot_media_rows[0]["media_url"]
+
+                                        if quoted_url:
+                                            msg_text = f"{msg_text} [কাস্টমার পূর্ববর্তী এই ছবির রিপ্লাই দিয়েছেন: {quoted_url}]".strip()
+                                except Exception as fb_err:
+                                    print(f"[Quoted Fallback Error]: {fb_err}")
 
                     # Record incoming customer message scoped strictly to Workspace
                     customer_name = raw_customer_name or f"WhatsApp User ({sender_phone})"

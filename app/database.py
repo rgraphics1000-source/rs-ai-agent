@@ -1026,36 +1026,48 @@ def resolve_quoted_message_media(quoted_mid: str, workspace_id: int = 1) -> dict
         ws_id = int(workspace_id or 1)
         
         cursor.execute("""
-            SELECT m.id, m.media_url, m.content, m.message_type, m.external_message_id
+            SELECT m.id, m.media_url, m.content, m.message_type, m.external_message_id, m.sender_type, m.sender_role
             FROM messages m
             JOIN conversations c ON m.conversation_id = c.id
-            WHERE (m.external_message_id = ? OR m.id = ? OR m.external_message_id LIKE ? OR ? LIKE ('%' || m.external_message_id || '%'))
-              AND c.workspace_id = ?
+            WHERE (
+                (m.external_message_id IS NOT NULL AND m.external_message_id != '' AND (
+                    m.external_message_id = ?
+                    OR (LENGTH(m.external_message_id) >= 6 AND m.external_message_id LIKE ?)
+                    OR (LENGTH(m.external_message_id) >= 6 AND ? LIKE ('%' || m.external_message_id || '%'))
+                ))
+                OR (m.id = ?)
+            )
+            AND c.workspace_id = ?
             ORDER BY m.id DESC LIMIT 1
-        """, (str(quoted_mid), str(quoted_mid), f"%{quoted_mid}%", str(quoted_mid), ws_id))
+        """, (str(quoted_mid), f"%{quoted_mid}%", str(quoted_mid), int(quoted_mid) if str(quoted_mid).isdigit() else -1, ws_id))
         row = cursor.fetchone()
         if not row:
             cursor.execute("""
-                SELECT id, media_url, content, message_type, external_message_id
+                SELECT id, media_url, content, message_type, external_message_id, sender_type, sender_role
                 FROM messages
-                WHERE (external_message_id = ? OR id = ? OR external_message_id LIKE ? OR ? LIKE ('%' || external_message_id || '%'))
-                ORDER BY m.id DESC LIMIT 1
-            """ if "m." not in "" else "", ())
-            cursor.execute("""
-                SELECT id, media_url, content, message_type, external_message_id
-                FROM messages
-                WHERE (external_message_id = ? OR id = ? OR external_message_id LIKE ? OR ? LIKE ('%' || external_message_id || '%'))
+                WHERE (
+                    (external_message_id IS NOT NULL AND external_message_id != '' AND (
+                        external_message_id = ?
+                        OR (LENGTH(external_message_id) >= 6 AND external_message_id LIKE ?)
+                        OR (LENGTH(external_message_id) >= 6 AND ? LIKE ('%' || external_message_id || '%'))
+                    ))
+                    OR (id = ?)
+                )
                 ORDER BY id DESC LIMIT 1
-            """, (str(quoted_mid), str(quoted_mid), f"%{quoted_mid}%", str(quoted_mid)))
+            """, (str(quoted_mid), f"%{quoted_mid}%", str(quoted_mid), int(quoted_mid) if str(quoted_mid).isdigit() else -1))
             row = cursor.fetchone()
             
         media_url = ""
         content = ""
         row_id = None
+        sender_type = ""
+        sender_role = ""
         if row:
             row_id = row["id"]
             media_url = row["media_url"] or ""
             content = row["content"] or ""
+            sender_type = row["sender_type"] or ""
+            sender_role = row["sender_role"] or ""
         else:
             # Check media_deliveries fallback
             try:
@@ -1112,6 +1124,8 @@ def resolve_quoted_message_media(quoted_mid: str, workspace_id: int = 1) -> dict
             "media_url": media_url,
             "filename": os.path.basename(media_url) if media_url else "",
             "content": content,
+            "sender_type": sender_type,
+            "sender_role": sender_role,
             "local_path": local_path,
             "image_bytes": img_bytes,
             "image_mime": img_mime

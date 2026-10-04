@@ -1607,7 +1607,7 @@ def evaluate_id_card_workflow(
             "response_source": "custom_crest_inquiry"
         }
 
-    has_mug = any(k in msg for k in ["মগ", "mug", "কাস্টমাইজড মগ"])
+    has_mug = bool(re.search(r'(?:^|[^\w\u0980-\u09FF])(?:কাস্টমাইজড\s+)?মগ(?:ের|ও|টি|টা|গুলো|গুলা|ে)?(?:$|[^\w\u0980-\u09FF])', msg)) or bool(re.search(r'\b(?:mug|mugs)\b', msg, re.IGNORECASE))
     if has_mug:
         return {
             "reply_text": f"জি {honorific}, আমরা ছবি ও লোগো প্রিন্টসহ প্রিমিয়াম কোয়ালিটির সিরামিক মগও তৈরি করে থাকি। আপনার কত পিস মগ প্রয়োজন জানাবেন {honorific}?",
@@ -2169,11 +2169,11 @@ def evaluate_id_card_workflow(
 
     is_non_pkg_inquiry = any(k in msg for k in [
         "চাবির রিং", "চাবি রিং", "কী রিং", "কি রিং", "কী-রিং", "কি-রিং", "কীচেন", "কিচেন", "keyring", "keychain",
-        "মগ", "ক্রেস্ট", "মেডেল", "টি শার্ট", "টি-শার্ট", "টিশার্ট", "ব্যানার", "পোস্টার", "স্টিকার", "সিল", "ভিজিটিং কার্ড",
+        "ক্রেস্ট", "মেডেল", "টি শার্ট", "টি-শার্ট", "টিশার্ট", "ব্যানার", "পোস্টার", "স্টিকার", "সিল", "ভিজিটিং কার্ড",
         "ডেলিভারি", "কুরিয়ার", "ঠিকানা", "লোকেশন", "অফিস", "দোকান", "কোথায়", "কোথায়",
         "সময়", "কতদিন", "কয়দিন", "বিকাশ", "নগদ", "অ্যাডভান্স", "অগ্রিম",
         "বানান নাকি", "বানান কি", "করেন নাকি", "করেন কি", "আছে নাকি", "আছে কি"
-    ])
+    ]) or bool(re.search(r'(?:^|[^\w\u0980-\u09FF])(?:কাস্টমাইজড\s+)?মগ(?:ের|ও|টি|টা|গুলো|গুলা|ে)?(?:$|[^\w\u0980-\u09FF])', msg)) or bool(re.search(r'\b(?:mug|mugs)\b', msg, re.IGNORECASE))
 
     is_asking_pkg_price_or_discount = (not is_non_pkg_inquiry) and (
         any(k in msg for k in [
@@ -2364,9 +2364,28 @@ def has_customer_consented_or_requested_photos(user_msg: str, conversation_histo
     Ensures that NO photo/image is ever sent unless the customer explicitly asked for it
     or affirmatively consented to a prior photo offer from the agent.
     """
-    msg = (user_msg or "").strip().lower()
+    msg_raw = (user_msg or "").strip().lower()
+    if not msg_raw:
+        return False
+
+    # 0. Strip bracketed system metadata tags before analyzing user intent
+    msg = re.sub(r'\[[^\]]*\]', '', msg_raw).strip()
     if not msg:
         return False
+
+    # Check if customer is promising to send materials/info/names to seller (NOT requesting photos from seller)
+    customer_sending_phrases = [
+        "আজকের মধ্যে সব দিব", "আজকের মধ্যে সব দিবো", "আজকে সব দিব", "আজকে সব দিবো",
+        "আজকে দিব", "আজকে দিবো", "কালকে দিব", "কালকে দিবো", "কাল দিব", "কাল দিবো",
+        "দিব ইনশাআল্লাহ", "দিবো ইনশাআল্লাহ", "দিব ইনশাল্লাহ", "দিবো ইনশাল্লাহ",
+        "পাঠাব ইনশাআল্লাহ", "পাঠাবো ইনশাআল্লাহ", "পাঠাব ইনশাল্লাহ", "পাঠাবো ইনশাল্লাহ",
+        "সব দিব", "সব দিবো", "সব পাঠাব", "সব পাঠাবো", "পাঠিয়ে দিব", "পাঠিয়ে দিবো", "পাঠিয়ে দিব", "পাঠিয়ে দিবো",
+        "নামগুলো দিব", "নামগুলো পাঠাব", "তথ্য দিব", "তথ্য পাঠাব", "ইনশাআল্লাহ দিব", "ইনশাআল্লাহ দিবো",
+        "ইনশাআল্লাহ পাঠাব", "ইনশাআল্লাহ পাঠাবো", "দিব", "দিবো", "পাঠাব", "পাঠাবো"
+    ]
+    if any(p in msg for p in customer_sending_phrases):
+        if not any(k in msg for k in ["দেখান", "পাঠান", "পাঠাও", "দেখাও", "দিন", "দেন", "দাও", "দেখতে চাই", "ছবি পাঠান", "ছবি দেখান", "স্যাম্পল দেন", "স্যাম্পল পাঠান"]):
+            return False
 
     # 1. Check for negative intent / refusal (Always Highest Priority)
     refusal_keywords = [
@@ -2737,7 +2756,7 @@ def generate_smart_fallback_reply(user_msg: str, customer_name: str = "", worksp
         # Other custom products fallback
         if any(k in msg for k in ["চাবির রিং", "চাবি রিং", "কী রিং", "কি রিং", "কীচেন", "কিচেন", "keyring"]):
             return f"জি {honorific}, আমরা বিভিন্ন ধরনের প্রিমিয়াম কোয়ালিটির কাস্টমাইজড চাবির রিংও (Keyring) তৈরি করে থাকি। আপনার কত পিস চাবির রিং প্রয়োজন জানাবেন {honorific}?"
-        if any(k in msg for k in ["মগ", "mug"]):
+        if bool(re.search(r'(?:^|[^\w\u0980-\u09FF])(?:কাস্টমাইজড\s+)?মগ(?:ের|ও|টি|টা|গুলো|গুলা|ে)?(?:$|[^\w\u0980-\u09FF])', msg)) or bool(re.search(r'\b(?:mug|mugs)\b', msg, re.IGNORECASE)):
             return f"জি {honorific}, আমরা ছবি ও লোগো প্রিন্টসহ প্রিমিয়াম কোয়ালিটির সিরামিক মগ তৈরি করে থাকি। আপনার কত পিস মগ প্রয়োজন জানাবেন {honorific}?"
         if any(k in msg for k in ["ক্রেস্ট", "crest", "মেডেল"]):
             return f"জি {honorific}, আমরা বিভিন্ন ধরনের আকর্ষণীয় ডিজাইনের কাস্টমাইজড ক্রেস্ট ও মেডেল তৈরি করে থাকি। আপনার কত পিস ক্রেস্ট প্রয়োজন জানাবেন {honorific}?"
