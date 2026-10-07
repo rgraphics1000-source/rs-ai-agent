@@ -133,12 +133,22 @@ def record_conversation_message(
         actual_source = source or channel.upper()
         
         # Check if conversation exists scoped to this workspace
-        cursor.execute("""
-            SELECT id, customer_name, page_id, workspace_id, conversation_version, customer_turn_version
-            FROM conversations
-            WHERE sender_id = ? AND workspace_id = ?
-            ORDER BY id DESC LIMIT 1
-        """, (sender_id, ws_id))
+        clean_s = "".join(c for c in str(sender_id or "") if c.isdigit())
+        last10 = clean_s[-10:] if len(clean_s) >= 10 else clean_s
+        if last10 and len(clean_s) >= 8:
+            cursor.execute("""
+                SELECT id, customer_name, page_id, workspace_id, conversation_version, customer_turn_version
+                FROM conversations
+                WHERE (sender_id = ? OR sender_id LIKE ? OR sender_id LIKE ?) AND workspace_id = ?
+                ORDER BY id DESC LIMIT 1
+            """, (str(sender_id), f"%{last10}%", f"%{clean_s}%", ws_id))
+        else:
+            cursor.execute("""
+                SELECT id, customer_name, page_id, workspace_id, conversation_version, customer_turn_version
+                FROM conversations
+                WHERE sender_id = ? AND workspace_id = ?
+                ORDER BY id DESC LIMIT 1
+            """, (str(sender_id), ws_id))
         row = cursor.fetchone()
         
         preview_text = content if content else ("[Image]" if media_url else "")

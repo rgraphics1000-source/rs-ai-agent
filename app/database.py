@@ -1493,21 +1493,25 @@ def add_muted_number(phone: str) -> list:
     clean_target = "".join([c for c in phone if c.isdigit()])
     target_last10 = clean_target[-10:] if len(clean_target) >= 10 else clean_target
     
-    # Check if already present under any format
-    already_present = False
-    for existing in current:
-        if str(existing).strip() == phone:
-            already_present = True
-            break
-        c_exist = "".join([c for c in str(existing) if c.isdigit()])
-        e_last10 = c_exist[-10:] if len(c_exist) >= 10 else c_exist
-        if clean_target and c_exist and (clean_target == c_exist or (target_last10 and target_last10 == e_last10)):
-            already_present = True
-            break
+    # Generate all format variants for Bangladeshi numbers
+    variants = [phone]
+    if clean_target:
+        variants.append(clean_target)
+        if clean_target.startswith("01") and len(clean_target) == 11:
+            variants.append("88" + clean_target)
+            variants.append("+88" + clean_target)
+        elif clean_target.startswith("8801") and len(clean_target) == 13:
+            variants.append(clean_target[2:])
+            variants.append("+88" + clean_target[2:])
+        elif target_last10 and len(clean_target) >= 10:
+            variants.append("0" + target_last10)
+            variants.append("880" + target_last10)
+
+    for v in variants:
+        if v not in current:
+            current.append(v)
             
-    if not already_present:
-        current.append(phone)
-        set_setting("blacklisted_ai_numbers", ", ".join(current))
+    set_setting("blacklisted_ai_numbers", ", ".join(current))
     
     try:
         conn = get_db_connection()
@@ -1517,14 +1521,16 @@ def add_muted_number(phone: str) -> list:
                 UPDATE conversations 
                 SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
                     takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_ui', takeover_reason = 'manual_block',
+                    conversation_version = COALESCE(conversation_version, 1) + 1,
                     updated_at = CURRENT_TIMESTAMP 
-                WHERE sender_id LIKE ? OR sender_id = ?
-            """, (f"%{target_last10}%", phone))
+                WHERE sender_id LIKE ? OR sender_id = ? OR sender_id LIKE ?
+            """, (f"%{target_last10}%", phone, f"%{clean_target}%"))
         else:
             cursor.execute("""
                 UPDATE conversations 
                 SET human_takeover = 1, admin_takeover = 1, ai_enabled = 0,
                     takeover_at = CURRENT_TIMESTAMP, takeover_by = 'admin_ui', takeover_reason = 'manual_block',
+                    conversation_version = COALESCE(conversation_version, 1) + 1,
                     updated_at = CURRENT_TIMESTAMP 
                 WHERE sender_id = ?
             """, (phone,))
@@ -1536,6 +1542,8 @@ def add_muted_number(phone: str) -> list:
     try:
         from app.channels.debouncer import message_debouncer
         message_debouncer.cancel_sender_batches(phone)
+        if clean_target:
+            message_debouncer.cancel_sender_batches(clean_target)
     except Exception:
         pass
 

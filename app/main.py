@@ -5,6 +5,7 @@ import csv
 import io
 import uuid
 import requests
+import httpx
 from typing import Optional, List
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -818,7 +819,7 @@ async def api_toggle_chat_ai(request: Request):
         if cid:
             c.execute("SELECT id, sender_id, channel, workspace_id, human_takeover, admin_takeover, ai_enabled FROM conversations WHERE id = ?", (cid,))
             conv = c.fetchone()
-        elif phone:
+        if not conv and phone:
             clean_p = "".join(ch for ch in str(phone) if ch.isdigit())
             last10_p = clean_p[-10:] if len(clean_p) >= 10 else clean_p
             if last10_p and len(clean_p) >= 8:
@@ -1410,6 +1411,63 @@ async def api_remove_muted_contact(request: Request):
     updated_numbers = remove_muted_number(phone)
     contacts = get_muted_contacts_detailed()
     return {"success": True, "message": f"{phone} আন-মিউট করা হয়েছে", "contacts": contacts, "numbers": updated_numbers}
+
+# ==========================================
+# ENTERPRISE COURIER CORS-BYPASS PROXY API
+# ==========================================
+@app.post("/api/courier/proxy")
+async def api_courier_proxy(request: Request):
+    """
+    High-performance CORS-bypass proxy for PC Web browsers.
+    Allows NIKASH Web to track Steadfast, Pathao, RedX parcels without browser CORS blocks.
+    """
+    try:
+        body = await request.json()
+        target_url = body.get("url", "").strip()
+        method = (body.get("method") or "GET").upper()
+        custom_headers = body.get("headers") or {}
+        req_data = body.get("data")
+
+        if not target_url:
+            return JSONResponse(status_code=400, content={"success": False, "error": "target url is required"})
+
+        # Security check: Only allow trusted courier API domains
+        allowed_domains = [
+            "packzy.com", "steadfast.com.bd", "pathao.com",
+            "redx.com.bd", "bdcourier.com", "workers.dev"
+        ]
+        from urllib.parse import urlparse
+        domain = urlparse(target_url).netloc.lower()
+        if not any(d in domain for d in allowed_domains):
+            return JSONResponse(status_code=403, content={"success": False, "error": f"Domain {domain} not permitted for courier proxy"})
+
+        headers_to_send = {}
+        for k, v in custom_headers.items():
+            if k.lower() not in ["host", "content-length"]:
+                headers_to_send[k] = str(v)
+
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            if method in ["POST", "PUT", "PATCH"]:
+                if isinstance(req_data, (dict, list)):
+                    resp = await client.request(method, target_url, headers=headers_to_send, json=req_data)
+                elif req_data:
+                    resp = await client.request(method, target_url, headers=headers_to_send, content=str(req_data))
+                else:
+                    resp = await client.request(method, target_url, headers=headers_to_send)
+            else:
+                resp = await client.request(method, target_url, headers=headers_to_send)
+
+        return JSONResponse(
+            status_code=resp.status_code,
+            content={
+                "success": resp.is_success,
+                "status": resp.status_code,
+                "rawText": resp.text,
+                "data": resp.text
+            }
+        )
+    except Exception as e:
+        return JSONResponse(status_code=502, content={"success": False, "error": str(e)})
 
 # ==========================================
 # DIAGNOSTICS & SYSTEM STATUS APIS
